@@ -23,6 +23,7 @@ const els = {
   webSearchStatus: document.querySelector('#webSearchStatus'),
   registryStatus: document.querySelector('#registryStatus'),
   robotsStatus: document.querySelector('#robotsStatus'),
+  configDiagnostics: document.querySelector('#configDiagnostics'),
   csvInput: document.querySelector('#csvInput'),
   fileInput: document.querySelector('#fileInput'),
   sampleButton: document.querySelector('#sampleButton'),
@@ -203,6 +204,7 @@ function populateCategoryPreset() {
 async function loadConfig() {
   try {
     const response = await fetch(apiUrl('/api/config'));
+    if (!response.ok) throw new Error(`Config API returned ${response.status}`);
     state.config = await response.json();
     els.modelInput.value = state.config.defaultModel || '';
     els.searchModelInput.value = state.config.searchModel || '';
@@ -210,9 +212,10 @@ async function loadConfig() {
     els.useWebSearch.checked = false;
     els.useAi.disabled = true;
     els.useWebSearch.disabled = true;
-    const discoveryReady = Boolean(
-      state.config.registry?.googlePlacesConfigured || state.config.registry?.ceidgConfigured
-    );
+    const openaiReady = Boolean(state.config.hasOpenAiKey);
+    const googleReady = Boolean(state.config.registry?.googlePlacesConfigured);
+    const ceidgReady = Boolean(state.config.registry?.ceidgConfigured);
+    const discoveryReady = googleReady || ceidgReady;
     els.discoverButton.disabled = !discoveryReady;
     els.allSourcesButton.disabled = !discoveryReady;
     els.discoverLimit.max = String(state.config.maxDiscoveryItems || 15);
@@ -221,28 +224,83 @@ async function loadConfig() {
     }
     setDiscoverStatus(
       discoveryReady
-        ? 'Поиск готов: используется Google Places или CEIDG, без ChatGPT.'
-        : 'Для поиска без ChatGPT настройте GOOGLE_PLACES_API_KEY или CEIDG_API_TOKEN либо импортируйте CSV.',
+        ? 'Поиск компаний готов: используется Google Places API или CEIDG, без ChatGPT.'
+        : 'Поиск компаний из Google/реестров выключен: нужен GOOGLE_PLACES_API_KEY или CEIDG_API_TOKEN. Проверка сайтов по CSV уже работает.',
       discoveryReady ? 'ok' : 'warn'
     );
 
-    setPill(els.apiStatus, state.config.hasOpenAiKey ? 'OpenAI connected' : 'OpenAI key missing', state.config.hasOpenAiKey);
-    setPill(els.webSearchStatus, 'AI only in card', state.config.hasOpenAiKey);
-    const registryOk = Boolean(
-      state.config.registry?.ceidgConfigured ||
-        state.config.registry?.regonConfigured ||
-        state.config.registry?.googlePlacesConfigured
-    );
-    setPill(els.registryStatus, registryOk ? 'non-AI sources ready' : 'CSV/import mode', registryOk);
+    setPill(els.apiStatus, openaiReady ? 'OpenAI connected' : 'OpenAI missing', openaiReady);
+    setPill(els.webSearchStatus, 'Website crawler ready', true);
+    setPill(els.registryStatus, googleReady ? 'Google Places ready' : 'Google Places missing', googleReady);
     setPill(els.robotsStatus, state.config.respectRobotsTxt ? 'robots.txt on' : 'robots.txt off', state.config.respectRobotsTxt);
-  } catch {
-    setPill(els.apiStatus, 'Config error', false);
+    renderConfigDiagnostics({ openaiReady, googleReady, ceidgReady, discoveryReady });
+  } catch (error) {
+    state.config = null;
+    els.discoverButton.disabled = true;
+    els.allSourcesButton.disabled = true;
+    setPill(els.apiStatus, 'Config API offline', false);
+    setPill(els.webSearchStatus, 'Crawler unknown', false);
+    setPill(els.registryStatus, 'Sources unknown', false);
+    setDiscoverStatus('Не могу прочитать /api/config. Откройте http://localhost:4317/ и проверьте, что npm run dev запущен.', 'warn');
+    renderConfigError(error);
   }
 }
 
 function setPill(element, text, ok) {
   element.textContent = text;
   element.className = `status-pill ${ok ? 'ok' : 'warn'}`;
+}
+
+function renderConfigDiagnostics({ openaiReady, googleReady, ceidgReady, discoveryReady }) {
+  const rows = [
+    {
+      ok: openaiReady,
+      title: 'OpenAI API',
+      text: openaiReady ? 'подключен, AI-анализ карточки работает' : 'нет OPENAI_API_KEY'
+    },
+    {
+      ok: googleReady,
+      title: 'Google Places API',
+      text: googleReady ? 'подключен, поиск компаний в Google Maps работает' : 'нет GOOGLE_PLACES_API_KEY, поиск из Google Maps выключен'
+    },
+    {
+      ok: ceidgReady,
+      title: 'CEIDG / реестры',
+      text: ceidgReady ? 'подключен, поиск по реестрам доступен' : 'нет CEIDG_API_TOKEN, реестры выключены'
+    },
+    {
+      ok: true,
+      title: 'Проверка сайтов',
+      text: 'работает через backend: парсер может заходить на сайты из CSV/Google Places и проверять домены'
+    }
+  ];
+
+  els.configDiagnostics.innerHTML = `
+    <div class="config-diagnostics-title">${discoveryReady ? 'Источники готовы' : 'Нужно подключить источники поиска'}</div>
+    <div class="config-diagnostics-grid">
+      ${rows
+        .map(
+          (row) => `
+            <div class="config-diagnostic ${row.ok ? 'ok' : 'warn'}">
+              <strong>${escapeHtml(row.title)}</strong>
+              <span>${escapeHtml(row.text)}</span>
+            </div>
+          `
+        )
+        .join('')}
+    </div>
+  `;
+}
+
+function renderConfigError(error) {
+  const message = error?.message || 'unknown config error';
+  els.configDiagnostics.innerHTML = `
+    <div class="config-diagnostics-title">Ошибка подключения к backend</div>
+    <div class="config-diagnostic warn">
+      <strong>Config API</strong>
+      <span>${escapeHtml(message)}. Запустите сервер через npm run dev и открывайте http://localhost:4317/.</span>
+    </div>
+  `;
 }
 
 function bindEvents() {

@@ -422,6 +422,52 @@ svg {
   margin-bottom: 8px;
 }
 
+.config-diagnostics {
+  margin: 10px 0 12px;
+}
+
+.config-diagnostics-title {
+  color: #334155;
+  font-size: 12px;
+  font-weight: 900;
+  margin-bottom: 8px;
+}
+
+.config-diagnostics-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.config-diagnostic {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  min-height: 70px;
+  padding: 10px 12px;
+}
+
+.config-diagnostic strong {
+  font-size: 12px;
+}
+
+.config-diagnostic span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.config-diagnostic.ok {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+}
+
+.config-diagnostic.warn {
+  background: #fffbeb;
+  border-color: #fde68a;
+}
+
 .metric-row {
   display: grid;
   gap: 14px;
@@ -928,6 +974,10 @@ tbody tr.selected {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
+  .config-diagnostics-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .detail-card-grid {
     grid-template-columns: 1fr;
   }
@@ -968,6 +1018,7 @@ tbody tr.selected {
   }
 
   .discover-grid,
+  .config-diagnostics-grid,
   .detail-card-grid,
   .detail-tabs,
   .results-filters {
