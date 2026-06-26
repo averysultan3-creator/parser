@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Warsaw Site Parser</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js" defer></script>
+    <script src="./app.js" defer></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <main class="workspace">
+        <section class="control-panel" aria-label="Controls">
+          <div class="sidebar-title">
+            <i data-lucide="search"></i>
+            <h2>Поиск компаний</h2>
+          </div>
+
+          <div class="discover-panel" aria-label="Company discovery">
+            <div class="step-title">1. Категория и локация</div>
+
+            <div class="discover-grid">
+              <label class="model-field wide">
+                <span>Категория</span>
+                <select id="discoverCategoryPreset"></select>
+              </label>
+
+              <label id="customCategoryField" class="model-field wide hidden-field">
+                <span>Своя категория</span>
+                <input id="discoverNiche" type="text" value="Klimatyzacja" autocomplete="off" />
+              </label>
+
+              <label class="model-field">
+                <span>Город</span>
+                <select id="discoverCity">
+                  <option value="Warszawa">Warszawa</option>
+                </select>
+              </label>
+
+              <label class="model-field">
+                <span>Районы</span>
+                <select id="discoverDistrict">
+                  <option value="">Все районы</option>
+                  <option value="Mokotow">Mokotow</option>
+                  <option value="Wola">Wola</option>
+                  <option value="Ursynow">Ursynow</option>
+                  <option value="Srodmiescie">Srodmiescie</option>
+                  <option value="Praga Poludnie">Praga Poludnie</option>
+                  <option value="Ochota">Ochota</option>
+                  <option value="Bemowo">Bemowo</option>
+                  <option value="Bielany">Bielany</option>
+                  <option value="Wilanow">Wilanow</option>
+                  <option value="Bialoleka">Bialoleka</option>
+                </select>
+              </label>
+            </div>
+
+            <div class="step-title">2. Фильтры</div>
+
+            <div class="discover-grid">
+              <label class="model-field wide">
+                <span>Лимит результатов</span>
+                <select id="discoverLimit">
+                  <option value="50">50</option>
+                  <option value="100" selected>100</option>
+                  <option value="150">150</option>
+                </select>
+              </label>
+
+              <label class="model-field wide">
+                <span>Источник данных</span>
+                <select id="discoverSource">
+                  <option value="all_sources" selected>Все источники поиска данных</option>
+                  <option value="maps_api">Google Places API</option>
+                  <option value="internet">Интернет и публичные профили</option>
+                  <option value="registries">CEIDG / реестры</option>
+                  <option value="directories">Каталоги и сервисы</option>
+                  <option value="booking">Booksy / запись</option>
+                  <option value="social">Соцсети</option>
+                </select>
+              </label>
+
+              <button id="allSourcesButton" class="secondary-button wide-button source-all-button" type="button">
+                <i data-lucide="scan-search"></i>
+                Все источники по компании
+              </button>
+
+              <label class="model-field">
+                <span>Статус сайта</span>
+                <select id="sidebarSiteFilter">
+                  <option value="all">Все статусы</option>
+                  <option value="no_site">Нет сайта</option>
+                  <option value="has_site">С сайтом</option>
+                  <option value="weak_site">Слабый сайт</option>
+                  <option value="uncertain">На проверке</option>
+                </select>
+              </label>
+
+              <label class="model-field">
+                <span>Бизнес-score от</span>
+                <input id="sidebarMinScore" type="number" min="0" max="100" value="0" />
+              </label>
+
+              <label class="toggle-row compact-toggle">
+                <input id="sidebarHasSocial" type="checkbox" checked />
+                <span>Есть соц. профили</span>
+              </label>
+
+              <label class="toggle-row compact-toggle">
+                <input id="sidebarHasPhone" type="checkbox" checked />
+                <span>Есть телефон</span>
+              </label>
+
+              <label class="toggle-row compact-toggle">
+                <input id="sidebarHasEmail" type="checkbox" />
+                <span>Есть email</span>
+              </label>
+            </div>
+
+            <button id="discoverButton" class="primary-button discover-button" type="button">
+              <i data-lucide="radar"></i>
+              Найти компании
+            </button>
+            <div id="discoverStatus" class="discover-status">Поиск работает без ChatGPT через Google Places API или CEIDG.</div>
+          </div>
+
+          <div class="sidebar-actions">
+            <label class="file-button wide-button" for="fileInput">
+              <i data-lucide="file-up"></i>
+              Импорт CSV
+            </label>
+            <input id="fileInput" type="file" accept=".csv,text/csv" />
+
+            <button id="sampleButton" class="secondary-button wide-button" type="button">
+              <i data-lucide="list-plus"></i>
+              Пример данных
+            </button>
+          </div>
+
+          <details class="csv-drawer">
+            <summary>CSV данные</summary>
+            <textarea id="csvInput" spellcheck="false" placeholder="company,niche,district,phone,email,website_url,source_profile,review_count,last_activity"></textarea>
+          </details>
+
+          <div class="ai-note">
+            <i data-lucide="info"></i>
+            <span>AI используется только внутри карточки компании для анализа и рекомендаций.</span>
+          </div>
+
+          <div class="settings-grid">
+            <label class="toggle-row">
+              <input id="useAi" type="checkbox" disabled />
+              <span>Массовый AI отключен</span>
+            </label>
+
+            <label class="toggle-row">
+              <input id="useWebSearch" type="checkbox" disabled />
+              <span>OpenAI web search в bulk отключен</span>
+            </label>
+
+            <label class="model-field">
+              <span>AI card model</span>
+              <input id="modelInput" type="text" autocomplete="off" />
+            </label>
+
+            <label class="model-field">
+              <span>Legacy search model</span>
+              <input id="searchModelInput" type="text" autocomplete="off" />
+            </label>
+          </div>
+
+          <button id="analyzeButton" class="primary-button" type="button">
+            <i data-lucide="play"></i>
+            Найти сайты и проверить
+          </button>
+
+          <div id="runStatus" class="run-status">Готов к запуску</div>
+        </section>
+
+        <section class="results-panel" aria-label="Results">
+          <div class="main-header">
+            <div>
+              <h1>Warsaw Site Parser</h1>
+              <p>Поиск компаний в Варшаве и проверка наличия сайтов</p>
+            </div>
+            <div class="main-actions">
+              <button id="headerExportCsvButton" class="secondary-button" type="button" disabled>
+                <i data-lucide="download"></i>
+                Экспорт CSV
+              </button>
+              <label class="secondary-button" for="fileInput">
+                <i data-lucide="upload"></i>
+                Импорт CSV
+              </label>
+              <button class="icon-button" type="button" title="Настройки">
+                <i data-lucide="settings"></i>
+              </button>
+            </div>
+          </div>
+
+          <div class="status-row main-status-row">
+            <span id="apiStatus" class="status-pill muted">OpenAI</span>
+            <span id="webSearchStatus" class="status-pill muted">AI mode</span>
+            <span id="registryStatus" class="status-pill muted">Data source</span>
+            <span id="robotsStatus" class="status-pill muted">robots.txt</span>
+          </div>
+
+          <div class="metric-row">
+            <div>
+              <span class="metric-label">Всего найдено</span>
+              <strong id="totalMetric">0</strong>
+              <em>компаний</em>
+            </div>
+            <div>
+              <span class="metric-label">С сайтом</span>
+              <strong id="aMetric">0</strong>
+            </div>
+            <div>
+              <span class="metric-label">Без сайта</span>
+              <strong id="noSiteMetric">0</strong>
+            </div>
+            <div>
+              <span class="metric-label">На проверке</span>
+              <strong id="reviewMetric">0</strong>
+            </div>
+            <div>
+              <span class="metric-label">Требуют проверки</span>
+              <strong id="manualReviewMetric">0</strong>
+            </div>
+            <div class="export-actions">
+              <button id="exportCsvButton" class="icon-button" type="button" title="Экспорт CSV" disabled>
+                <i data-lucide="download"></i>
+              </button>
+              <button id="exportJsonButton" class="icon-button" type="button" title="Экспорт JSON" disabled>
+                <i data-lucide="braces"></i>
+              </button>
+            </div>
+          </div>
+
+          <div class="results-filters" aria-label="Result filters">
+            <label class="filter-field wide">
+              <span>Поиск</span>
+              <input id="resultFilterText" type="text" placeholder="Компания, ниша, район, источник" autocomplete="off" />
+            </label>
+
+            <label class="filter-field">
+              <span>Сайт</span>
+              <select id="resultFilterSite">
+                <option value="all">Все</option>
+                <option value="no_site">Нет своего сайта</option>
+                <option value="has_site">Сайт найден</option>
+                <option value="weak_site">Слабый сайт</option>
+                <option value="uncertain">Нужна проверка</option>
+              </select>
+            </label>
+
+            <label class="filter-field">
+              <span>Размер</span>
+              <select id="resultFilterSize">
+                <option value="all">Все</option>
+                <option value="small">Маленькая</option>
+                <option value="medium">Средняя</option>
+                <option value="large">Большая</option>
+              </select>
+            </label>
+
+            <label class="filter-field">
+              <span>Lead</span>
+              <select id="resultFilterPriority">
+                <option value="all">Все</option>
+                <option value="A">A / A+</option>
+                <option value="B">B</option>
+                <option value="C">C</option>
+                <option value="D">D</option>
+              </select>
+            </label>
+
+            <label class="filter-field">
+              <span>Score от</span>
+              <input id="resultFilterMinScore" type="number" min="0" max="100" value="0" />
+            </label>
+
+            <button id="quickFindSitesButton" class="secondary-button compact-button" type="button">
+              <i data-lucide="search-check"></i>
+              Найти сайты
+            </button>
+
+            <button id="resetFiltersButton" class="secondary-button compact-button" type="button">
+              <i data-lucide="x"></i>
+              Сброс
+            </button>
+
+            <div id="filterSummary" class="filter-summary">Фильтры не применены</div>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Lead</th>
+                  <th>Статус сайта</th>
+                  <th>Компания</th>
+                  <th>Ниша</th>
+                  <th>Размер</th>
+                  <th>Контакты</th>
+                  <th>Score</th>
+                  <th>Последняя активность</th>
+                </tr>
+              </thead>
+              <tbody id="resultsBody">
+                <tr class="empty-row">
+                  <td colspan="8">Результатов пока нет</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <aside class="detail-panel" aria-label="Lead details">
+          <div class="detail-header">
+            <div>
+              <p class="eyebrow">Карточка компании</p>
+              <h2 id="detailTitle">Выберите результат</h2>
+            </div>
+            <span id="detailPriority" class="priority-badge muted">-</span>
+          </div>
+
+          <div id="detailContent" class="detail-content">
+            <p class="muted-text">После анализа здесь появится статус сайта, проверки, score бизнеса, мини-аудит и текст первого контакта.</p>
+          </div>
+        </aside>
+      </main>
+    </div>
+  </body>
+</html>
