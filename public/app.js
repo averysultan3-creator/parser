@@ -284,6 +284,10 @@ function renderConfigDiagnostics({ openaiReady, googleReady, ceidgReady, interne
     }
   ];
 
+  rows[1].text = googleReady ? 'key found; Google Maps is tested on search run' : 'no GOOGLE_PLACES_API_KEY; Google Maps search is off';
+  rows[2].title = 'Internet search';
+  rows[2].text = internetReady ? 'public internet fallback works without OpenAI and without Google Maps' : 'internet fallback is off';
+
   els.configDiagnostics.innerHTML = `
     <div class="config-diagnostics-title">${discoveryReady ? 'Источники готовы' : 'Нужно подключить источники поиска'}</div>
     <div class="config-diagnostics-grid">

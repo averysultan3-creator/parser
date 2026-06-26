@@ -21,7 +21,20 @@ const MAX_ITEMS = Number(process.env.MAX_ITEMS_PER_RUN || 40);
 const MAX_DISCOVERY_ITEMS = Number(process.env.MAX_DISCOVERY_ITEMS || 150);
 const MAX_HTML_BYTES = 900_000;
 const FETCH_TIMEOUT_MS = 12_000;
+const GOOGLE_PLACES_TIMEOUT_MS = 8_000;
 const MAX_EXTRA_PAGES = 5;
+const DEFAULT_WARSAW_DISTRICTS = [
+  'Mokotow',
+  'Wola',
+  'Ursynow',
+  'Srodmiescie',
+  'Praga Poludnie',
+  'Ochota',
+  'Bemowo',
+  'Bielany',
+  'Wilanow',
+  'Bialoleka'
+];
 
 const CEIDG_ENDPOINT =
   process.env.CEIDG_API_ENDPOINT || 'https://dane.biznes.gov.pl/api/ceidg/v3/firmy';
@@ -115,7 +128,13 @@ app.use((req, res, next) => {
   next();
 });
 app.use(express.json({ limit: '4mb' }));
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(
+  express.static(path.join(__dirname, 'public'), {
+    setHeaders(res) {
+      res.setHeader('Cache-Control', 'no-store');
+    }
+  })
+);
 
 app.get('/api/config', (_req, res) => {
   res.json({
@@ -125,7 +144,7 @@ app.get('/api/config', (_req, res) => {
     respectRobotsTxt: RESPECT_ROBOTS,
     maxItems: MAX_ITEMS,
     maxDiscoveryItems: MAX_DISCOVERY_ITEMS,
-    internetSearchConfigured: Boolean(openai),
+    internetSearchConfigured: true,
     registry: {
       ceidgConfigured: Boolean(CEIDG_TOKEN),
       regonConfigured: Boolean(REGON_API_KEY),
@@ -369,7 +388,57 @@ function normalizeDiscoverySource(value) {
 }
 
 async function discoverCompaniesBatchWithoutAI({ niches, city, district, limit, sourceFocus }) {
-  const perNicheLimit = ['internet', 'directories', 'booking', 'social'].includes(sourceFocus)
+  if (sourceFocus === 'maps_api') {
+    const googleDiscoveries = [];
+    const perNicheLimit = Math.max(5, Math.ceil(limit / Math.max(1, niches.length)));
+    for (const niche of niches) {
+      if (uniqueCompanies(googleDiscoveries.flatMap((item) => item.companies || [])).length >= limit) break;
+      googleDiscoveries.push(await discoverCompaniesFromGooglePlacesExpanded({ niche, city, district, limit: perNicheLimit, sourceFocus }));
+    }
+
+    return mergeDiscoveries(googleDiscoveries, limit);
+  }
+
+  const internetFocusedSources = ['internet', 'directories', 'booking', 'social', 'all_sources'];
+  if (internetFocusedSources.includes(sourceFocus) && niches.length > 1) {
+    const googleDiscoveries = [];
+    const googleWarnings = [];
+    if (sourceFocus === 'all_sources' && GOOGLE_PLACES_API_KEY) {
+      const perNicheGoogleLimit = Math.max(5, Math.ceil(Math.min(limit, 80) / Math.min(niches.length, 12)));
+      for (const niche of niches.slice(0, 12)) {
+        try {
+          googleDiscoveries.push(
+            await discoverCompaniesFromGooglePlacesExpanded({
+              niche,
+              city,
+              district,
+              limit: perNicheGoogleLimit,
+              sourceFocus
+            })
+          );
+        } catch (error) {
+          googleWarnings.push(`Google Places skipped: ${error.message || 'unknown error'}`);
+          break;
+        }
+      }
+    }
+
+    const publicDiscoveries = [];
+    const publicLimit = Math.max(2, Math.ceil(Math.min(limit, 36) / Math.min(niches.length, 12)));
+    for (const niche of niches.slice(0, 12)) {
+      publicDiscoveries.push(await discoverCompaniesFromPublicSearch({ niche, city, district, limit: publicLimit, sourceFocus }));
+    }
+    const mergedFast = mergeDiscoveries([...googleDiscoveries, ...publicDiscoveries], limit);
+    return {
+      ...mergedFast,
+      warnings: [
+        ...unique([...googleWarnings, ...(mergedFast.warnings || [])]),
+        `Broad category search used ${Math.min(niches.length, 12)} categories; Google Maps is prioritized when API is enabled.`
+      ]
+    };
+  }
+
+  const perNicheLimit = ['internet', 'directories', 'booking', 'social', 'all_sources'].includes(sourceFocus)
     ? Math.max(1, Math.ceil(limit / Math.max(1, niches.length)))
     : Math.max(5, Math.ceil(limit / Math.max(1, niches.length)));
   const collected = [];
@@ -400,14 +469,22 @@ async function discoverCompaniesBatchWithoutAI({ niches, city, district, limit, 
   };
 }
 
+function mergeDiscoveries(discoveries, limit) {
+  return {
+    source: unique(discoveries.map((item) => item.source).filter(Boolean)).join(',') || 'unknown',
+    queries: unique(discoveries.flatMap((item) => item.queries || [])).slice(0, 40),
+    warnings: unique(discoveries.flatMap((item) => item.warnings || [])).slice(0, 30),
+    companies: uniqueCompanies(discoveries.flatMap((item) => item.companies || [])).slice(0, limit)
+  };
+}
+
 async function discoverCompaniesWithoutAI({ niche, city, district, limit, sourceFocus }) {
   if (sourceFocus === 'all_sources') {
     const discoveries = [];
     const warnings = [];
-
     if (GOOGLE_PLACES_API_KEY) {
       try {
-        discoveries.push(await discoverCompaniesFromGooglePlaces({ niche, city, district, limit, sourceFocus }));
+        discoveries.push(await discoverCompaniesFromGooglePlacesExpanded({ niche, city, district, limit, sourceFocus }));
       } catch (error) {
         warnings.push(`Google Places skipped: ${error.message || 'unknown error'}`);
       }
@@ -425,35 +502,23 @@ async function discoverCompaniesWithoutAI({ niche, city, district, limit, source
       warnings.push('CEIDG_API_TOKEN не настроен, CEIDG/реестры пропущены.');
     }
 
-    if (openai) {
-      try {
-        discoveries.push(await discoverCompaniesFromOpenAIInternet({ niche, city, district, limit, sourceFocus }));
-      } catch (error) {
-        warnings.push(`Internet search skipped: ${error.message || 'unknown error'}`);
-      }
-    } else {
-      warnings.push('OPENAI_API_KEY не настроен, интернет-поиск без Google Maps пропущен.');
-    }
-
+    const publicDiscovery = await discoverCompaniesFromPublicSearch({ niche, city, district, limit, sourceFocus });
+    if (publicDiscovery.companies.length) discoveries.push(publicDiscovery);
     if (!discoveries.length) {
       throw new Error(
-        `Не удалось найти компании ни в одном источнике. ${warnings.join(' ')}`
+        `No companies found in configured non-AI sources. ${warnings.join(' ')} ${(publicDiscovery.warnings || []).join(' ')}`
       );
     }
-
     return {
-      source: discoveries.map((item) => item.source).join(','),
-      queries: discoveries.flatMap((item) => item.queries || []),
-      warnings: [...warnings, ...discoveries.flatMap((item) => item.warnings || [])],
-      companies: uniqueCompanies(discoveries.flatMap((item) => item.companies || [])).slice(0, limit)
+      ...mergeDiscoveries(discoveries, limit),
+      warnings: unique([...warnings, ...discoveries.flatMap((item) => item.warnings || [])]).slice(0, 30)
     };
+
   }
 
   if (['internet', 'directories', 'booking', 'social'].includes(sourceFocus)) {
-    if (!openai) {
-      throw new Error('Для интернет-поиска без Google Maps нужен OPENAI_API_KEY в .env.');
-    }
-    return discoverCompaniesFromOpenAIInternet({ niche, city, district, limit, sourceFocus });
+    const publicDiscovery = await discoverCompaniesFromPublicSearch({ niche, city, district, limit, sourceFocus });
+    return publicDiscovery;
   }
 
   if (sourceFocus === 'registries') {
@@ -464,7 +529,7 @@ async function discoverCompaniesWithoutAI({ niche, city, district, limit, source
   }
 
   if (sourceFocus === 'maps_api' && GOOGLE_PLACES_API_KEY) {
-    return discoverCompaniesFromGooglePlaces({ niche, city, district, limit, sourceFocus });
+    return discoverCompaniesFromGooglePlacesExpanded({ niche, city, district, limit, sourceFocus });
   }
 
   if (sourceFocus === 'maps_api') {
@@ -500,6 +565,43 @@ function uniqueCompanies(companies) {
   return result;
 }
 
+async function discoverCompaniesFromGooglePlacesExpanded({ niche, city, district, limit, sourceFocus }) {
+  const districts = district ? [district] : ['', ...DEFAULT_WARSAW_DISTRICTS];
+  const perQueryLimit = Math.min(20, Math.max(5, Math.ceil(limit / Math.min(districts.length, 6))));
+  const discoveries = [];
+  const warnings = [];
+
+  for (const districtName of districts) {
+    const collectedCount = uniqueCompanies(discoveries.flatMap((item) => item.companies || [])).length;
+    if (collectedCount >= limit) break;
+
+    try {
+      discoveries.push(
+        await discoverCompaniesFromGooglePlaces({
+          niche,
+          city,
+          district: districtName,
+          limit: perQueryLimit,
+          sourceFocus
+        })
+      );
+    } catch (error) {
+      warnings.push(error.message || 'Google Places API error');
+      break;
+    }
+  }
+
+  const merged = mergeDiscoveries(discoveries, limit);
+  if (!merged.companies.length && warnings.length) {
+    throw new Error(warnings[0]);
+  }
+  return {
+    ...merged,
+    source: merged.source === 'unknown' ? 'google_places_api' : merged.source,
+    warnings: unique([...warnings, ...(merged.warnings || [])]).slice(0, 30)
+  };
+}
+
 async function discoverCompaniesFromGooglePlaces({ niche, city, district, limit, sourceFocus }) {
   const textQuery = [niche, district, city].filter(Boolean).join(' ');
   const fieldMask = [
@@ -517,21 +619,34 @@ async function discoverCompaniesFromGooglePlaces({ niche, city, district, limit,
     'nextPageToken'
   ].join(',');
 
-  const response = await fetch('https://places.googleapis.com/v1/places:searchText', {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'X-Goog-Api-Key': GOOGLE_PLACES_API_KEY,
-      'X-Goog-FieldMask': fieldMask,
-      'user-agent': USER_AGENT
-    },
-    body: JSON.stringify({
-      textQuery,
-      languageCode: 'pl',
-      regionCode: 'PL',
-      pageSize: Math.min(limit, 20)
-    })
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), GOOGLE_PLACES_TIMEOUT_MS);
+  let response;
+  try {
+    response = await fetch('https://places.googleapis.com/v1/places:searchText', {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'content-type': 'application/json',
+        'X-Goog-Api-Key': GOOGLE_PLACES_API_KEY,
+        'X-Goog-FieldMask': fieldMask,
+        'user-agent': USER_AGENT
+      },
+      body: JSON.stringify({
+        textQuery,
+        languageCode: 'pl',
+        regionCode: 'PL',
+        pageSize: Math.min(limit, 20)
+      })
+    });
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      throw new Error('Google Places API timeout');
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
 
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -571,12 +686,222 @@ async function discoverCompaniesFromGooglePlaces({ niche, city, district, limit,
   };
 }
 
+async function discoverCompaniesFromPublicSearch({ niche, city, district, limit, sourceFocus }) {
+  const maxResults = Math.min(limit, 20);
+  const focusTerms = {
+    internet: 'firma kontakt strona telefon email -allegro -olx -castorama -mediaexpert -obi -blog',
+    all_sources: 'firma kontakt strona telefon email opinie -allegro -olx -castorama -mediaexpert -obi -blog',
+    directories: 'katalog firm profil kontakt',
+    booking: 'Booksy Fixly Oferteo ZnanyLekarz profil',
+    social: 'Instagram Facebook profil kontakt'
+  };
+  const query = [niche, district, city, focusTerms[sourceFocus] || focusTerms.internet]
+    .filter(Boolean)
+    .join(' ');
+  const queryVariants = unique([
+    query,
+    [niche, district, city, 'usługi firma kontakt telefon'].filter(Boolean).join(' '),
+    [niche, district, city, 'montaż serwis kontakt'].filter(Boolean).join(' '),
+    ['site:.pl', niche, district, city, 'kontakt'].filter(Boolean).join(' ')
+  ]).slice(0, sourceFocus === 'all_sources' || sourceFocus === 'internet' ? 4 : 2);
+  const searchUrls = unique([
+    `https://duckduckgo.com/html/?${new URLSearchParams({ q: queryVariants[0] })}`,
+    ...queryVariants.map(
+      (variant) => `https://www.bing.com/search?${new URLSearchParams({ q: variant, count: String(maxResults) })}`
+    )
+  ]);
+  const warnings = [];
+  const companies = [];
+
+  for (const searchUrl of searchUrls) {
+    if (companies.length >= maxResults) break;
+    try {
+      const html = await fetchText(searchUrl, 8_000);
+      const $ = cheerio.load(html);
+      const isDuckDuckGo = searchUrl.includes('duckduckgo.com');
+      const elements = $(isDuckDuckGo ? '.result' : '.b_algo').toArray();
+      for (const element of elements) {
+        if (companies.length >= maxResults) break;
+        const title = cleanText(
+          isDuckDuckGo ? $(element).find('.result__a').first().text() : $(element).find('h2').first().text()
+        );
+        const href = normalizeSearchResultUrl(
+          isDuckDuckGo
+            ? $(element).find('.result__a').first().attr('href') || ''
+            : $(element).find('h2 a').first().attr('href') || ''
+        );
+        if (!title || !href) continue;
+
+        const type = classifyUrlType(href);
+        if (!isAllowedPublicSearchResult(href, title, sourceFocus, type)) continue;
+
+        const snippet = cleanText(
+          isDuckDuckGo
+            ? $(element).find('.result__snippet').first().text()
+            : $(element).find('.b_caption p, .b_snippet').first().text()
+        );
+        const evidence = cleanText(`${title} ${snippet}`);
+        if (!isSearchEvidenceLocalToCity(`${evidence} ${href}`, city)) continue;
+        const company = inferCompanyNameFromSearchTitle(title, niche, city, href);
+        if (!company) continue;
+
+        const host = safeHostname(href);
+        companies.push({
+          company,
+          niche: inferNicheFromSearchResult(evidence, niche),
+          city: city || 'Warszawa',
+          district: district || '',
+          phone: extractPhones(evidence).join('; '),
+          email: extractEmails(evidence).join('; '),
+          website_url: ['official_candidate', 'free_subdomain'].includes(type) ? href : '',
+          source: `public_search_${sourceFocus}`,
+          source_profile: href,
+          instagram: host.includes('instagram.com') ? href : '',
+          facebook: host.includes('facebook.com') || host.includes('fb.com') ? href : '',
+          services: parseList(String(niche || '').replace(/,\s*/g, ';')),
+          physical_location: true,
+          notes: snippet || `Public search result from ${host}`
+        });
+      }
+    } catch (error) {
+      warnings.push(`Public search skipped ${searchUrl.includes('duckduckgo.com') ? 'DuckDuckGo' : 'Bing'}: ${error.message || 'unknown error'}`);
+    }
+  }
+
+  return {
+    source: `public_search_${sourceFocus}`,
+    queries: searchUrls,
+    warnings,
+    companies: uniqueCompanies(companies).slice(0, limit)
+  };
+}
+
+async function fetchText(url, timeoutMs) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        'user-agent': 'Mozilla/5.0 WarsawSiteParser/1.0',
+        accept: 'text/html,application/xhtml+xml'
+      }
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return await response.text();
+  } catch (error) {
+    if (error?.name === 'AbortError') throw new Error('timeout');
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function normalizeSearchResultUrl(rawHref) {
+  const direct = safeUrl(String(rawHref || '').startsWith('//') ? `https:${rawHref}` : rawHref);
+  if (!direct) return '';
+  try {
+    const url = new URL(direct);
+    const redirected = url.searchParams.get('uddg') || url.searchParams.get('u') || url.searchParams.get('url');
+    return safeUrl(decodeBingRedirectUrl(redirected)) || safeUrl(redirected) || direct;
+  } catch {
+    return direct;
+  }
+}
+
+function decodeBingRedirectUrl(value) {
+  const raw = String(value || '');
+  if (!raw) return '';
+  if (/^https?:\/\//i.test(raw)) return raw;
+  const candidate = raw.startsWith('a1') ? raw.slice(2) : raw;
+  try {
+    const decoded = Buffer.from(candidate, 'base64').toString('utf8');
+    return /^https?:\/\//i.test(decoded) ? decoded : '';
+  } catch {
+    return '';
+  }
+}
+
+function isAllowedPublicSearchResult(url, title, sourceFocus, type) {
+  const host = safeHostname(url);
+  if (!host || host.includes('bing.com') || host.includes('google.com/search')) return false;
+  if (type === 'marketplace') return false;
+  if (host.endsWith('.edu.pl') || host.includes('.uw.edu.pl')) return false;
+  if (['mediaexpert', 'allegro', 'castorama', 'obi.', 'ceneo', 'empik', 'amazon', 'olx', 'autocentrum', 'autotrader', 'autoscout24', 'auto.pl', 'bazos', 'mgprojekt', 'mp.pl', 'remontytv', 'zleca.pl'].some((part) => host.includes(part))) {
+    return false;
+  }
+  if (/ranking|najlepsz|top\s*\d+|cennik|praca|forum|youtube|wikipedia|blog|poradnik|rodzaje|kategoria|sprawdź|samochody osobowe|oferty|używane|sprzedam|praktyczna|wydział|uniwersytet|\btv\b/i.test(title)) return false;
+  if (sourceFocus === 'social') return type === 'social';
+  if (sourceFocus === 'directories') return type === 'directory';
+  if (sourceFocus === 'booking') {
+    return ['booksy', 'fixly', 'oferteo', 'znanylekarz'].some((part) => host.includes(part));
+  }
+  return true;
+}
+
+function isSearchEvidenceLocalToCity(text, city) {
+  const normalizedCity = normalizeSearchText(city || '');
+  if (!normalizedCity || normalizedCity === 'warszawa') {
+    const value = normalizeSearchText(text);
+    return value.includes('warszaw') || value.includes('warsaw');
+  }
+  return normalizeSearchText(text).includes(normalizedCity);
+}
+
+function inferCompanyNameFromSearchTitle(title, niche, city, href = '') {
+  const cleaned = cleanText(title)
+    .replace(/^["'„”]+|["'„”,]+$/g, '')
+    .replace(/\s*\|\s*.*$/g, '')
+    .replace(/\s+-\s+(Strona główna|Facebook|Instagram|Kontakt).*$/i, '')
+    .replace(/\s+-\s+(Warszawa|Mokotów|firmy|opinie).*$/i, '')
+    .trim();
+  const firstPart = cleaned.split(/\s+[–—-]\s+|\s+:\s+/).map(cleanText).find(Boolean) || cleaned;
+  if (!firstPart || firstPart.length < 2) return '';
+  const generic = normalizeSearchText(`${niche} ${city} firma kontakt strona najlepsze`);
+  const candidate = firstPart
+    .replace(/\b(Warszawa|Mokotów|kontakt|strona|firma)\b/gi, '')
+    .replace(/["'„”]/g, '')
+    .replace(/^["'„”]+|["'„”,]+$/g, '')
+    .trim();
+  if (!candidate) return '';
+  if (generic.includes(normalizeSearchText(candidate))) return companyNameFromHost(href);
+  if (/montaż|serwis|klimatyzator|od \d|internetowa|wydział|uniwersytet/i.test(candidate)) {
+    return companyNameFromHost(href);
+  }
+  return candidate.replace(/[,\s.:-]+$/g, '').slice(0, 90);
+}
+
+function companyNameFromHost(href) {
+  const host = safeHostname(href);
+  const base = host.split('.')[0] || '';
+  if (!base || base.length < 3) return '';
+  return base
+    .replace(/[-_]+/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+    .slice(0, 90);
+}
+
+function inferNicheFromSearchResult(text, fallback) {
+  const normalized = normalizeSearchText(text);
+  const hints = [
+    ['klimatyz', 'Klimatyzacja'],
+    ['detailing', 'Auto detailing'],
+    ['stomatolog', 'Stomatologia'],
+    ['fizjoter', 'Fizjoterapia'],
+    ['kosmet', 'Salon kosmetyczny'],
+    ['remont', 'Remonty i wykończenia wnętrz'],
+    ['ksiegow', 'Księgowość'],
+    ['serwis auto', 'Auto serwis']
+  ];
+  return hints.find(([needle]) => normalized.includes(needle))?.[1] || String(fallback || '').split(',')[0].trim();
+}
+
 async function discoverCompaniesFromOpenAIInternet({ niche, city, district, limit, sourceFocus }) {
   if (!openai) {
     throw new Error('OPENAI_API_KEY не настроен.');
   }
 
-  const maxCompanies = Math.min(limit, 5);
+  const maxCompanies = Math.min(limit, 10);
   const query = [niche, district, city, 'firmy kontakt strona instagram Warszawa'].filter(Boolean).join(' ');
   const focusHints = {
     internet: 'Use public websites, company pages, directories, booking pages and social profiles as discovery sources.',
@@ -690,7 +1015,7 @@ async function discoverCompaniesFromOpenAIInternet({ niche, city, district, limi
     model: SEARCH_MODEL,
     tools: [{ type: 'web_search' }],
     input,
-    max_output_tokens: 3500,
+    max_output_tokens: 6000,
     text: {
       format: {
         type: 'json_schema',
@@ -717,7 +1042,7 @@ async function discoverCompaniesFromOpenAIInternet({ niche, city, district, limi
           content: response.output_text || ''
         }
       ],
-      max_output_tokens: 3500,
+      max_output_tokens: 6000,
       text: {
         format: {
           type: 'json_schema',
@@ -732,7 +1057,7 @@ async function discoverCompaniesFromOpenAIInternet({ niche, city, district, limi
   const rows = Array.isArray(parsed.companies) ? parsed.companies : [];
   const companies = rows
     .map((row) => ({
-      company: cleanText(row.company || row.name || ''),
+      company: cleanText(row.company || row.company_name || row.name || row.title || ''),
       niche: cleanText(row.niche || row.category || niche),
       city: cleanText(row.city || city || 'Warszawa'),
       district: cleanText(row.district || district || ''),
