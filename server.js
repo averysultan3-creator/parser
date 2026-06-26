@@ -121,7 +121,7 @@ app.get('/api/config', (_req, res) => {
 
 app.post('/api/analyze', async (req, res) => {
   try {
-    const items = normalizeItems(req.body?.items);
+    const items = normalizeItems(req.body?.items || req.body?.companies);
     const useAi = false;
     const useWebSearch = false;
     const model = String(req.body?.model || DEFAULT_MODEL).trim() || DEFAULT_MODEL;
@@ -213,7 +213,7 @@ app.post('/api/ai/site-analysis', async (req, res) => {
       });
     }
 
-    const result = req.body?.result || {};
+    const result = req.body?.result || req.body?.company || {};
     const input = result.input;
     const parsed = result.parsed;
     const websiteResolution = result.websiteResolution;
