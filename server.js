@@ -109,6 +109,7 @@ app.get('/api/config', (_req, res) => {
     respectRobotsTxt: RESPECT_ROBOTS,
     maxItems: MAX_ITEMS,
     maxDiscoveryItems: MAX_DISCOVERY_ITEMS,
+    internetSearchConfigured: Boolean(openai),
     registry: {
       ceidgConfigured: Boolean(CEIDG_TOKEN),
       regonConfigured: Boolean(REGON_API_KEY),
@@ -352,7 +353,9 @@ function normalizeDiscoverySource(value) {
 }
 
 async function discoverCompaniesBatchWithoutAI({ niches, city, district, limit, sourceFocus }) {
-  const perNicheLimit = Math.max(5, Math.ceil(limit / Math.max(1, niches.length)));
+  const perNicheLimit = ['internet', 'directories', 'booking', 'social'].includes(sourceFocus)
+    ? Math.max(1, Math.ceil(limit / Math.max(1, niches.length)))
+    : Math.max(5, Math.ceil(limit / Math.max(1, niches.length)));
   const collected = [];
   const queries = [];
   const warnings = [];
@@ -387,20 +390,38 @@ async function discoverCompaniesWithoutAI({ niche, city, district, limit, source
     const warnings = [];
 
     if (GOOGLE_PLACES_API_KEY) {
-      discoveries.push(await discoverCompaniesFromGooglePlaces({ niche, city, district, limit, sourceFocus }));
+      try {
+        discoveries.push(await discoverCompaniesFromGooglePlaces({ niche, city, district, limit, sourceFocus }));
+      } catch (error) {
+        warnings.push(`Google Places skipped: ${error.message || 'unknown error'}`);
+      }
     } else {
       warnings.push('GOOGLE_PLACES_API_KEY не настроен, Google Places пропущен.');
     }
 
     if (CEIDG_TOKEN) {
-      discoveries.push(await discoverCompaniesFromCeidg({ niche, city, district, limit }));
+      try {
+        discoveries.push(await discoverCompaniesFromCeidg({ niche, city, district, limit }));
+      } catch (error) {
+        warnings.push(`CEIDG skipped: ${error.message || 'unknown error'}`);
+      }
     } else {
       warnings.push('CEIDG_API_TOKEN не настроен, CEIDG/реестры пропущены.');
     }
 
+    if (openai) {
+      try {
+        discoveries.push(await discoverCompaniesFromOpenAIInternet({ niche, city, district, limit, sourceFocus }));
+      } catch (error) {
+        warnings.push(`Internet search skipped: ${error.message || 'unknown error'}`);
+      }
+    } else {
+      warnings.push('OPENAI_API_KEY не настроен, интернет-поиск без Google Maps пропущен.');
+    }
+
     if (!discoveries.length) {
       throw new Error(
-        'Для поиска по всем источникам настройте GOOGLE_PLACES_API_KEY или CEIDG_API_TOKEN в .env. Без ключей используйте CSV-импорт.'
+        `Не удалось найти компании ни в одном источнике. ${warnings.join(' ')}`
       );
     }
 
@@ -412,6 +433,13 @@ async function discoverCompaniesWithoutAI({ niche, city, district, limit, source
     };
   }
 
+  if (['internet', 'directories', 'booking', 'social'].includes(sourceFocus)) {
+    if (!openai) {
+      throw new Error('Для интернет-поиска без Google Maps нужен OPENAI_API_KEY в .env.');
+    }
+    return discoverCompaniesFromOpenAIInternet({ niche, city, district, limit, sourceFocus });
+  }
+
   if (sourceFocus === 'registries') {
     if (!CEIDG_TOKEN) {
       throw new Error('Для поиска по реестрам без AI укажите CEIDG_API_TOKEN в .env или импортируйте CSV.');
@@ -419,8 +447,12 @@ async function discoverCompaniesWithoutAI({ niche, city, district, limit, source
     return discoverCompaniesFromCeidg({ niche, city, district, limit });
   }
 
-  if (GOOGLE_PLACES_API_KEY) {
+  if (sourceFocus === 'maps_api' && GOOGLE_PLACES_API_KEY) {
     return discoverCompaniesFromGooglePlaces({ niche, city, district, limit, sourceFocus });
+  }
+
+  if (sourceFocus === 'maps_api') {
+    throw new Error('Для поиска Google Maps нужен GOOGLE_PLACES_API_KEY в .env.');
   }
 
   if (CEIDG_TOKEN) {
@@ -520,6 +552,196 @@ async function discoverCompaniesFromGooglePlaces({ niche, city, district, limit,
     queries: [textQuery],
     warnings: data.nextPageToken ? ['Есть следующая страница Google Places; текущий запуск взял первый пакет.'] : [],
     companies
+  };
+}
+
+async function discoverCompaniesFromOpenAIInternet({ niche, city, district, limit, sourceFocus }) {
+  if (!openai) {
+    throw new Error('OPENAI_API_KEY не настроен.');
+  }
+
+  const maxCompanies = Math.min(limit, 5);
+  const query = [niche, district, city, 'firmy kontakt strona instagram Warszawa'].filter(Boolean).join(' ');
+  const focusHints = {
+    internet: 'Use public websites, company pages, directories, booking pages and social profiles as discovery sources.',
+    directories: 'Prioritize public directories and company catalog pages.',
+    booking: 'Prioritize booking/service platforms such as Booksy, Fixly, ZnanyLekarz, Oferteo where relevant.',
+    social: 'Prioritize Instagram, Facebook, TikTok and other public social profiles.',
+    all_sources: 'Use broad public internet sources. Google Places may be unavailable, so use non-Google public results too.'
+  };
+
+  const input = [
+    {
+      role: 'system',
+      content:
+        'Find real, active local companies in Warsaw from public internet sources. Return only valid JSON. Do not invent companies. Each company must have at least one source URL, official website, public profile, phone, email or address.'
+    },
+    {
+      role: 'user',
+      content: JSON.stringify(
+        {
+          task: 'Find companies that may need a website or website audit, then return structured lead data.',
+          category: niche,
+          city,
+          district,
+          source_focus: sourceFocus,
+          source_hint: focusHints[sourceFocus] || focusHints.internet,
+          max_companies: maxCompanies,
+          required_output_shape: {
+            companies: [
+              {
+                company: 'name',
+                niche: 'category',
+                city: 'Warszawa',
+                district: 'district if known',
+                address: 'address if known',
+                phone: 'phone if public',
+                email: 'email if public',
+                website_url: 'official website if found',
+                source_profile: 'public source URL used',
+                instagram: 'instagram URL if found',
+                facebook: 'facebook URL if found',
+                review_count: 'number if known',
+                rating: 'number if known',
+                last_activity: 'date or signal if known',
+                services: ['service 1', 'service 2'],
+                notes: 'short evidence and why this is a real active company'
+              }
+            ]
+          }
+        },
+        null,
+        2
+      )
+    }
+  ];
+  const schema = {
+    type: 'object',
+    additionalProperties: false,
+    required: ['companies'],
+    properties: {
+      companies: {
+        type: 'array',
+        maxItems: maxCompanies,
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: [
+            'company',
+            'niche',
+            'city',
+            'district',
+            'address',
+            'phone',
+            'email',
+            'website_url',
+            'source_profile',
+            'instagram',
+            'facebook',
+            'review_count',
+            'rating',
+            'last_activity',
+            'services',
+            'notes'
+          ],
+          properties: {
+            company: { type: 'string' },
+            niche: { type: 'string' },
+            city: { type: 'string' },
+            district: { type: 'string' },
+            address: { type: 'string' },
+            phone: { type: 'string' },
+            email: { type: 'string' },
+            website_url: { type: 'string' },
+            source_profile: { type: 'string' },
+            instagram: { type: 'string' },
+            facebook: { type: 'string' },
+            review_count: { type: 'string' },
+            rating: { type: 'string' },
+            last_activity: { type: 'string' },
+            services: {
+              type: 'array',
+              items: { type: 'string' }
+            },
+            notes: { type: 'string' }
+          }
+        }
+      }
+    }
+  };
+
+  const response = await openai.responses.create({
+    model: SEARCH_MODEL,
+    tools: [{ type: 'web_search' }],
+    input,
+    max_output_tokens: 3500,
+    text: {
+      format: {
+        type: 'json_schema',
+        name: 'internet_company_discovery',
+        strict: true,
+        schema
+      }
+    }
+  });
+
+  let parsed;
+  try {
+    parsed = parseLooseJson(response.output_text);
+  } catch {
+    const repaired = await openai.responses.create({
+      model: DEFAULT_MODEL,
+      input: [
+        {
+          role: 'system',
+          content: 'Repair the user content into valid JSON matching the provided schema. Do not add new companies.'
+        },
+        {
+          role: 'user',
+          content: response.output_text || ''
+        }
+      ],
+      max_output_tokens: 3500,
+      text: {
+        format: {
+          type: 'json_schema',
+          name: 'internet_company_discovery_repaired',
+          strict: true,
+          schema
+        }
+      }
+    });
+    parsed = parseLooseJson(repaired.output_text);
+  }
+  const rows = Array.isArray(parsed.companies) ? parsed.companies : [];
+  const companies = rows
+    .map((row) => ({
+      company: cleanText(row.company || row.name || ''),
+      niche: cleanText(row.niche || row.category || niche),
+      city: cleanText(row.city || city || 'Warszawa'),
+      district: cleanText(row.district || district || ''),
+      address: cleanText(row.address || ''),
+      phone: normalizePhone(row.phone || ''),
+      email: cleanText(row.email || '').toLowerCase(),
+      website_url: cleanText(row.website_url || row.website || ''),
+      source: `openai_web_search_${sourceFocus}`,
+      source_profile: cleanText(row.source_profile || row.source_url || row.url || ''),
+      instagram: cleanText(row.instagram || ''),
+      facebook: cleanText(row.facebook || ''),
+      review_count: parseNumber(row.review_count || row.reviews),
+      rating: parseNumber(row.rating),
+      last_activity: cleanText(row.last_activity || ''),
+      services: parseList(row.services || niche),
+      physical_location: true,
+      notes: cleanText(row.notes || `Internet discovery query: ${query}`)
+    }))
+    .filter((company) => company.company && (company.source_profile || company.website_url || company.phone || company.email));
+
+  return {
+    source: `openai_web_search_${sourceFocus}`,
+    queries: [query],
+    warnings: rows.length && !companies.length ? ['OpenAI web search returned rows, but none had enough source data.'] : [],
+    companies: uniqueCompanies(companies).slice(0, limit)
   };
 }
 

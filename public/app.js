@@ -12,7 +12,10 @@ const state = {
   }
 };
 
-const API_BASE = window.location.protocol === 'file:' ? 'http://localhost:4317' : '';
+const API_BASE =
+  window.location.protocol === 'file:' || window.location.hostname.endsWith('github.io')
+    ? 'http://localhost:4317'
+    : '';
 
 function apiUrl(path) {
   return `${API_BASE}${path}`;
@@ -215,7 +218,8 @@ async function loadConfig() {
     const openaiReady = Boolean(state.config.hasOpenAiKey);
     const googleReady = Boolean(state.config.registry?.googlePlacesConfigured);
     const ceidgReady = Boolean(state.config.registry?.ceidgConfigured);
-    const discoveryReady = googleReady || ceidgReady;
+    const internetReady = Boolean(state.config.internetSearchConfigured);
+    const discoveryReady = googleReady || ceidgReady || internetReady;
     els.discoverButton.disabled = !discoveryReady;
     els.allSourcesButton.disabled = !discoveryReady;
     els.discoverLimit.max = String(state.config.maxDiscoveryItems || 15);
@@ -224,16 +228,16 @@ async function loadConfig() {
     }
     setDiscoverStatus(
       discoveryReady
-        ? 'Поиск компаний готов: используется Google Places API или CEIDG, без ChatGPT.'
-        : 'Поиск компаний из Google/реестров выключен: нужен GOOGLE_PLACES_API_KEY или CEIDG_API_TOKEN. Проверка сайтов по CSV уже работает.',
+        ? 'Поиск компаний готов: Google Places / CEIDG / интернет-поиск, затем парсинг сайтов.'
+        : 'Поиск компаний выключен: нужен GOOGLE_PLACES_API_KEY, CEIDG_API_TOKEN или OPENAI_API_KEY. Проверка сайтов по CSV уже работает.',
       discoveryReady ? 'ok' : 'warn'
     );
 
     setPill(els.apiStatus, openaiReady ? 'OpenAI connected' : 'OpenAI missing', openaiReady);
-    setPill(els.webSearchStatus, 'Website crawler ready', true);
+    setPill(els.webSearchStatus, internetReady ? 'Internet search ready' : 'Crawler only', internetReady);
     setPill(els.registryStatus, googleReady ? 'Google Places ready' : 'Google Places missing', googleReady);
     setPill(els.robotsStatus, state.config.respectRobotsTxt ? 'robots.txt on' : 'robots.txt off', state.config.respectRobotsTxt);
-    renderConfigDiagnostics({ openaiReady, googleReady, ceidgReady, discoveryReady });
+    renderConfigDiagnostics({ openaiReady, googleReady, ceidgReady, internetReady, discoveryReady });
   } catch (error) {
     state.config = null;
     els.discoverButton.disabled = true;
@@ -251,7 +255,7 @@ function setPill(element, text, ok) {
   element.className = `status-pill ${ok ? 'ok' : 'warn'}`;
 }
 
-function renderConfigDiagnostics({ openaiReady, googleReady, ceidgReady, discoveryReady }) {
+function renderConfigDiagnostics({ openaiReady, googleReady, ceidgReady, internetReady, discoveryReady }) {
   const rows = [
     {
       ok: openaiReady,
@@ -262,6 +266,11 @@ function renderConfigDiagnostics({ openaiReady, googleReady, ceidgReady, discove
       ok: googleReady,
       title: 'Google Places API',
       text: googleReady ? 'подключен, поиск компаний в Google Maps работает' : 'нет GOOGLE_PLACES_API_KEY, поиск из Google Maps выключен'
+    },
+    {
+      ok: internetReady,
+      title: 'Интернет-поиск',
+      text: internetReady ? 'работает через OpenAI web search без Google Maps API' : 'нет OPENAI_API_KEY, интернет-поиск выключен'
     },
     {
       ok: ceidgReady,
@@ -350,7 +359,9 @@ async function handleFile(event) {
 
 async function runDiscovery() {
   const discoveryReady = Boolean(
-    state.config?.registry?.googlePlacesConfigured || state.config?.registry?.ceidgConfigured
+    state.config?.registry?.googlePlacesConfigured ||
+      state.config?.registry?.ceidgConfigured ||
+      state.config?.internetSearchConfigured
   );
   if (!discoveryReady) {
     setDiscoverStatus('Сначала настройте GOOGLE_PLACES_API_KEY или CEIDG_API_TOKEN в .env.', 'warn');
