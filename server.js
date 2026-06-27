@@ -196,7 +196,7 @@ app.post('/api/discover', async (req, res) => {
     const requestedNiches = Array.isArray(req.body?.niches)
       ? req.body.niches.map(cleanText).filter(Boolean)
       : [];
-    const niche = cleanText(req.body?.niche || requestedNiches[0] || '');
+    const niche = cleanText(req.body?.niche || req.body?.category || requestedNiches[0] || '');
     const niches = unique(requestedNiches.length ? requestedNiches : [niche]).slice(0, 40);
     const city = cleanText(req.body?.city || 'Warszawa') || 'Warszawa';
     const district = cleanText(req.body?.district || '');
@@ -423,11 +423,12 @@ async function discoverCompaniesBatchWithoutAI({ niches, city, district, limit, 
       }
     }
 
-    const publicDiscoveries = [];
     const publicLimit = Math.max(2, Math.ceil(Math.min(limit, 36) / Math.min(niches.length, 12)));
-    for (const niche of niches.slice(0, 12)) {
-      publicDiscoveries.push(await discoverCompaniesFromPublicSearch({ niche, city, district, limit: publicLimit, sourceFocus }));
-    }
+    const publicDiscoveries = await Promise.all(
+      niches
+        .slice(0, 12)
+        .map((niche) => discoverCompaniesFromPublicSearch({ niche, city, district, limit: publicLimit, sourceFocus }))
+    );
     const mergedFast = mergeDiscoveries([...googleDiscoveries, ...publicDiscoveries], limit);
     return {
       ...mergedFast,
@@ -700,6 +701,9 @@ async function discoverCompaniesFromPublicSearch({ niche, city, district, limit,
     .join(' ');
   const queryVariants = unique([
     query,
+    ['site:panoramafirm.pl', niche, district, city, 'kontakt'].filter(Boolean).join(' '),
+    ['site:oferteo.pl', niche, district, city, 'kontakt'].filter(Boolean).join(' '),
+    ['site:fixly.pl', niche, district, city, 'kontakt'].filter(Boolean).join(' '),
     [niche, district, city, 'usługi firma kontakt telefon'].filter(Boolean).join(' '),
     [niche, district, city, 'montaż serwis kontakt'].filter(Boolean).join(' '),
     ['site:.pl', niche, district, city, 'kontakt'].filter(Boolean).join(' ')
@@ -741,7 +745,8 @@ async function discoverCompaniesFromPublicSearch({ niche, city, district, limit,
             : $(element).find('.b_caption p, .b_snippet').first().text()
         );
         const evidence = cleanText(`${title} ${snippet}`);
-        if (!isSearchEvidenceLocalToCity(`${evidence} ${href}`, city)) continue;
+        const hasExplicitCityEvidence = isSearchEvidenceLocalToCity(`${evidence} ${href}`, city);
+        if (!hasExplicitCityEvidence && !['official_candidate', 'directory', 'social'].includes(type)) continue;
         const company = inferCompanyNameFromSearchTitle(title, niche, city, href);
         if (!company) continue;
 
@@ -827,10 +832,44 @@ function isAllowedPublicSearchResult(url, title, sourceFocus, type) {
   if (!host || host.includes('bing.com') || host.includes('google.com/search')) return false;
   if (type === 'marketplace') return false;
   if (host.endsWith('.edu.pl') || host.includes('.uw.edu.pl')) return false;
-  if (['mediaexpert', 'allegro', 'castorama', 'obi.', 'ceneo', 'empik', 'amazon', 'olx', 'autocentrum', 'autotrader', 'autoscout24', 'auto.pl', 'bazos', 'mgprojekt', 'mp.pl', 'remontytv', 'zleca.pl'].some((part) => host.includes(part))) {
+  if (
+    [
+      'mediaexpert',
+      'allegro',
+      'castorama',
+      'obi.',
+      'ceneo',
+      'empik',
+      'amazon',
+      'olx',
+      'autocentrum',
+      'autotrader',
+      'autoscout24',
+      'auto.pl',
+      'bazos',
+      'mgprojekt',
+      'mp.pl',
+      'remontytv',
+      'zleca.pl',
+      'budujemydom.pl',
+      'komputerswiat.pl',
+      'leroymerlin.pl',
+      'tauron.pl',
+      'murator',
+      'homebook.pl',
+      'wyborcza.pl',
+      'onet.pl',
+      'wp.pl',
+      'interia.pl',
+      'money.pl',
+      'businessinsider',
+      'rankomat'
+    ].some((part) => host.includes(part))
+  ) {
     return false;
   }
   if (/ranking|najlepsz|top\s*\d+|cennik|praca|forum|youtube|wikipedia|blog|poradnik|rodzaje|kategoria|sprawdź|samochody osobowe|oferty|używane|sprzedam|praktyczna|wydział|uniwersytet|\btv\b/i.test(title)) return false;
+  if (/cena|koszt|ile kosztuje|produkty|sklep|hurtownia/i.test(title)) return false;
   if (sourceFocus === 'social') return type === 'social';
   if (sourceFocus === 'directories') return type === 'directory';
   if (sourceFocus === 'booking') {

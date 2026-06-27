@@ -180,6 +180,9 @@ init();
 
 async function init() {
   populateCategoryPreset();
+  els.sidebarHasSocial.checked = false;
+  els.sidebarHasPhone.checked = false;
+  els.sidebarHasEmail.checked = false;
   await loadConfig();
   bindEvents();
   els.csvInput.value = sampleCsv;
@@ -405,6 +408,15 @@ async function runDiscovery() {
     }
 
     els.csvInput.value = itemsToCsv(companies);
+    state.results = companiesToPreviewResults(companies);
+    state.selectedId = state.results[0]?.id || null;
+    state.detailTab = 'overview';
+    renderResults();
+    renderMetrics();
+    renderDetail();
+    els.exportCsvButton.disabled = false;
+    els.headerExportCsvButton.disabled = false;
+    els.exportJsonButton.disabled = false;
     setDiscoverStatus(`Найдено ${companies.length}. CSV заполнен, теперь можно запускать проверку.`, 'ok');
     setStatus('Список компаний готов к анализу.', 'ok');
   } catch (error) {
@@ -522,6 +534,78 @@ function itemsToCsv(items) {
   ];
 
   return rows.map(csvLine).join('\n');
+}
+
+function companiesToPreviewResults(companies) {
+  return companies.map((company, index) => {
+    const socialProfiles = company.social_profiles || {};
+    const input = {
+      ...company,
+      social_profiles: {
+        instagram: socialProfiles.instagram || company.instagram || '',
+        facebook: socialProfiles.facebook || company.facebook || '',
+        tiktok: socialProfiles.tiktok || company.tiktok || ''
+      },
+      city: company.city || 'Warszawa',
+      source: company.source || 'discovery',
+      source_profile: company.source_profile || company.website_url || '',
+      services: Array.isArray(company.services) ? company.services : parseList(company.services || company.niche || ''),
+      physical_location: company.physical_location !== false
+    };
+    const hasWebsite = Boolean(input.website_url);
+    const hasSocial = hasAnySocial(input);
+    const sourceProfile = input.source_profile || input.website_url || '';
+    const websiteStatus = hasWebsite ? 'UNCERTAIN' : hasSocial ? 'SOCIAL_ONLY' : 'DIRECTORY_ONLY';
+    const score = Math.min(
+      88,
+      42 +
+        (hasWebsite ? 10 : 0) +
+        (hasSocial ? 10 : 0) +
+        (input.phone ? 12 : 0) +
+        (input.email ? 8 : 0) +
+        (input.review_count ? 8 : 0) +
+        (input.rating ? 4 : 0)
+    );
+
+    return {
+      id: `discovery-${Date.now()}-${index}`,
+      input,
+      parsed: { signals: { title: input.company || '', pageCount: 0, forms: 0, nonSvgImages: 0 } },
+      websiteResolution: {
+        selectedUrl: input.website_url || '',
+        websiteStatus,
+        websiteConfidence: hasWebsite ? 0.45 : 0.25,
+        domainVerification: { score: 0, matched: [] },
+        checks_completed: { discovery: true, website_crawl: false },
+        candidates: sourceProfile ? [{ url: sourceProfile, source: input.source || 'discovery', confidence: 0.45 }] : []
+      },
+      analysis: {
+        website_status: websiteStatus,
+        website_confidence: hasWebsite ? 0.45 : 0.25,
+        website_quality_score: 0,
+        lead_score: score,
+        lead_category: score >= 75 ? 'A' : score >= 55 ? 'B' : 'C',
+        priority: score >= 75 ? 'A' : score >= 55 ? 'B' : 'C',
+        requires_manual_review: true,
+        main_problem: 'Компания найдена. Нажмите "Найти сайты", чтобы проверить сайт, контакты и качество страницы.',
+        recommended_website: 'Лендинг / Визитка',
+        recommended_package: 'Проверить сайт, контакты, услуги, доверие и форму заявки.',
+        business_activity: 'FOUND_BY_DISCOVERY',
+        mini_audit_points: [],
+        first_message_ru: '',
+        first_message_pl: ''
+      },
+      aiSiteAnalysis: { status: 'NOT_REQUESTED' }
+    };
+  });
+}
+
+function parseList(value) {
+  if (Array.isArray(value)) return value.map((item) => String(item || '').trim()).filter(Boolean);
+  return String(value || '')
+    .split(/[;,|]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
 
 function updateResultFilters() {
@@ -798,7 +882,8 @@ function renderResults() {
   els.filterSummary.textContent = `Показано ${results.length} из ${state.results.length}`;
 
   if (!results.length) {
-    els.resultsBody.innerHTML = '<tr class="empty-row"><td colspan="8">По фильтрам ничего не найдено</td></tr>';
+    els.resultsBody.innerHTML =
+      '<tr class="empty-row"><td colspan="8">По фильтрам ничего не найдено. Отключите фильтры "Есть соц. профили", "Есть телефон" или снизьте score.</td></tr>';
     return;
   }
 
