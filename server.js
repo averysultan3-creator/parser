@@ -501,7 +501,9 @@ async function discoverCompaniesWithoutAI({ niche, city, district, limit, source
         warnings.push(`CEIDG skipped: ${error.message || 'unknown error'}`);
       }
     } else {
-      warnings.push('CEIDG_API_TOKEN не настроен, CEIDG/реестры пропущены.');
+      const registryDiscovery = await discoverCompaniesFromPublicRegistries({ niche, city, district, limit });
+      if (registryDiscovery.companies.length) discoveries.push(registryDiscovery);
+      warnings.push('CEIDG_API_TOKEN not set; used public CEIDG/registry web search.');
     }
 
     const publicDiscovery = await discoverCompaniesFromPublicSearch({ niche, city, district, limit, sourceFocus });
@@ -525,7 +527,7 @@ async function discoverCompaniesWithoutAI({ niche, city, district, limit, source
 
   if (sourceFocus === 'registries') {
     if (!CEIDG_TOKEN) {
-      throw new Error('Для поиска по реестрам без AI укажите CEIDG_API_TOKEN в .env или импортируйте CSV.');
+      return discoverCompaniesFromPublicRegistries({ niche, city, district, limit });
     }
     return discoverCompaniesFromCeidg({ niche, city, district, limit });
   }
@@ -779,6 +781,89 @@ async function discoverCompaniesFromPublicSearch({ niche, city, district, limit,
 
   return {
     source: `public_search_${sourceFocus}`,
+    queries: searchUrls,
+    warnings,
+    companies: enriched.slice(0, limit)
+  };
+}
+
+async function discoverCompaniesFromPublicRegistries({ niche, city, district, limit }) {
+  const registryQueries = unique([
+    ['site:aplikacja.ceidg.gov.pl/CEIDG/CEIDG.Public.UI', niche, district, city].filter(Boolean).join(' '),
+    ['site:aplikacja.ceidg.gov.pl', niche, district, city, 'CEIDG firma'].filter(Boolean).join(' '),
+    ['site:rejestr.io', niche, district, city, 'firma'].filter(Boolean).join(' '),
+    ['site:aleo.com/pl/firmy', niche, district, city].filter(Boolean).join(' '),
+    ['site:panoramafirm.pl', niche, district, city, 'NIP REGON'].filter(Boolean).join(' '),
+    [niche, district, city, 'CEIDG NIP REGON firma kontakt'].filter(Boolean).join(' ')
+  ]);
+  const searchUrls = registryQueries.flatMap((query) => [
+    `https://www.bing.com/search?${new URLSearchParams({ q: query, count: String(Math.min(limit, 12)) })}`
+  ]);
+  const warnings = [];
+  const companies = [];
+
+  for (const searchUrl of searchUrls) {
+    if (companies.length >= limit) break;
+    try {
+      const html = await fetchText(searchUrl, 8_000);
+      const $ = cheerio.load(html);
+      for (const element of $('.b_algo').toArray()) {
+        if (companies.length >= limit) break;
+        const title = cleanText($(element).find('h2').first().text());
+        const href = normalizeSearchResultUrl($(element).find('h2 a').first().attr('href') || '');
+        if (!title || !href) continue;
+        const host = safeHostname(href);
+        if (!host) continue;
+        if (!/(ceidg|rejestr|aleo|panoramafirm|pkt|cylex|oferteo)/i.test(host)) continue;
+        const snippet = cleanText($(element).find('.b_caption p, .b_snippet').first().text());
+        const evidence = cleanText(`${title} ${snippet} ${href}`);
+        if (!isSearchEvidenceLocalToCity(evidence, city)) continue;
+        const company = inferCompanyNameFromSearchTitle(title, niche, city, href) || companyNameFromHost(href);
+        if (!company) continue;
+        companies.push({
+          company,
+          niche: inferNicheFromSearchResult(evidence, niche),
+          city: city || 'Warszawa',
+          district: district || '',
+          phone: extractPhones(evidence).join('; '),
+          email: extractEmails(evidence).join('; '),
+          nip: (evidence.match(/\b\d{10}\b/) || [''])[0],
+          regon: (evidence.match(/\b\d{9}\b/) || [''])[0],
+          website_url: '',
+          source: 'public_registry_search',
+          source_profile: href,
+          services: parseList(String(niche || '').replace(/,\s*/g, ';')),
+          physical_location: true,
+          notes: snippet || `Public registry result from ${host}`
+        });
+      }
+    } catch (error) {
+      warnings.push(`Public registry search skipped: ${error.message || 'unknown error'}`);
+    }
+  }
+
+  const uniqueFoundCompanies = uniqueCompanies(companies).slice(0, limit);
+  const enriched = await enrichDiscoveredCompanyContacts(uniqueFoundCompanies, { limit: Math.min(limit, 20), warnings });
+  if (!enriched.length) {
+    const fallback = await discoverCompaniesFromPublicSearch({
+      niche,
+      city,
+      district,
+      limit,
+      sourceFocus: 'all_sources'
+    });
+    return {
+      ...fallback,
+      source: 'public_registry_search,public_contact_fallback',
+      warnings: unique([
+        ...warnings,
+        'Public CEIDG pages were not accessible/indexed for this query; used public contact fallback.',
+        ...(fallback.warnings || [])
+      ])
+    };
+  }
+  return {
+    source: 'public_registry_search',
     queries: searchUrls,
     warnings,
     companies: enriched.slice(0, limit)

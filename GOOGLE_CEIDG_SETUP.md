@@ -23,4 +23,10 @@ CEIDG_API_TOKEN=your_bearer_token
 CEIDG_API_ENDPOINT=https://dane.biznes.gov.pl/api/ceidg/v3/firmy
 ```
 
-The public CEIDG website can be used manually for search/export, but automated backend search needs the API token. Without the token, use internet/contact discovery or import CSV from CEIDG.
+The public CEIDG website can be used manually for search/export. In backend automation it may return `403 Forbidden`, so the parser has a no-token fallback:
+
+1. Try public indexed CEIDG/registry pages.
+2. If CEIDG pages are not accessible/indexed, use public registry/catalog/contact search.
+3. Open found company pages and extract phone, email and website for calling.
+
+For fully official registry data, use `CEIDG_API_TOKEN`. For calling lists, the no-token fallback is usually enough because it prioritizes reachable phone/email/site sources.

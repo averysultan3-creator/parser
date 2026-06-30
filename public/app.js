@@ -290,6 +290,11 @@ function renderConfigDiagnostics({ openaiReady, googleReady, ceidgReady, interne
   rows[1].text = googleReady ? 'key found; Google Maps is tested on search run' : 'no GOOGLE_PLACES_API_KEY; Google Maps search is off';
   rows[2].title = 'Internet search';
   rows[2].text = internetReady ? 'public internet fallback works without OpenAI and without Google Maps' : 'internet fallback is off';
+  rows[3].title = 'CEIDG / public registries';
+  rows[3].ok = ceidgReady || internetReady;
+  rows[3].text = ceidgReady
+    ? 'CEIDG API token found; official API search is available'
+    : 'no CEIDG token; uses public CEIDG/registry web search and then parses contacts';
 
   els.configDiagnostics.innerHTML = `
     <div class="config-diagnostics-title">${discoveryReady ? 'Источники готовы' : 'Нужно подключить источники поиска'}</div>
