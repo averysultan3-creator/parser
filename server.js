@@ -88,6 +88,7 @@ const directoryDomains = [
   'bing.com',
   'yelp.'
 ];
+const contactDiscoveryDomains = new Set([...directoryDomains, ...socialDomains]);
 
 const marketplaceDomains = ['allegro.pl', 'olx.pl', 'otomoto.pl', 'etsy.com'];
 const freeSubdomainDomains = [
@@ -347,7 +348,7 @@ function normalizeItems(items) {
         city: cleanText(item.city || item.miasto || 'Warszawa'),
         district: cleanText(item.district || item.area || item.dzielnica || ''),
         address: cleanText(item.address || item.adres || ''),
-        phone: normalizePhone(item.phone || item.telefon || ''),
+        phone: normalizePhoneField(item.phone || item.telefon || ''),
         email: cleanText(item.email || item.mail || '').toLowerCase(),
         nip: cleanIdentifier(item.nip || item.NIP || ''),
         regon: cleanIdentifier(item.regon || item.REGON || ''),
@@ -773,12 +774,114 @@ async function discoverCompaniesFromPublicSearch({ niche, city, district, limit,
     }
   }
 
+  const uniqueFoundCompanies = uniqueCompanies(companies).slice(0, limit);
+  const enriched = await enrichDiscoveredCompanyContacts(uniqueFoundCompanies, { limit: Math.min(limit, 24), warnings });
+
   return {
     source: `public_search_${sourceFocus}`,
     queries: searchUrls,
     warnings,
-    companies: uniqueCompanies(companies).slice(0, limit)
+    companies: enriched.slice(0, limit)
   };
+}
+
+async function enrichDiscoveredCompanyContacts(companies, { limit, warnings }) {
+  const targetCount = Math.min(limit || companies.length, companies.length);
+  const enriched = await mapLimit(companies.slice(0, targetCount), 4, async (company) => {
+    try {
+      return await enrichOneDiscoveredCompany(company);
+    } catch (error) {
+      warnings.push(`Contact enrichment skipped ${company.company || company.source_profile || 'company'}: ${error.message || 'unknown error'}`);
+      return company;
+    }
+  });
+  return [...enriched, ...companies.slice(targetCount)];
+}
+
+async function enrichOneDiscoveredCompany(company) {
+  const urls = unique([company.website_url, company.source_profile].map(safeUrl).filter(Boolean)).slice(0, 2);
+  if (!urls.length) return company;
+
+  const pages = [];
+  for (const url of urls) {
+    const page = await fetchPage(url);
+    if (!page.ok) continue;
+    pages.push(extractPage(page.finalUrl || page.url, page.html, page.elapsedMs || 0));
+  }
+  if (!pages.length) return company;
+
+  const signals = combineSignals(pages);
+  const initialWebsite = isKnownNonCompanyHost(safeHostname(company.website_url)) ? '' : company.website_url;
+  const officialWebsite =
+    initialWebsite ||
+    pickOfficialWebsiteFromSourcePages(pages, {
+      sourceUrl: company.source_profile,
+      companyName: company.company,
+      niche: company.niche
+    });
+  const phones = unique([company.phone, ...(signals.phones || []), ...(signals.telLinks || [])].flatMap(splitPhoneValues));
+  const emails = unique([company.email, ...(signals.emails || []), ...(signals.mailLinks || [])].flatMap((value) => String(value || '').split(/[;,|]/)).map((value) => cleanText(value).toLowerCase()).filter(Boolean));
+  const notes = [
+    company.notes,
+    signals.hasTelLink ? 'tel link found' : '',
+    signals.hasMailLink ? 'mail link found' : '',
+    officialWebsite && officialWebsite !== company.website_url ? `official website candidate: ${officialWebsite}` : ''
+  ]
+    .filter(Boolean)
+    .join(' | ');
+
+  return {
+    ...company,
+    phone: phones.slice(0, 3).join('; '),
+    email: emails.slice(0, 3).join('; '),
+    website_url: officialWebsite || initialWebsite || '',
+    contact_enriched: true,
+    notes
+  };
+}
+
+function pickOfficialWebsiteFromSourcePages(pages, { sourceUrl, companyName, niche }) {
+  const sourceHost = safeHostname(sourceUrl);
+  const links = pages.flatMap((page) => page.links || []);
+  const candidates = [];
+  for (const link of links) {
+    const href = safeUrl(link.href);
+    if (!href) continue;
+    const host = safeHostname(href);
+    if (!host || host === sourceHost) continue;
+    if (isKnownNonCompanyHost(host)) continue;
+    const type = classifyUrlType(href);
+    if (type === 'marketplace' || type === 'social' || type === 'directory') continue;
+    const text = normalizeSearchText(`${link.text} ${href}`);
+    const companyScore = scoreNicheFit(companyName || '', text);
+    const nicheScore = scoreNicheFit(niche || '', text);
+    const contactHint = /www|strona|website|site|kontakt|contact|firma/i.test(`${link.text} ${href}`) ? 10 : 0;
+    candidates.push({ href, score: companyScore + nicheScore + contactHint });
+  }
+  candidates.sort((a, b) => b.score - a.score);
+  return candidates[0]?.score >= 10 ? candidates[0].href : '';
+}
+
+function isKnownNonCompanyHost(host) {
+  if (!host) return true;
+  if (host.includes('google.') || host.includes('bing.') || host.includes('duckduckgo.')) return true;
+  if (contactDiscoveryDomains.has(host)) return true;
+  if ([...contactDiscoveryDomains].some((domain) => host.includes(domain))) return true;
+  return [
+    'youtube.com',
+    'youtu.be',
+    'linkedin.com',
+    'twitter.com',
+    'x.com',
+    'tiktok.com',
+    'instagram.com',
+    'facebook.com',
+    'maps.google',
+    'trustpilot',
+    'apps.apple.com',
+    'play.google.com',
+    'schema.org'
+  ].some((domain) => host.includes(domain));
 }
 
 async function fetchText(url, timeoutMs) {
@@ -863,7 +966,10 @@ function isAllowedPublicSearchResult(url, title, sourceFocus, type) {
       'interia.pl',
       'money.pl',
       'businessinsider',
-      'rankomat'
+      'rankomat',
+      'trustpilot',
+      'apps.apple.com',
+      'play.google.com'
     ].some((part) => host.includes(part))
   ) {
     return false;
@@ -2599,17 +2705,47 @@ function normalizeSearchText(value) {
 }
 
 function extractPhones(text) {
-  const matches = String(text || '').match(/(?:\+48[\s.-]?)?(?:\d[\s.-]?){9,}/g) || [];
+  const normalizedText = String(text || '').replace(/\u00a0/g, ' ');
+  const matches = normalizedText.match(/(?:\+?48[\s().-]*)?(?:\d[\s().-]*){9}/g) || [];
+  const phones = [];
+  for (const match of matches) {
+    const digits = match.replace(/\D/g, '');
+    const local = digits.startsWith('48') && digits.length >= 11 ? digits.slice(2, 11) : digits.slice(0, 9);
+    if (local.length !== 9 || local.startsWith('0')) continue;
+    if (/^(\d)\1{8}$/.test(local)) continue;
+    phones.push(`+48${local}`);
+  }
+  return unique(phones).slice(0, 8);
+}
+
+function splitPhoneValues(value) {
+  const raw = String(value || '').replace(/\u00a0/g, ' ');
+  const matches = raw.match(/\+?48\d{9}|\b\d{9}\b/g) || [];
   return unique(
     matches
-      .map(normalizePhone)
-      .filter((value) => value.replace(/\D/g, '').length >= 9 && value.replace(/\D/g, '').length <= 12)
-  ).slice(0, 8);
+      .map((match) => {
+        const digits = match.replace(/\D/g, '');
+        const local = digits.startsWith('48') && digits.length >= 11 ? digits.slice(2, 11) : digits.slice(0, 9);
+        return local.length === 9 && !local.startsWith('0') && !/^(\d)\1{8}$/.test(local) ? `+48${local}` : '';
+      })
+      .filter(Boolean)
+  );
 }
 
 function extractEmails(text) {
-  const matches = String(text || '').match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi) || [];
-  return unique(matches.map((value) => value.toLowerCase())).slice(0, 8);
+  const decoded = String(text || '')
+    .replace(/%20/gi, ' ')
+    .replace(/\s*\[at\]\s*/gi, '@')
+    .replace(/\s*\(at\)\s*/gi, '@');
+  const matches =
+    decoded.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.(?:pl|com|eu|net|org|info|biz|co|io|de|uk)\b/gi) || [];
+  return unique(
+    matches
+      .map((value) => value.toLowerCase().replace(/[.,;:]+$/g, ''))
+      .map((value) => value.replace(/^e-?mail/i, '').replace(/^email/i, ''))
+      .map((value) => value.replace(/^\d+/, ''))
+      .filter((value) => value.includes('@'))
+  ).slice(0, 8);
 }
 
 function detectOutdatedCopyright(text) {
@@ -2660,6 +2796,11 @@ function nicheIsComparedBeforeBuying(niche) {
 
 function normalizePhone(value) {
   return String(value || '').replace(/[^\d+]/g, '');
+}
+
+function normalizePhoneField(value) {
+  const phones = splitPhoneValues(value);
+  return phones.length ? phones.slice(0, 4).join('; ') : normalizePhone(value);
 }
 
 function cleanIdentifier(value) {

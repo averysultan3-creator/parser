@@ -417,7 +417,9 @@ async function runDiscovery() {
     els.exportCsvButton.disabled = false;
     els.headerExportCsvButton.disabled = false;
     els.exportJsonButton.disabled = false;
-    setDiscoverStatus(`Найдено ${companies.length}. CSV заполнен, теперь можно запускать проверку.`, 'ok');
+    const warnings = Array.isArray(data.warnings) ? data.warnings.filter(Boolean).slice(0, 2) : [];
+    const warningText = warnings.length ? ` Предупреждение: ${warnings.join(' ')}` : '';
+    setDiscoverStatus(`Найдено ${companies.length}. CSV заполнен, теперь можно запускать проверку.${warningText}`, warnings.length ? 'warn' : 'ok');
     setStatus('Список компаний готов к анализу.', 'ok');
   } catch (error) {
     setDiscoverStatus(error.message || 'Ошибка поиска компаний.', 'warn');
