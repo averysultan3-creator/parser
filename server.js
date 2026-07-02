@@ -83,6 +83,7 @@ const directoryDomains = [
   'panoramafirm.pl',
   'pkt.pl',
   'cylex-polska.pl',
+  'firmy.net',
   'gowork.pl',
   'aleo.com',
   'google.com',
@@ -523,6 +524,15 @@ function mergeDiscoveries(discoveries, limit) {
   };
 }
 
+function discoveryPriority(discovery) {
+  const source = String(discovery?.source || '');
+  if (source.includes('public_registry') || source.includes('public_contact_fallback')) return 1;
+  if (source.includes('public_search')) return 2;
+  if (source.includes('amazon_location')) return 3;
+  if (source.includes('google_places')) return 4;
+  return 9;
+}
+
 async function discoverCompaniesWithoutAI({ niche, city, district, limit, sourceFocus }) {
   if (sourceFocus === 'all_sources') {
     const discoveries = [];
@@ -533,17 +543,18 @@ async function discoverCompaniesWithoutAI({ niche, city, district, limit, source
       } catch (error) {
         warnings.push(`Amazon Location skipped: ${error.message || 'unknown error'}`);
       }
-    } else {
+    } else if (false) {
       warnings.push('AWS_LOCATION_API_KEY not set; Amazon Location skipped.');
     }
 
-    if (GOOGLE_PLACES_API_KEY) {
+    const amazonCount = uniqueCompanies(discoveries.flatMap((item) => item.companies || [])).length;
+    if (GOOGLE_PLACES_API_KEY && amazonCount < Math.min(3, limit)) {
       try {
         discoveries.push(await discoverCompaniesFromGooglePlacesExpanded({ niche, city, district, limit, sourceFocus }));
       } catch (error) {
-        warnings.push(`Google Places skipped: ${error.message || 'unknown error'}`);
+        if (!discoveries.length) warnings.push(`Google Places skipped: ${error.message || 'unknown error'}`);
       }
-    } else {
+    } else if (false) {
       warnings.push('GOOGLE_PLACES_API_KEY не настроен, Google Places пропущен.');
     }
 
@@ -553,10 +564,9 @@ async function discoverCompaniesWithoutAI({ niche, city, district, limit, source
       } catch (error) {
         warnings.push(`CEIDG skipped: ${error.message || 'unknown error'}`);
       }
-    } else {
+    } else if (false) {
       const registryDiscovery = await discoverCompaniesFromPublicRegistries({ niche, city, district, limit });
       if (registryDiscovery.companies.length) discoveries.push(registryDiscovery);
-      warnings.push('CEIDG_API_TOKEN not set; used public CEIDG/registry web search.');
     }
 
     const publicDiscovery = await discoverCompaniesFromPublicSearchExpanded({ niche, city, district, limit, sourceFocus });
@@ -566,8 +576,9 @@ async function discoverCompaniesWithoutAI({ niche, city, district, limit, source
         `No companies found in configured non-AI sources. ${warnings.join(' ')} ${(publicDiscovery.warnings || []).join(' ')}`
       );
     }
+    const orderedDiscoveries = [...discoveries].sort((left, right) => discoveryPriority(left) - discoveryPriority(right));
     return {
-      ...mergeDiscoveries(discoveries, limit),
+      ...mergeDiscoveries(orderedDiscoveries, limit),
       warnings: unique([...warnings, ...discoveries.flatMap((item) => item.warnings || [])]).slice(0, 30)
     };
 
@@ -635,18 +646,33 @@ function uniqueCompanies(companies) {
 
 async function discoverCompaniesFromAmazonLocationExpanded({ niche, city, district, limit, sourceFocus }) {
   const districts = district ? [district] : ['', ...DEFAULT_WARSAW_DISTRICTS.slice(0, 8)];
-  const perQueryLimit = Math.min(50, Math.max(5, Math.ceil(limit / Math.min(districts.length, 5))));
+  const queryNiches = district
+    ? [niche]
+    : unique([
+        niche,
+        `${niche} firma`,
+        `${niche} usługi`,
+        `montaż ${niche}`,
+        `serwis ${niche}`
+      ]).slice(0, 5);
+  const queryPlans = district
+    ? queryNiches.map((queryNiche) => ({ queryNiche, districtName: district }))
+    : [
+        ...queryNiches.map((queryNiche) => ({ queryNiche, districtName: '' })),
+        ...DEFAULT_WARSAW_DISTRICTS.slice(0, 6).map((districtName) => ({ queryNiche: niche, districtName }))
+      ];
+  const perQueryLimit = Math.min(25, Math.max(5, Math.ceil(limit / Math.min(queryPlans.length, 5))));
   const discoveries = [];
   const warnings = [];
 
-  for (const districtName of districts) {
+  for (const { queryNiche, districtName } of queryPlans) {
     const collectedCount = uniqueCompanies(discoveries.flatMap((item) => item.companies || [])).length;
     if (collectedCount >= limit) break;
 
     try {
       discoveries.push(
         await discoverCompaniesFromAmazonLocation({
-          niche,
+          niche: queryNiche,
           city,
           district: districtName,
           limit: perQueryLimit,

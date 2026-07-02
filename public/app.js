@@ -5,7 +5,7 @@ const state = {
   detailTab: 'overview',
   filters: {
     text: '',
-    site: 'all',
+    site: 'no_site',
     size: 'all',
     priority: 'all',
     minScore: 0
@@ -180,9 +180,12 @@ init();
 
 async function init() {
   populateCategoryPreset();
+  els.discoverCategoryPreset.value = 'cat:Klimatyzacja';
   els.sidebarHasSocial.checked = false;
-  els.sidebarHasPhone.checked = false;
+  els.sidebarHasPhone.checked = true;
   els.sidebarHasEmail.checked = false;
+  els.sidebarSiteFilter.value = 'no_site';
+  els.resultFilterSite.value = 'no_site';
   await loadConfig();
   bindEvents();
   els.csvInput.value = sampleCsv;
@@ -678,10 +681,15 @@ function updateResultFilters() {
 
 function resetResultFilters() {
   els.resultFilterText.value = '';
-  els.resultFilterSite.value = 'all';
+  els.resultFilterSite.value = 'no_site';
+  els.sidebarSiteFilter.value = 'no_site';
   els.resultFilterSize.value = 'all';
   els.resultFilterPriority.value = 'all';
   els.resultFilterMinScore.value = '0';
+  els.sidebarMinScore.value = '0';
+  els.sidebarHasPhone.checked = true;
+  els.sidebarHasSocial.checked = false;
+  els.sidebarHasEmail.checked = false;
   updateResultFilters();
 }
 
@@ -723,7 +731,33 @@ function getFilteredResults() {
     }
 
     return true;
-  });
+  }).sort(compareLeadForCalling);
+}
+
+function compareLeadForCalling(a, b) {
+  return leadCallingRank(b) - leadCallingRank(a);
+}
+
+function leadCallingRank(result) {
+  const input = result.input || {};
+  const analysis = result.analysis || {};
+  const status = analysis.website_status || result.websiteResolution?.websiteStatus || 'UNCERTAIN';
+  const noSiteStatuses = new Set([
+    'NO_WEBSITE_CONFIRMED',
+    'SOCIAL_ONLY',
+    'DIRECTORY_ONLY',
+    'MARKETPLACE_ONLY',
+    'BROKEN_WEBSITE',
+    'FREE_SUBDOMAIN',
+    'ONE_PAGE_PLACEHOLDER'
+  ]);
+  let rank = 0;
+  if (noSiteStatuses.has(status)) rank += 1000;
+  if (input.phone) rank += 200;
+  if (input.email) rank += 80;
+  if (hasAnySocial(input)) rank += 40;
+  rank += Number(analysis.lead_score || 0);
+  return rank;
 }
 
 function hasAnySocial(input) {
