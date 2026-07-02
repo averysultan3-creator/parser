@@ -232,8 +232,8 @@ async function loadConfig() {
     }
     setDiscoverStatus(
       discoveryReady
-        ? 'Поиск компаний готов: Google Places / CEIDG / интернет-поиск, затем парсинг сайтов.'
-        : 'Поиск компаний выключен: нужен GOOGLE_PLACES_API_KEY, CEIDG_API_TOKEN или OPENAI_API_KEY. Проверка сайтов по CSV уже работает.',
+        ? 'Поиск готов: собирает базу для прозвона через публичные реестры, каталоги, интернет, Amazon/Google если ключи включены.'
+        : 'Поиск выключен: backend не отвечает. Запустите локальный сервер, CSV-проверка сайтов отдельно работает.',
       discoveryReady ? 'ok' : 'warn'
     );
 
@@ -383,12 +383,13 @@ async function handleFile(event) {
 
 async function runDiscovery() {
   const discoveryReady = Boolean(
-    state.config?.registry?.googlePlacesConfigured ||
+    state.config?.registry?.amazonLocationConfigured ||
+      state.config?.registry?.googlePlacesConfigured ||
       state.config?.registry?.ceidgConfigured ||
       state.config?.internetSearchConfigured
   );
   if (!discoveryReady) {
-    setDiscoverStatus('Сначала настройте GOOGLE_PLACES_API_KEY или CEIDG_API_TOKEN в .env.', 'warn');
+    setDiscoverStatus('Backend не готов. Запустите локальный сервер; публичный поиск должен работать даже без CEIDG API.', 'warn');
     return;
   }
 
@@ -436,7 +437,13 @@ async function runDiscovery() {
     els.exportJsonButton.disabled = false;
     const warnings = Array.isArray(data.warnings) ? data.warnings.filter(Boolean).slice(0, 2) : [];
     const warningText = warnings.length ? ` Предупреждение: ${warnings.join(' ')}` : '';
-    setDiscoverStatus(`Найдено ${companies.length}. CSV заполнен, теперь можно запускать проверку.${warningText}`, warnings.length ? 'warn' : 'ok');
+    const withPhone = companies.filter((company) => company.phone).length;
+    const withEmail = companies.filter((company) => company.email).length;
+    const withSite = companies.filter((company) => company.website_url).length;
+    setDiscoverStatus(
+      `Найдено ${companies.length}: телефоны ${withPhone}, email ${withEmail}, сайты ${withSite}. CSV заполнен, можно запускать проверку сайтов.${warningText}`,
+      warnings.length ? 'warn' : 'ok'
+    );
     setStatus('Список компаний готов к анализу.', 'ok');
   } catch (error) {
     setDiscoverStatus(error.message || 'Ошибка поиска компаний.', 'warn');

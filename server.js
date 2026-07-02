@@ -240,7 +240,9 @@ app.post('/api/discover', async (req, res) => {
     console.error(error);
     const message = error.message || 'Ошибка поиска компаний.';
     const missingDiscoverySource =
-      message.includes('GOOGLE_PLACES_API_KEY') || message.includes('CEIDG_API_TOKEN');
+      message.includes('GOOGLE_PLACES_API_KEY') ||
+      message.includes('CEIDG_API_TOKEN') ||
+      message.includes('AWS_LOCATION_API_KEY');
     res.status(missingDiscoverySource ? 400 : 500).json({ error: message });
   }
 });
@@ -557,7 +559,7 @@ async function discoverCompaniesWithoutAI({ niche, city, district, limit, source
       warnings.push('CEIDG_API_TOKEN not set; used public CEIDG/registry web search.');
     }
 
-    const publicDiscovery = await discoverCompaniesFromPublicSearch({ niche, city, district, limit, sourceFocus });
+    const publicDiscovery = await discoverCompaniesFromPublicSearchExpanded({ niche, city, district, limit, sourceFocus });
     if (publicDiscovery.companies.length) discoveries.push(publicDiscovery);
     if (!discoveries.length) {
       throw new Error(
@@ -572,7 +574,10 @@ async function discoverCompaniesWithoutAI({ niche, city, district, limit, source
   }
 
   if (['internet', 'directories', 'booking', 'social'].includes(sourceFocus)) {
-    const publicDiscovery = await discoverCompaniesFromPublicSearch({ niche, city, district, limit, sourceFocus });
+    const shouldExpandPublicSearch = ['internet'].includes(sourceFocus);
+    const publicDiscovery = shouldExpandPublicSearch
+      ? await discoverCompaniesFromPublicSearchExpanded({ niche, city, district, limit, sourceFocus })
+      : await discoverCompaniesFromPublicSearch({ niche, city, district, limit, sourceFocus });
     return publicDiscovery;
   }
 
@@ -883,6 +888,43 @@ async function discoverCompaniesFromGooglePlaces({ niche, city, district, limit,
   };
 }
 
+async function discoverCompaniesFromPublicSearchExpanded({ niche, city, district, limit, sourceFocus }) {
+  if (district) {
+    return discoverCompaniesFromPublicSearch({ niche, city, district, limit, sourceFocus });
+  }
+
+  const districtQueries = ['', ...DEFAULT_WARSAW_DISTRICTS.slice(0, 8)];
+  const discoveries = [];
+  const warnings = [];
+  const perDistrictLimit = Math.min(24, Math.max(10, Math.ceil(limit / Math.min(districtQueries.length, 4))));
+
+  for (const districtName of districtQueries) {
+    const collectedCount = uniqueCompanies(discoveries.flatMap((item) => item.companies || [])).length;
+    if (collectedCount >= limit) break;
+
+    try {
+      discoveries.push(
+        await discoverCompaniesFromPublicSearch({
+          niche,
+          city,
+          district: districtName,
+          limit: perDistrictLimit,
+          sourceFocus
+        })
+      );
+    } catch (error) {
+      warnings.push(`Public search skipped ${districtName || city}: ${error.message || 'unknown error'}`);
+    }
+  }
+
+  const merged = mergeDiscoveries(discoveries, limit);
+  return {
+    ...merged,
+    source: merged.source || `public_search_${sourceFocus}`,
+    warnings: unique([...warnings, ...(merged.warnings || [])]).slice(0, 30)
+  };
+}
+
 async function discoverCompaniesFromPublicSearch({ niche, city, district, limit, sourceFocus }) {
   const maxResults = Math.min(limit, 20);
   const focusTerms = {
@@ -903,7 +945,7 @@ async function discoverCompaniesFromPublicSearch({ niche, city, district, limit,
     [niche, district, city, 'usługi firma kontakt telefon'].filter(Boolean).join(' '),
     [niche, district, city, 'montaż serwis kontakt'].filter(Boolean).join(' '),
     ['site:.pl', niche, district, city, 'kontakt'].filter(Boolean).join(' ')
-  ]).slice(0, sourceFocus === 'all_sources' || sourceFocus === 'internet' ? 4 : 2);
+  ]).slice(0, sourceFocus === 'all_sources' || sourceFocus === 'internet' ? 7 : 2);
   const searchUrls = unique([
     `https://duckduckgo.com/html/?${new URLSearchParams({ q: queryVariants[0] })}`,
     ...queryVariants.map(
@@ -1037,21 +1079,33 @@ async function discoverCompaniesFromPublicRegistries({ niche, city, district, li
 
   const uniqueFoundCompanies = uniqueCompanies(companies).slice(0, limit);
   const enriched = await enrichDiscoveredCompanyContacts(uniqueFoundCompanies, { limit: Math.min(limit, 20), warnings });
-  if (!enriched.length) {
-    const fallback = await discoverCompaniesFromPublicSearch({
+  if (enriched.length < Math.min(5, limit)) {
+    const fallback = await discoverCompaniesFromPublicSearchExpanded({
       niche,
       city,
       district,
       limit,
       sourceFocus: 'all_sources'
     });
+    const merged = mergeDiscoveries(
+      [
+        {
+          source: 'public_registry_search',
+          queries: searchUrls,
+          warnings,
+          companies: enriched
+        },
+        fallback
+      ],
+      limit
+    );
     return {
-      ...fallback,
+      ...merged,
       source: 'public_registry_search,public_contact_fallback',
       warnings: unique([
         ...warnings,
         'Public CEIDG pages were not accessible/indexed for this query; used public contact fallback.',
-        ...(fallback.warnings || [])
+        ...(merged.warnings || [])
       ])
     };
   }
@@ -1216,6 +1270,8 @@ function isAllowedPublicSearchResult(url, title, sourceFocus, type) {
   if (
     [
       'mediaexpert',
+      'euro.com.pl',
+      'mediamarkt',
       'allegro',
       'castorama',
       'obi.',
@@ -1269,6 +1325,30 @@ function isSearchEvidenceLocalToCity(text, city) {
     return value.includes('warszaw') || value.includes('warsaw');
   }
   return normalizeSearchText(text).includes(normalizedCity);
+}
+
+function hasConflictingCityEvidence(text, city) {
+  const value = normalizeSearchText(text);
+  const normalizedCity = normalizeSearchText(city || '');
+  if (!normalizedCity || normalizedCity === 'warszawa') {
+    if (value.includes('warszaw') || value.includes('warsaw')) return false;
+    return [
+      'poznan',
+      'krakow',
+      'wroclaw',
+      'gdansk',
+      'lodz',
+      'lublin',
+      'katowice',
+      'tychy',
+      'bialystok',
+      'szczecin',
+      'rzeszow',
+      'bydgoszcz',
+      'torun'
+    ].some((name) => value.includes(name));
+  }
+  return false;
 }
 
 function inferCompanyNameFromSearchTitle(title, niche, city, href = '') {
