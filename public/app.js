@@ -226,7 +226,7 @@ async function loadConfig() {
     const discoveryReady = amazonReady || googleReady || ceidgReady || internetReady;
     els.discoverButton.disabled = !discoveryReady;
     els.allSourcesButton.disabled = !discoveryReady;
-    els.discoverLimit.max = String(state.config.maxDiscoveryItems || 15);
+    els.discoverLimit.max = String(Math.min(state.config.maxDiscoveryItems || 15, state.config.maxItems || 40));
     if (Number(els.discoverLimit.value) > Number(els.discoverLimit.max)) {
       els.discoverLimit.value = els.discoverLimit.max;
     }
@@ -411,7 +411,7 @@ async function runDiscovery() {
         niches,
         city: els.discoverCity.value.trim() || 'Warszawa',
         district: els.discoverDistrict.value.trim(),
-        limit: Number(els.discoverLimit.value || 8),
+        limit: Math.min(Number(els.discoverLimit.value || 8), state.config?.maxItems || 40),
         sourceFocus: els.discoverSource.value
       })
     });
@@ -426,7 +426,10 @@ async function runDiscovery() {
     }
 
     els.csvInput.value = itemsToCsv(companies);
-    state.results = companiesToPreviewResults(companies);
+    setDiscoverStatus(`Найдено ${companies.length}. Проверяю сайты и готовлю карточки...`, 'work');
+    setStatus(`Проверяю сайты у ${companies.length} компаний...`, 'work');
+    const analyzed = await analyzeCompanies(companies);
+    state.results = analyzed.results || companiesToPreviewResults(companies);
     state.selectedId = state.results[0]?.id || null;
     state.detailTab = 'overview';
     renderResults();
@@ -461,6 +464,24 @@ function selectedDiscoveryNiches() {
   if (value === 'custom') return [els.discoverNiche.value.trim()].filter(Boolean);
   if (value.startsWith('cat:')) return [value.slice(4)];
   return [];
+}
+
+async function analyzeCompanies(items) {
+  const response = await fetch(apiUrl('/api/analyze'), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      items,
+      useAi: false,
+      useWebSearch: false,
+      model: els.modelInput.value.trim(),
+      searchModel: els.searchModelInput.value.trim()
+    })
+  });
+
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Ошибка проверки сайтов.');
+  return data;
 }
 
 async function runAnalysis() {

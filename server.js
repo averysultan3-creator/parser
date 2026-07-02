@@ -17,7 +17,7 @@ const SEARCH_MODEL = process.env.OPENAI_SEARCH_MODEL || 'gpt-5.5';
 const USER_AGENT =
   process.env.PARSER_USER_AGENT || 'WarsawSiteParser/1.0 local lead audit tool';
 const RESPECT_ROBOTS = String(process.env.RESPECT_ROBOTS_TXT || 'true') !== 'false';
-const MAX_ITEMS = Number(process.env.MAX_ITEMS_PER_RUN || 40);
+const MAX_ITEMS = Number(process.env.MAX_ITEMS_PER_RUN || 100);
 const MAX_DISCOVERY_ITEMS = Number(process.env.MAX_DISCOVERY_ITEMS || 150);
 const MAX_HTML_BYTES = 900_000;
 const FETCH_TIMEOUT_MS = 12_000;
@@ -707,6 +707,7 @@ async function discoverCompaniesFromAmazonLocation({ niche, city, district, limi
     }
 
     const companies = (data.ResultItems || [])
+      .filter((item) => isRelevantAmazonPlace(item, niche))
       .map((item) => amazonLocationItemToCompany(item, { niche, city, district, sourceFocus }))
       .filter((company) => company.company || company.address || company.phone || company.website_url);
 
@@ -727,6 +728,32 @@ async function discoverCompaniesFromAmazonLocation({ niche, city, district, limi
   } finally {
     clearTimeout(timer);
   }
+}
+
+function isRelevantAmazonPlace(item, niche) {
+  if (item.PlaceType && item.PlaceType !== 'PointOfInterest') return false;
+
+  const contacts = item.Contacts || {};
+  const hasContact = Boolean(
+    (contacts.Phones || []).length ||
+      (contacts.Emails || []).length ||
+      (contacts.Websites || []).length
+  );
+  if (!hasContact) return false;
+
+  const categories = (item.Categories || []).map((category) => category.LocalizedName || category.Name).join(' ');
+  const websites = (contacts.Websites || []).map((entry) => entry.Value || entry.Label || '').join(' ');
+  const evidence = normalizeSearchText([item.Title, item.Name, item.Address?.Label, categories, websites].filter(Boolean).join(' '));
+  const nicheText = normalizeSearchText(niche || '');
+  const tokens = unique(
+    nicheText
+      .split(/\s+/)
+      .map((token) => token.replace(/[^a-z0-9ąćęłńóśźż]/gi, ''))
+      .filter((token) => token.length >= 5)
+  );
+
+  if (!tokens.length) return true;
+  return tokens.some((token) => evidence.includes(token.slice(0, Math.min(token.length, 8))));
 }
 
 function amazonLocationItemToCompany(item, { niche, city, district, sourceFocus }) {
@@ -984,7 +1011,8 @@ async function discoverCompaniesFromPublicSearch({ niche, city, district, limit,
         );
         const evidence = cleanText(`${title} ${snippet}`);
         const hasExplicitCityEvidence = isSearchEvidenceLocalToCity(`${evidence} ${href}`, city);
-        if (!hasExplicitCityEvidence && !['official_candidate', 'directory', 'social'].includes(type)) continue;
+        if (hasConflictingCityEvidence(`${evidence} ${href}`, city)) continue;
+        if (!hasExplicitCityEvidence && !['directory', 'social'].includes(type)) continue;
         const company = inferCompanyNameFromSearchTitle(title, niche, city, href);
         if (!company) continue;
 
@@ -1014,11 +1042,20 @@ async function discoverCompaniesFromPublicSearch({ niche, city, district, limit,
   const uniqueFoundCompanies = uniqueCompanies(companies).slice(0, limit);
   const enriched = await enrichDiscoveredCompanyContacts(uniqueFoundCompanies, { limit: Math.min(limit, 24), warnings });
 
+  const usableCompanies = enriched.filter(
+    (company) =>
+      company.phone ||
+      company.email ||
+      company.website_url ||
+      company.instagram ||
+      company.facebook
+  );
+
   return {
     source: `public_search_${sourceFocus}`,
     queries: searchUrls,
     warnings,
-    companies: enriched.slice(0, limit)
+    companies: usableCompanies.slice(0, limit)
   };
 }
 
@@ -1303,7 +1340,15 @@ function isAllowedPublicSearchResult(url, title, sourceFocus, type) {
       'rankomat',
       'trustpilot',
       'apps.apple.com',
-      'play.google.com'
+      'play.google.com',
+      'icloud.com',
+      'apple.com',
+      'poki.com',
+      'crazygames.com',
+      'playhop.com',
+      'ttt4.com',
+      'plix.gg',
+      'microsoft.com'
     ].some((part) => host.includes(part))
   ) {
     return false;
