@@ -219,10 +219,11 @@ async function loadConfig() {
     els.useAi.disabled = true;
     els.useWebSearch.disabled = true;
     const openaiReady = Boolean(state.config.hasOpenAiKey);
+    const amazonReady = Boolean(state.config.registry?.amazonLocationConfigured);
     const googleReady = Boolean(state.config.registry?.googlePlacesConfigured);
     const ceidgReady = Boolean(state.config.registry?.ceidgConfigured);
     const internetReady = Boolean(state.config.internetSearchConfigured);
-    const discoveryReady = googleReady || ceidgReady || internetReady;
+    const discoveryReady = amazonReady || googleReady || ceidgReady || internetReady;
     els.discoverButton.disabled = !discoveryReady;
     els.allSourcesButton.disabled = !discoveryReady;
     els.discoverLimit.max = String(state.config.maxDiscoveryItems || 15);
@@ -238,9 +239,13 @@ async function loadConfig() {
 
     setPill(els.apiStatus, openaiReady ? 'OpenAI connected' : 'OpenAI missing', openaiReady);
     setPill(els.webSearchStatus, internetReady ? 'Internet search ready' : 'Crawler only', internetReady);
-    setPill(els.registryStatus, googleReady ? 'Google Places ready' : 'Google Places missing', googleReady);
+    setPill(
+      els.registryStatus,
+      amazonReady ? 'Amazon Location ready' : googleReady ? 'Google Places ready' : 'Location API missing',
+      amazonReady || googleReady
+    );
     setPill(els.robotsStatus, state.config.respectRobotsTxt ? 'robots.txt on' : 'robots.txt off', state.config.respectRobotsTxt);
-    renderConfigDiagnostics({ openaiReady, googleReady, ceidgReady, internetReady, discoveryReady });
+    renderConfigDiagnostics({ openaiReady, amazonReady, googleReady, ceidgReady, internetReady, discoveryReady });
   } catch (error) {
     state.config = null;
     els.discoverButton.disabled = true;
@@ -258,12 +263,19 @@ function setPill(element, text, ok) {
   element.className = `status-pill ${ok ? 'ok' : 'warn'}`;
 }
 
-function renderConfigDiagnostics({ openaiReady, googleReady, ceidgReady, internetReady, discoveryReady }) {
+function renderConfigDiagnostics({ openaiReady, amazonReady, googleReady, ceidgReady, internetReady, discoveryReady }) {
   const rows = [
     {
       ok: openaiReady,
       title: 'OpenAI API',
       text: openaiReady ? 'подключен, AI-анализ карточки работает' : 'нет OPENAI_API_KEY'
+    },
+    {
+      ok: amazonReady,
+      title: 'Amazon Location API',
+      text: amazonReady
+        ? `key found; Amazon Places SearchText is used first (${state.config.registry?.amazonLocationRegion || 'eu-north-1'})`
+        : 'no AWS_LOCATION_API_KEY; Amazon Location search is off'
     },
     {
       ok: googleReady,
@@ -287,12 +299,12 @@ function renderConfigDiagnostics({ openaiReady, googleReady, ceidgReady, interne
     }
   ];
 
-  rows[1].text = googleReady ? 'key found; Google Maps is tested on search run' : 'no GOOGLE_PLACES_API_KEY; Google Maps search is off';
-  rows[2].title = 'Internet search';
-  rows[2].text = internetReady ? 'public internet fallback works without OpenAI and without Google Maps' : 'internet fallback is off';
-  rows[3].title = 'CEIDG / public registries';
-  rows[3].ok = ceidgReady || internetReady;
-  rows[3].text = ceidgReady
+  rows[2].text = googleReady ? 'key found; Google Maps is tested on search run' : 'no GOOGLE_PLACES_API_KEY; Google Maps search is off';
+  rows[3].title = 'Internet search';
+  rows[3].text = internetReady ? 'public internet fallback works without OpenAI and without Google Maps' : 'internet fallback is off';
+  rows[4].title = 'CEIDG / public registries';
+  rows[4].ok = ceidgReady || internetReady;
+  rows[4].text = ceidgReady
     ? 'CEIDG API token found; official API search is available'
     : 'no CEIDG token; uses public CEIDG/registry web search and then parses contacts';
 

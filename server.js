@@ -41,6 +41,8 @@ const CEIDG_ENDPOINT =
 const CEIDG_TOKEN = process.env.CEIDG_API_TOKEN || '';
 const REGON_API_KEY = process.env.REGON_API_KEY || '';
 const GOOGLE_PLACES_API_KEY = process.env.GOOGLE_PLACES_API_KEY || '';
+const AWS_LOCATION_API_KEY = process.env.AWS_LOCATION_API_KEY || '';
+const AWS_LOCATION_REGION = process.env.AWS_LOCATION_REGION || 'eu-north-1';
 
 const openai = process.env.OPENAI_API_KEY
   ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
@@ -150,6 +152,8 @@ app.get('/api/config', (_req, res) => {
       ceidgConfigured: Boolean(CEIDG_TOKEN),
       regonConfigured: Boolean(REGON_API_KEY),
       googlePlacesConfigured: Boolean(GOOGLE_PLACES_API_KEY),
+      amazonLocationConfigured: Boolean(AWS_LOCATION_API_KEY),
+      amazonLocationRegion: AWS_LOCATION_REGION,
       ceidgEndpoint: CEIDG_ENDPOINT
     }
   });
@@ -382,13 +386,28 @@ function normalizeItems(items) {
 
 function normalizeDiscoverySource(value) {
   const raw = String(value || '').trim().toLowerCase();
-  if (['all_sources', 'directories', 'booking', 'social', 'registries', 'maps_api', 'maps_check'].includes(raw)) {
+  if (['all_sources', 'directories', 'booking', 'social', 'registries', 'amazon_location', 'maps_api', 'maps_check'].includes(raw)) {
     return raw === 'maps_check' ? 'maps_api' : raw;
   }
   return 'internet';
 }
 
 async function discoverCompaniesBatchWithoutAI({ niches, city, district, limit, sourceFocus }) {
+  if (sourceFocus === 'amazon_location') {
+    if (!AWS_LOCATION_API_KEY) {
+      throw new Error('Для Amazon Location нужен AWS_LOCATION_API_KEY в .env.');
+    }
+
+    const amazonDiscoveries = [];
+    const perNicheLimit = Math.max(5, Math.ceil(limit / Math.max(1, niches.length)));
+    for (const niche of niches) {
+      if (uniqueCompanies(amazonDiscoveries.flatMap((item) => item.companies || [])).length >= limit) break;
+      amazonDiscoveries.push(await discoverCompaniesFromAmazonLocationExpanded({ niche, city, district, limit: perNicheLimit, sourceFocus }));
+    }
+
+    return mergeDiscoveries(amazonDiscoveries, limit);
+  }
+
   if (sourceFocus === 'maps_api') {
     const googleDiscoveries = [];
     const perNicheLimit = Math.max(5, Math.ceil(limit / Math.max(1, niches.length)));
@@ -402,9 +421,31 @@ async function discoverCompaniesBatchWithoutAI({ niches, city, district, limit, 
 
   const internetFocusedSources = ['internet', 'directories', 'booking', 'social', 'all_sources'];
   if (internetFocusedSources.includes(sourceFocus) && niches.length > 1) {
+    const amazonDiscoveries = [];
+    const amazonWarnings = [];
+    if (sourceFocus === 'all_sources' && AWS_LOCATION_API_KEY) {
+      const perNicheAmazonLimit = Math.max(5, Math.ceil(Math.min(limit, 100) / Math.min(niches.length, 12)));
+      for (const niche of niches.slice(0, 12)) {
+        try {
+          amazonDiscoveries.push(
+            await discoverCompaniesFromAmazonLocationExpanded({
+              niche,
+              city,
+              district,
+              limit: perNicheAmazonLimit,
+              sourceFocus
+            })
+          );
+        } catch (error) {
+          amazonWarnings.push(`Amazon Location skipped: ${error.message || 'unknown error'}`);
+          break;
+        }
+      }
+    }
+
     const googleDiscoveries = [];
     const googleWarnings = [];
-    if (sourceFocus === 'all_sources' && GOOGLE_PLACES_API_KEY) {
+    if (sourceFocus === 'all_sources' && GOOGLE_PLACES_API_KEY && !amazonDiscoveries.length) {
       const perNicheGoogleLimit = Math.max(5, Math.ceil(Math.min(limit, 80) / Math.min(niches.length, 12)));
       for (const niche of niches.slice(0, 12)) {
         try {
@@ -430,12 +471,12 @@ async function discoverCompaniesBatchWithoutAI({ niches, city, district, limit, 
         .slice(0, 12)
         .map((niche) => discoverCompaniesFromPublicSearch({ niche, city, district, limit: publicLimit, sourceFocus }))
     );
-    const mergedFast = mergeDiscoveries([...googleDiscoveries, ...publicDiscoveries], limit);
+    const mergedFast = mergeDiscoveries([...amazonDiscoveries, ...googleDiscoveries, ...publicDiscoveries], limit);
     return {
       ...mergedFast,
       warnings: [
-        ...unique([...googleWarnings, ...(mergedFast.warnings || [])]),
-        `Broad category search used ${Math.min(niches.length, 12)} categories; Google Maps is prioritized when API is enabled.`
+        ...unique([...amazonWarnings, ...googleWarnings, ...(mergedFast.warnings || [])]),
+        `Broad category search used ${Math.min(niches.length, 12)} categories; Amazon Location is prioritized when API is enabled.`
       ]
     };
   }
@@ -484,6 +525,16 @@ async function discoverCompaniesWithoutAI({ niche, city, district, limit, source
   if (sourceFocus === 'all_sources') {
     const discoveries = [];
     const warnings = [];
+    if (AWS_LOCATION_API_KEY) {
+      try {
+        discoveries.push(await discoverCompaniesFromAmazonLocationExpanded({ niche, city, district, limit, sourceFocus }));
+      } catch (error) {
+        warnings.push(`Amazon Location skipped: ${error.message || 'unknown error'}`);
+      }
+    } else {
+      warnings.push('AWS_LOCATION_API_KEY not set; Amazon Location skipped.');
+    }
+
     if (GOOGLE_PLACES_API_KEY) {
       try {
         discoveries.push(await discoverCompaniesFromGooglePlacesExpanded({ niche, city, district, limit, sourceFocus }));
@@ -532,6 +583,14 @@ async function discoverCompaniesWithoutAI({ niche, city, district, limit, source
     return discoverCompaniesFromCeidg({ niche, city, district, limit });
   }
 
+  if (sourceFocus === 'amazon_location' && AWS_LOCATION_API_KEY) {
+    return discoverCompaniesFromAmazonLocationExpanded({ niche, city, district, limit, sourceFocus });
+  }
+
+  if (sourceFocus === 'amazon_location') {
+    throw new Error('Для Amazon Location нужен AWS_LOCATION_API_KEY в .env.');
+  }
+
   if (sourceFocus === 'maps_api' && GOOGLE_PLACES_API_KEY) {
     return discoverCompaniesFromGooglePlacesExpanded({ niche, city, district, limit, sourceFocus });
   }
@@ -567,6 +626,140 @@ function uniqueCompanies(companies) {
     result.push(company);
   }
   return result;
+}
+
+async function discoverCompaniesFromAmazonLocationExpanded({ niche, city, district, limit, sourceFocus }) {
+  const districts = district ? [district] : ['', ...DEFAULT_WARSAW_DISTRICTS.slice(0, 8)];
+  const perQueryLimit = Math.min(50, Math.max(5, Math.ceil(limit / Math.min(districts.length, 5))));
+  const discoveries = [];
+  const warnings = [];
+
+  for (const districtName of districts) {
+    const collectedCount = uniqueCompanies(discoveries.flatMap((item) => item.companies || [])).length;
+    if (collectedCount >= limit) break;
+
+    try {
+      discoveries.push(
+        await discoverCompaniesFromAmazonLocation({
+          niche,
+          city,
+          district: districtName,
+          limit: perQueryLimit,
+          sourceFocus
+        })
+      );
+    } catch (error) {
+      warnings.push(`Amazon Location skipped ${districtName || city}: ${error.message || 'unknown error'}`);
+      if (!districtName) break;
+    }
+  }
+
+  const merged = mergeDiscoveries(discoveries, limit);
+  return {
+    ...merged,
+    source: merged.source || 'amazon_location',
+    warnings: unique([...warnings, ...(merged.warnings || [])]).slice(0, 20)
+  };
+}
+
+async function discoverCompaniesFromAmazonLocation({ niche, city, district, limit, sourceFocus }) {
+  if (!AWS_LOCATION_API_KEY) {
+    throw new Error('AWS_LOCATION_API_KEY is not configured.');
+  }
+
+  const queryText = [niche, district, city].filter(Boolean).join(' ').slice(0, 200);
+  const url = `https://places.geo.${AWS_LOCATION_REGION}.amazonaws.com/v2/search-text?${new URLSearchParams({
+    key: AWS_LOCATION_API_KEY
+  })}`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), GOOGLE_PLACES_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'content-type': 'application/json',
+        accept: 'application/json',
+        'user-agent': USER_AGENT
+      },
+      body: JSON.stringify({
+        QueryText: queryText,
+        MaxResults: Math.min(100, Math.max(1, limit)),
+        Language: 'pl',
+        IntendedUse: 'SingleUse',
+        AdditionalFeatures: ['Contact'],
+        BiasPosition: [21.0122, 52.2297],
+        Filter: {
+          IncludeCountries: ['POL']
+        }
+      })
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.Message || data.message || data.__type || `Amazon Location API error ${response.status}`);
+    }
+
+    const companies = (data.ResultItems || [])
+      .map((item) => amazonLocationItemToCompany(item, { niche, city, district, sourceFocus }))
+      .filter((company) => company.company || company.address || company.phone || company.website_url);
+
+    const enriched = await enrichDiscoveredCompanyContacts(uniqueCompanies(companies).slice(0, limit), {
+      limit: Math.min(limit, 20),
+      warnings: []
+    });
+
+    return {
+      source: 'amazon_location',
+      queries: [queryText],
+      warnings: data.NextToken ? ['Amazon Location returned more results; current run used first page.'] : [],
+      companies: enriched.slice(0, limit)
+    };
+  } catch (error) {
+    if (error?.name === 'AbortError') throw new Error('Amazon Location timeout');
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function amazonLocationItemToCompany(item, { niche, city, district, sourceFocus }) {
+  const contacts = item.Contacts || {};
+  const phones = unique((contacts.Phones || []).map((entry) => normalizePhoneField(entry.Value || entry.Label || '')).filter(Boolean));
+  const emails = unique((contacts.Emails || []).map((entry) => cleanText(entry.Value || entry.Label || '').toLowerCase()).filter(Boolean));
+  const websites = unique((contacts.Websites || []).map((entry) => safeUrl(entry.Value || entry.Label || '')).filter(Boolean));
+  const address = item.Address || {};
+  const categories = (item.Categories || []).map((category) => category.LocalizedName || category.Name).filter(Boolean);
+  const title = cleanText(item.Title || item.Name || '');
+  const label = cleanText(address.Label || '');
+  const locality = cleanText(address.Locality || city || 'Warszawa');
+  const districtName = cleanText(address.District || address.SubDistrict || district || '');
+  const position = Array.isArray(item.Position) ? item.Position.join(',') : '';
+
+  return {
+    company: title,
+    niche: categories[0] || niche,
+    city: locality || city || 'Warszawa',
+    district: districtName,
+    address: label,
+    phone: phones.slice(0, 3).join('; '),
+    email: emails.slice(0, 3).join('; '),
+    website_url: websites[0] || '',
+    source: `amazon_location_${sourceFocus}`,
+    source_profile: item.PlaceId ? `amazon-location:${item.PlaceId}` : '',
+    services: unique([niche, ...categories]).slice(0, 8),
+    physical_location: true,
+    rating: '',
+    review_count: '',
+    notes: [
+      `Amazon Location place_type=${item.PlaceType || 'UNKNOWN'}`,
+      position ? `position=${position}` : '',
+      label
+    ]
+      .filter(Boolean)
+      .join(' | ')
+  };
 }
 
 async function discoverCompaniesFromGooglePlacesExpanded({ niche, city, district, limit, sourceFocus }) {

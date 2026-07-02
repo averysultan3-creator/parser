@@ -76,6 +76,8 @@ CEIDG_API_TOKEN=
 CEIDG_API_ENDPOINT=https://dane.biznes.gov.pl/api/ceidg/v3/firmy
 REGON_API_KEY=
 GOOGLE_PLACES_API_KEY=
+AWS_LOCATION_API_KEY=
+AWS_LOCATION_REGION=eu-north-1
 ```
 
 Без `OPENAI_API_KEY` массовый парсер все равно работает. С ключом доступна только точечная кнопка AI в карточке компании:

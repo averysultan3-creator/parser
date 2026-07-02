@@ -1,4 +1,21 @@
-# Google Places and CEIDG setup
+# Data source setup
+
+## Amazon Location
+
+Amazon Location is the preferred map/place source when configured. It is used before Google Places in `all_sources`.
+
+```env
+AWS_LOCATION_API_KEY=your_aws_location_key
+AWS_LOCATION_REGION=eu-north-1
+```
+
+In AWS Console the key must allow Amazon Location Places actions, especially `SearchText`. For local backend testing keep application restrictions compatible with a Node backend. The parser calls:
+
+```text
+POST https://places.geo.eu-north-1.amazonaws.com/v2/search-text?key=...
+```
+
+Amazon Location is a place/contact database, not a legal company registry. For "all registered firms" use CEIDG/API/export as the seed, then Amazon Location and internet parsing enrich contacts and website status.
 
 ## Google Places
 

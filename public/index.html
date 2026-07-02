@@ -6,7 +6,7 @@
     <title>Warsaw Site Parser</title>
     <link rel="stylesheet" href="./styles.css?v=20260630-2" />
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js" defer></script>
-    <script src="./app.js?v=20260630-2" defer></script>
+    <script src="./app.js?v=20260702-1" defer></script>
   </head>
   <body>
     <div class="app-shell">
@@ -72,6 +72,7 @@
                 <span>Источник данных</span>
                 <select id="discoverSource">
                   <option value="all_sources" selected>Все источники поиска данных</option>
+                  <option value="amazon_location">Amazon Location API</option>
                   <option value="maps_api">Google Places API</option>
                   <option value="internet">Интернет и публичные профили</option>
                   <option value="registries">CEIDG / реестры</option>
@@ -122,7 +123,7 @@
               <i data-lucide="radar"></i>
               Найти компании
             </button>
-            <div id="discoverStatus" class="discover-status">Поиск работает без ChatGPT через Google Places API или CEIDG.</div>
+            <div id="discoverStatus" class="discover-status">Поиск работает без ChatGPT через Amazon Location, Google Places, CEIDG или интернет-источники.</div>
           </div>
 
           <div class="sidebar-actions">
