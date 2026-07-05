@@ -33,8 +33,10 @@ const els = {
   discoverCategoryPreset: document.querySelector('#discoverCategoryPreset'),
   customCategoryField: document.querySelector('#customCategoryField'),
   discoverNiche: document.querySelector('#discoverNiche'),
+  discoverCountry: document.querySelector('#discoverCountry'),
   discoverCity: document.querySelector('#discoverCity'),
   discoverDistrict: document.querySelector('#discoverDistrict'),
+  discoverRadius: document.querySelector('#discoverRadius'),
   discoverLimit: document.querySelector('#discoverLimit'),
   discoverSource: document.querySelector('#discoverSource'),
   allSourcesButton: document.querySelector('#allSourcesButton'),
@@ -70,7 +72,13 @@ const els = {
   resultsBody: document.querySelector('#resultsBody'),
   detailTitle: document.querySelector('#detailTitle'),
   detailPriority: document.querySelector('#detailPriority'),
-  detailContent: document.querySelector('#detailContent')
+  detailContent: document.querySelector('#detailContent'),
+  viewTabResults: document.querySelector('#viewTabResults'),
+  viewTabHistory: document.querySelector('#viewTabHistory'),
+  resultsView: document.querySelector('#resultsView'),
+  historyView: document.querySelector('#historyView'),
+  historyBody: document.querySelector('#historyBody'),
+  refreshHistoryButton: document.querySelector('#refreshHistoryButton')
 };
 
 const sampleCsv = `company,niche,district,phone,email,website_url,source_profile,instagram,review_count,rating,last_activity,services,portfolio_available,physical_location,team_size,notes
@@ -142,6 +150,7 @@ const allCategories = [
 ];
 
 const inputCsvHeaders = [
+  '_companyId',
   'company',
   'legal_name',
   'niche',
@@ -366,6 +375,57 @@ function bindEvents() {
   els.exportCsvButton.addEventListener('click', exportCsv);
   els.headerExportCsvButton.addEventListener('click', exportCsv);
   els.exportJsonButton.addEventListener('click', exportJson);
+  els.viewTabResults.addEventListener('click', () => switchView('results'));
+  els.viewTabHistory.addEventListener('click', () => switchView('history'));
+  els.refreshHistoryButton.addEventListener('click', loadHistory);
+}
+
+function switchView(view) {
+  const isHistory = view === 'history';
+  els.viewTabResults.classList.toggle('active', !isHistory);
+  els.viewTabHistory.classList.toggle('active', isHistory);
+  els.resultsView.classList.toggle('hidden-field', isHistory);
+  els.historyView.classList.toggle('hidden-field', !isHistory);
+  if (isHistory) loadHistory();
+}
+
+async function loadHistory() {
+  els.historyBody.innerHTML = '<tr class="empty-row"><td colspan="8">Загрузка истории...</td></tr>';
+  try {
+    const response = await fetch(apiUrl('/api/history/runs'));
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Не удалось загрузить историю.');
+    renderHistory(data.runs || []);
+  } catch (error) {
+    els.historyBody.innerHTML = `<tr class="empty-row"><td colspan="8">${escapeHtml(error.message || 'Ошибка загрузки истории.')}</td></tr>`;
+  }
+}
+
+function renderHistory(runs) {
+  if (!runs.length) {
+    els.historyBody.innerHTML = '<tr class="empty-row"><td colspan="8">История пуста. Запустите поиск компаний.</td></tr>';
+    return;
+  }
+
+  els.historyBody.innerHTML = runs
+    .map((run) => {
+      const date = run.started_at ? new Date(run.started_at).toLocaleString() : '-';
+      const location = [run.city, run.district].filter(Boolean).join(' · ') || '-';
+      const statusClassName = ['completed', 'failed', 'discovering'].includes(run.status) ? run.status : 'discovering';
+      return `
+        <tr>
+          <td>${escapeHtml(date)}</td>
+          <td>${escapeHtml((run.niches || []).join(', ') || '-')}</td>
+          <td>${escapeHtml(location)}</td>
+          <td>${escapeHtml(run.sourceFocus || '-')}</td>
+          <td>${escapeHtml(String(run.found_count ?? 0))}</td>
+          <td>${escapeHtml(String(run.new_count ?? 0))}</td>
+          <td>${escapeHtml(String(run.duplicate_count ?? 0))}</td>
+          <td><span class="history-row-status ${statusClassName}">${escapeHtml(run.status || '-')}</span></td>
+        </tr>
+      `;
+    })
+    .join('');
 }
 
 function handleCategoryPresetChange() {
@@ -412,8 +472,10 @@ async function runDiscovery() {
       body: JSON.stringify({
         niche: niches[0],
         niches,
-        city: els.discoverCity.value.trim() || 'Warszawa',
+        country: els.discoverCountry.value.trim(),
+        city: els.discoverCity.value.trim(),
         district: els.discoverDistrict.value.trim(),
+        radiusKm: Number(els.discoverRadius.value || 0) || undefined,
         limit: Math.min(Number(els.discoverLimit.value || 8), state.config?.maxItems || 40),
         sourceFocus: els.discoverSource.value
       })
@@ -868,6 +930,7 @@ function rowToItem(headers, row) {
   };
 
   return {
+    _companyId: get('_companyid', '_companyId'),
     company: get('company', 'company_name', 'name', 'firma', 'nazwa', 'компания'),
     legal_name: get('legal_name', 'official_name', 'nazwa_pelna'),
     niche: get('niche', 'category', 'kategoria', 'nisza', 'ниша'),

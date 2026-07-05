@@ -6,6 +6,7 @@ import { performance } from 'node:perf_hooks';
 import * as cheerio from 'cheerio';
 import OpenAI from 'openai';
 import robotsParser from 'robots-parser';
+import * as store from './store.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -23,7 +24,39 @@ const MAX_HTML_BYTES = 900_000;
 const FETCH_TIMEOUT_MS = 12_000;
 const GOOGLE_PLACES_TIMEOUT_MS = 8_000;
 const MAX_EXTRA_PAGES = 5;
+
+// DuckDuckGo HTML search starts returning an "anomaly detected" interstitial
+// (HTTP 202, no .result nodes, contains an img-form/captcha shell) after a
+// handful of requests fired in quick succession from the same IP. That page
+// is technically a 2xx response, so it used to slip through silently and the
+// discovery run would just lose those results with no warning at all. We
+// throttle DuckDuckGo calls proactively and back off reactively if a block
+// slips through anyway, falling back to Bing for the rest of the run.
+const DDG_MAX_REQUESTS_PER_WINDOW = 5;
+const DDG_WINDOW_MS = 60_000;
+const DDG_BLOCK_COOLDOWN_MS = 90_000;
+let ddgRequestTimestamps = [];
+let ddgBlockedUntil = 0;
+
+function canUseDuckDuckGo() {
+  const now = Date.now();
+  if (now < ddgBlockedUntil) return false;
+  ddgRequestTimestamps = ddgRequestTimestamps.filter((ts) => now - ts < DDG_WINDOW_MS);
+  if (ddgRequestTimestamps.length >= DDG_MAX_REQUESTS_PER_WINDOW) return false;
+  ddgRequestTimestamps.push(now);
+  return true;
+}
+
+function registerDuckDuckGoBlock() {
+  ddgBlockedUntil = Date.now() + DDG_BLOCK_COOLDOWN_MS;
+}
+
+function isDuckDuckGoBlockedHtml(html) {
+  return typeof html === 'string' && html.includes('id="img-form"') && !html.includes('result__a');
+}
+
 const DEFAULT_WARSAW_DISTRICTS = [
+
   'Mokotow',
   'Wola',
   'Ursynow',
@@ -35,6 +68,59 @@ const DEFAULT_WARSAW_DISTRICTS = [
   'Wilanow',
   'Bialoleka'
 ];
+
+// Known city presets so Google Places (New) Text Search can bias results with a
+// location circle (lat/lng + radius) instead of relying purely on free text.
+// Any other city name still works (Text Search interprets plain text fine), it
+// just won't get a location bias/radius applied.
+const CITY_PRESETS = {
+  warszawa: { label: 'Warszawa', lat: 52.2297, lng: 21.0122, country: 'Polska', regionCode: 'PL', languageCode: 'pl' },
+  warsaw: { label: 'Warszawa', lat: 52.2297, lng: 21.0122, country: 'Polska', regionCode: 'PL', languageCode: 'pl' },
+  krakow: { label: 'Kraków', lat: 50.0647, lng: 19.945, country: 'Polska', regionCode: 'PL', languageCode: 'pl' },
+  'krakow,polska': { label: 'Kraków', lat: 50.0647, lng: 19.945, country: 'Polska', regionCode: 'PL', languageCode: 'pl' },
+  wroclaw: { label: 'Wrocław', lat: 51.1079, lng: 17.0385, country: 'Polska', regionCode: 'PL', languageCode: 'pl' },
+  gdansk: { label: 'Gdańsk', lat: 54.352, lng: 18.6466, country: 'Polska', regionCode: 'PL', languageCode: 'pl' },
+  poznan: { label: 'Poznań', lat: 52.4064, lng: 16.9252, country: 'Polska', regionCode: 'PL', languageCode: 'pl' },
+  kyiv: { label: 'Kyiv', lat: 50.4501, lng: 30.5234, country: 'Ukraine', regionCode: 'UA', languageCode: 'uk' },
+  kiev: { label: 'Kyiv', lat: 50.4501, lng: 30.5234, country: 'Ukraine', regionCode: 'UA', languageCode: 'uk' },
+  dnipro: { label: 'Dnipro', lat: 48.4647, lng: 35.0462, country: 'Ukraine', regionCode: 'UA', languageCode: 'uk' }
+};
+
+const COUNTRY_PRESETS = {
+  polska: { regionCode: 'PL', languageCode: 'pl', label: 'Polska' },
+  poland: { regionCode: 'PL', languageCode: 'pl', label: 'Polska' },
+  ukraine: { regionCode: 'UA', languageCode: 'uk', label: 'Ukraine' },
+  ukraina: { regionCode: 'UA', languageCode: 'uk', label: 'Ukraine' },
+  'украина': { regionCode: 'UA', languageCode: 'uk', label: 'Ukraine' },
+  'україна': { regionCode: 'UA', languageCode: 'uk', label: 'Ukraine' }
+};
+
+function normalizePresetKey(value) {
+  return String(value || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z]/g, '');
+}
+
+function getCityPreset(city) {
+  return CITY_PRESETS[normalizePresetKey(city)] || null;
+}
+
+function getCountryPreset(country) {
+  return COUNTRY_PRESETS[normalizePresetKey(country)] || null;
+}
+
+function isWarsawCity(city) {
+  const key = normalizePresetKey(city);
+  return key === 'warszawa' || key === 'warsaw' || !city;
+}
+
+// Mutable per-request discovery context read by the Google Places helpers.
+// This tool runs as a single-user local server (one discovery run at a time in
+// practice), so a module-level context avoids threading two extra parameters
+// through every function in the discovery call graph.
+let discoveryContext = { country: '', radiusKm: 0 };
 
 const CEIDG_ENDPOINT =
   process.env.CEIDG_API_ENDPOINT || 'https://dane.biznes.gov.pl/api/ceidg/v3/firmy';
@@ -162,7 +248,14 @@ app.get('/api/config', (_req, res) => {
 
 app.post('/api/analyze', async (req, res) => {
   try {
-    const items = normalizeItems(req.body?.items || req.body?.companies);
+    const rawItems = Array.isArray(req.body?.items || req.body?.companies)
+      ? req.body.items || req.body.companies
+      : [];
+    const items = normalizeItems(rawItems);
+    // _companyId travels alongside each normalized item (added by /api/discover
+    // responses and preserved by normalizeItems) so we can save analysis results
+    // back onto the same persisted company record.
+    const companyIds = items.map((item) => item?._companyId || '');
     const useAi = false;
     const useWebSearch = false;
     const model = String(req.body?.model || DEFAULT_MODEL).trim() || DEFAULT_MODEL;
@@ -176,9 +269,20 @@ app.post('/api/analyze', async (req, res) => {
     }
 
     const startedAt = Date.now();
-    const results = await mapLimit(items, 3, async (item) =>
-      analyzeLead(item, { useAi, useWebSearch, model, searchModel })
-    );
+    const results = await mapLimit(items, 3, async (item, index) => {
+      const result = await analyzeLead(item, { useAi, useWebSearch, model, searchModel });
+      const companyId = companyIds[index] || store.findExistingCompanyId(item);
+      if (companyId) {
+        store.updateCompanyAnalysis(companyId, {
+          websiteResolution: result.websiteResolution,
+          parsed: result.parsed,
+          heuristic: result.heuristic,
+          analysis: result.analysis
+        });
+        result._companyId = companyId;
+      }
+      return result;
+    });
 
     res.json({
       results,
@@ -198,14 +302,19 @@ app.post('/api/analyze', async (req, res) => {
 });
 
 app.post('/api/discover', async (req, res) => {
+  const runStartedAt = performance.now();
+  let run = null;
   try {
     const requestedNiches = Array.isArray(req.body?.niches)
       ? req.body.niches.map(cleanText).filter(Boolean)
       : [];
     const niche = cleanText(req.body?.niche || req.body?.category || requestedNiches[0] || '');
     const niches = unique(requestedNiches.length ? requestedNiches : [niche]).slice(0, 40);
-    const city = cleanText(req.body?.city || 'Warszawa') || 'Warszawa';
+    const country = cleanText(req.body?.country || '');
+    const city = cleanText(req.body?.city || (country ? '' : 'Warszawa'));
     const district = cleanText(req.body?.district || '');
+    const requestedRadiusKm = Number.parseFloat(req.body?.radiusKm ?? req.body?.radius_km ?? req.body?.radius);
+    const radiusKm = Number.isFinite(requestedRadiusKm) && requestedRadiusKm > 0 ? clamp(requestedRadiusKm, 1, 200) : 0;
     const sourceFocus = normalizeDiscoverySource(req.body?.sourceFocus);
     const requestedLimit = Number.parseInt(req.body?.limit, 10);
     const limit = clamp(Number.isFinite(requestedLimit) ? requestedLimit : 40, 1, MAX_DISCOVERY_ITEMS);
@@ -213,39 +322,115 @@ app.post('/api/discover', async (req, res) => {
     if (!niches.length) {
       return res.status(400).json({ error: 'Укажите категорию или нишу для поиска.' });
     }
+    if (!city && !country) {
+      return res.status(400).json({ error: 'Укажите город или страну для поиска.' });
+    }
+
+    discoveryContext = { country, radiusKm, city };
+    run = store.createRun({
+      niches,
+      city: city || country,
+      district,
+      sourceFocus,
+      requestedLimit: limit
+    });
+
+    console.log(
+      `[discover] run=${run.id} niches=${JSON.stringify(niches)} city=${city || '(none)'} country=${country || '(none)'} district=${district || '(none)'} radiusKm=${radiusKm || '(default)'} sourceFocus=${sourceFocus} limit=${limit}`
+    );
 
     const startedAt = performance.now();
     const discovery = await discoverCompaniesBatchWithoutAI({
       niches,
-      city,
+      city: city || country,
       district,
       limit,
       sourceFocus
     });
+    const foundCount = (discovery.companies || []).length;
     const companies = normalizeItems(discovery.companies || []).slice(0, limit);
 
+    let newCount = 0;
+    let duplicateCount = 0;
+    const companyIds = [];
+    for (const company of companies) {
+      const { id, isNew } = store.upsertCompany(company, { runId: run.id, stage: 'discovered' });
+      companyIds.push(id);
+      if (isNew) newCount += 1;
+      else duplicateCount += 1;
+    }
+    store.addCompanyIdsToRun(run.id, companyIds);
+    store.updateRun(run.id, {
+      status: 'completed',
+      finished_at: new Date().toISOString(),
+      found_count: foundCount,
+      new_count: newCount,
+      duplicate_count: duplicateCount,
+      warnings: Array.isArray(discovery.warnings) ? discovery.warnings.slice(0, 20) : []
+    });
+
+    console.log(
+      `[discover] run=${run.id} google_places_returned=${foundCount} deduped_removed=${Math.max(0, foundCount - companies.length)} after_filters=${companies.length} new=${newCount} duplicates=${duplicateCount}`
+    );
+
     res.json({
-      companies,
+      runId: run.id,
+      companies: companies.map((company, index) => ({ ...company, _companyId: companyIds[index] })),
       queries: Array.isArray(discovery.queries) ? discovery.queries.slice(0, 10) : [],
       warnings: Array.isArray(discovery.warnings) ? discovery.warnings.slice(0, 10) : [],
       meta: {
         count: companies.length,
+        newCount,
+        duplicateCount,
         usedAi: false,
         source: discovery.source,
         sourceFocus,
         categories: niches,
+        city: city || country,
+        country,
+        radiusKm,
         elapsedMs: Math.round(performance.now() - startedAt)
       }
     });
   } catch (error) {
-    console.error(error);
+    console.error(`[discover] run=${run?.id || 'n/a'} failed:`, error);
+    if (run) {
+      store.updateRun(run.id, {
+        status: 'failed',
+        finished_at: new Date().toISOString(),
+        warnings: [error.message || 'Ошибка поиска компаний.']
+      });
+    }
     const message = error.message || 'Ошибка поиска компаний.';
     const missingDiscoverySource =
       message.includes('GOOGLE_PLACES_API_KEY') ||
       message.includes('CEIDG_API_TOKEN') ||
       message.includes('AWS_LOCATION_API_KEY');
     res.status(missingDiscoverySource ? 400 : 500).json({ error: message });
+  } finally {
+    discoveryContext = { country: '', radiusKm: 0 };
+    void runStartedAt;
   }
+});
+
+app.get('/api/history/runs', (_req, res) => {
+  res.json({ runs: store.listRuns({ limit: 100 }) });
+});
+
+app.get('/api/history/runs/:id', (req, res) => {
+  const run = store.getRun(String(req.params.id));
+  if (!run) return res.status(404).json({ error: 'Run not found.' });
+  res.json({ run, companies: store.getCompaniesByIds(run.company_ids) });
+});
+
+app.get('/api/companies', (_req, res) => {
+  res.json({ companies: store.getAllCompanies(), stats: store.getStoreStats() });
+});
+
+app.get('/api/companies/:id', (req, res) => {
+  const company = store.getCompany(String(req.params.id));
+  if (!company) return res.status(404).json({ error: 'Company not found.' });
+  res.json({ company });
 });
 
 app.post('/api/ai/site-analysis', async (req, res) => {
@@ -275,6 +460,17 @@ app.post('/api/ai/site-analysis', async (req, res) => {
       heuristic,
       model
     });
+
+    const companyId = result._companyId || store.findExistingCompanyId(input);
+    if (companyId) {
+      store.updateCompanyAiAnalysis(companyId, {
+        status: 'COMPLETED',
+        version: aiAnalysis?.ai_analysis_version || 1,
+        analyzed_at: aiAnalysis?.ai_analyzed_at || new Date().toISOString(),
+        company_data_version: aiAnalysis?.company_data_version || 1,
+        data: aiAnalysis
+      });
+    }
 
     res.json({
       aiAnalysis,
@@ -381,7 +577,8 @@ function normalizeItems(items) {
         multiple_locations: parseBool(item.multiple_locations || item.branches || item.filialy),
         high_ticket: parseBool(item.high_ticket || item.expensive_services),
         paid_platform: parseBool(item.paid_platform || item.marketplace_paid),
-        notes: cleanText(item.notes || item.note || item.uwagi || '')
+        notes: cleanText(item.notes || item.note || item.uwagi || ''),
+        _companyId: item._companyId || ''
       };
     })
     .filter((item) => item.company || item.website_url || item.phone || item.nip || item.source_profile);
@@ -645,7 +842,8 @@ function uniqueCompanies(companies) {
 }
 
 async function discoverCompaniesFromAmazonLocationExpanded({ niche, city, district, limit, sourceFocus }) {
-  const districts = district ? [district] : ['', ...DEFAULT_WARSAW_DISTRICTS.slice(0, 8)];
+  const cityIsWarsaw = isWarsawCity(city);
+  const districts = district ? [district] : cityIsWarsaw ? ['', ...DEFAULT_WARSAW_DISTRICTS.slice(0, 8)] : [''];
   const queryNiches = district
     ? [niche]
     : unique([
@@ -659,7 +857,7 @@ async function discoverCompaniesFromAmazonLocationExpanded({ niche, city, distri
     ? queryNiches.map((queryNiche) => ({ queryNiche, districtName: district }))
     : [
         ...queryNiches.map((queryNiche) => ({ queryNiche, districtName: '' })),
-        ...DEFAULT_WARSAW_DISTRICTS.slice(0, 6).map((districtName) => ({ queryNiche: niche, districtName }))
+        ...(cityIsWarsaw ? DEFAULT_WARSAW_DISTRICTS.slice(0, 6) : []).map((districtName) => ({ queryNiche: niche, districtName }))
       ];
   const perQueryLimit = Math.min(25, Math.max(5, Math.ceil(limit / Math.min(queryPlans.length, 5))));
   const discoveries = [];
@@ -821,7 +1019,8 @@ function amazonLocationItemToCompany(item, { niche, city, district, sourceFocus 
 }
 
 async function discoverCompaniesFromGooglePlacesExpanded({ niche, city, district, limit, sourceFocus }) {
-  const districts = district ? [district] : ['', ...DEFAULT_WARSAW_DISTRICTS];
+  const cityIsWarsaw = isWarsawCity(city);
+  const districts = district ? [district] : cityIsWarsaw ? ['', ...DEFAULT_WARSAW_DISTRICTS] : [''];
   const perQueryLimit = Math.min(20, Math.max(5, Math.ceil(limit / Math.min(districts.length, 6))));
   const discoveries = [];
   const warnings = [];
@@ -858,7 +1057,13 @@ async function discoverCompaniesFromGooglePlacesExpanded({ niche, city, district
 }
 
 async function discoverCompaniesFromGooglePlaces({ niche, city, district, limit, sourceFocus }) {
-  const textQuery = [niche, district, city].filter(Boolean).join(' ');
+  const cityPreset = getCityPreset(city);
+  const countryPreset = getCountryPreset(discoveryContext.country) || (cityPreset ? getCountryPreset(cityPreset.country) : null);
+  const regionCode = cityPreset?.regionCode || countryPreset?.regionCode || 'PL';
+  const languageCode = cityPreset?.languageCode || countryPreset?.languageCode || 'pl';
+  // If searching by country only (no specific city), let Google Places interpret the
+  // free-text query without a location bias circle.
+  const textQuery = [niche, district, city || discoveryContext.country].filter(Boolean).join(' ');
   const fieldMask = [
     'places.id',
     'places.displayName',
@@ -874,6 +1079,31 @@ async function discoverCompaniesFromGooglePlaces({ niche, city, district, limit,
     'nextPageToken'
   ].join(',');
 
+  const requestBody = {
+    textQuery,
+    languageCode,
+    regionCode,
+    pageSize: Math.min(limit, 20)
+  };
+
+  // Apply a location bias circle when we know city coordinates. radiusKm from the
+  // request overrides the default radius; otherwise fall back to a sensible
+  // per-city default (~15km covers most single cities without bleeding into
+  // neighboring metro areas).
+  if (cityPreset && !district) {
+    const radiusMeters = Math.round((discoveryContext.radiusKm || 15) * 1000);
+    requestBody.locationBias = {
+      circle: {
+        center: { latitude: cityPreset.lat, longitude: cityPreset.lng },
+        radius: clamp(radiusMeters, 1000, 50000)
+      }
+    };
+  }
+
+  console.log(
+    `[google_places] query="${textQuery}" city=${city || '(country-wide)'} regionCode=${regionCode} radiusKm=${discoveryContext.radiusKm || '(default)'} bias=${Boolean(requestBody.locationBias)}`
+  );
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), GOOGLE_PLACES_TIMEOUT_MS);
   let response;
@@ -887,12 +1117,7 @@ async function discoverCompaniesFromGooglePlaces({ niche, city, district, limit,
         'X-Goog-FieldMask': fieldMask,
         'user-agent': USER_AGENT
       },
-      body: JSON.stringify({
-        textQuery,
-        languageCode: 'pl',
-        regionCode: 'PL',
-        pageSize: Math.min(limit, 20)
-      })
+      body: JSON.stringify(requestBody)
     });
   } catch (error) {
     if (error?.name === 'AbortError') {
@@ -905,15 +1130,17 @@ async function discoverCompaniesFromGooglePlaces({ niche, city, district, limit,
 
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
+    console.log(`[google_places] query="${textQuery}" error=${response.status} ${data.error?.message || ''}`);
     throw new Error(data.error?.message || `Google Places API error ${response.status}`);
   }
 
+  const rawCount = (data.places || []).length;
   const companies = (data.places || [])
     .filter((place) => !place.businessStatus || place.businessStatus === 'OPERATIONAL')
     .map((place) => ({
       company: cleanText(place.displayName?.text || ''),
       niche,
-      city,
+      city: city || cleanText(place.formattedAddress || '').split(',').slice(-2, -1)[0]?.trim() || city,
       district,
       address: cleanText(place.formattedAddress || ''),
       phone: normalizePhone(place.internationalPhoneNumber || place.nationalPhoneNumber || ''),
@@ -933,11 +1160,16 @@ async function discoverCompaniesFromGooglePlaces({ niche, city, district, limit,
     }))
     .filter((company) => company.company);
 
+  const dedupedCompanies = uniqueCompanies(companies);
+  console.log(
+    `[google_places] query="${textQuery}" returned=${rawCount} after_operational_filter=${companies.length} after_dedupe=${dedupedCompanies.length}`
+  );
+
   return {
     source: 'google_places_api',
     queries: [textQuery],
     warnings: data.nextPageToken ? ['Есть следующая страница Google Places; текущий запуск взял первый пакет.'] : [],
-    companies
+    companies: dedupedCompanies
   };
 }
 
@@ -946,7 +1178,7 @@ async function discoverCompaniesFromPublicSearchExpanded({ niche, city, district
     return discoverCompaniesFromPublicSearch({ niche, city, district, limit, sourceFocus });
   }
 
-  const districtQueries = ['', ...DEFAULT_WARSAW_DISTRICTS.slice(0, 8)];
+  const districtQueries = isWarsawCity(city) ? ['', ...DEFAULT_WARSAW_DISTRICTS.slice(0, 8)] : [''];
   const discoveries = [];
   const warnings = [];
   const perDistrictLimit = Math.min(24, Math.max(10, Math.ceil(limit / Math.min(districtQueries.length, 4))));
@@ -999,21 +1231,33 @@ async function discoverCompaniesFromPublicSearch({ niche, city, district, limit,
     [niche, district, city, 'montaż serwis kontakt'].filter(Boolean).join(' '),
     ['site:.pl', niche, district, city, 'kontakt'].filter(Boolean).join(' ')
   ]).slice(0, sourceFocus === 'all_sources' || sourceFocus === 'internet' ? 7 : 2);
-  const searchUrls = unique([
-    `https://duckduckgo.com/html/?${new URLSearchParams({ q: queryVariants[0] })}`,
-    ...queryVariants.map(
-      (variant) => `https://www.bing.com/search?${new URLSearchParams({ q: variant, count: String(maxResults) })}`
-    )
-  ]);
+  const ddgUrl = `https://duckduckgo.com/html/?${new URLSearchParams({ q: queryVariants[0] })}`;
+  const bingUrls = queryVariants.map(
+    (variant) => `https://www.bing.com/search?${new URLSearchParams({ q: variant, count: String(maxResults) })}`
+  );
+  const searchUrls = unique([ddgUrl, ...bingUrls]);
   const warnings = [];
   const companies = [];
 
   for (const searchUrl of searchUrls) {
     if (companies.length >= maxResults) break;
+    const isDuckDuckGo = searchUrl.includes('duckduckgo.com');
+
+    if (isDuckDuckGo && !canUseDuckDuckGo()) {
+      warnings.push('DuckDuckGo skipped: request budget/cooldown active after previous rate-limit; using Bing instead.');
+      continue;
+    }
+
     try {
       const html = await fetchText(searchUrl, 8_000);
+
+      if (isDuckDuckGo && isDuckDuckGoBlockedHtml(html)) {
+        registerDuckDuckGoBlock();
+        warnings.push('DuckDuckGo blocked this run (anomaly/rate-limit page detected); falling back to Bing for remaining queries.');
+        continue;
+      }
+
       const $ = cheerio.load(html);
-      const isDuckDuckGo = searchUrl.includes('duckduckgo.com');
       const elements = $(isDuckDuckGo ? '.result' : '.b_algo').toArray();
       for (const element of elements) {
         if (companies.length >= maxResults) break;
@@ -1061,9 +1305,10 @@ async function discoverCompaniesFromPublicSearch({ niche, city, district, limit,
         });
       }
     } catch (error) {
-      warnings.push(`Public search skipped ${searchUrl.includes('duckduckgo.com') ? 'DuckDuckGo' : 'Bing'}: ${error.message || 'unknown error'}`);
+      warnings.push(`Public search skipped ${isDuckDuckGo ? 'DuckDuckGo' : 'Bing'}: ${error.message || 'unknown error'}`);
     }
   }
+
 
   const uniqueFoundCompanies = uniqueCompanies(companies).slice(0, limit);
   const enriched = await enrichDiscoveredCompanyContacts(uniqueFoundCompanies, { limit: Math.min(limit, 24), warnings });

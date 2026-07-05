@@ -241,6 +241,87 @@ h2 {
   display: none !important;
 }
 
+.main-view-tabs {
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.view-tab {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 800;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 10px;
+}
+
+.view-tab.active {
+  border-color: var(--blue);
+  color: var(--blue);
+}
+
+.history-view {
+  display: grid;
+  gap: 12px;
+}
+
+.history-header {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.history-header .muted-text {
+  margin: 0;
+  max-width: 760px;
+}
+
+.history-row-status {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 5px 9px;
+}
+
+.history-row-status.completed {
+  background: #ecfdf5;
+  border-color: #a7f3d0;
+  color: var(--green);
+}
+
+.history-row-status.failed {
+  background: #fee2e2;
+  border-color: #fecaca;
+  color: var(--red);
+}
+
+.history-row-status.discovering {
+  background: #fffbeb;
+  border-color: #fde68a;
+  color: var(--amber);
+}
+
+.history-company-link {
+  background: transparent;
+  border: 0;
+  color: var(--blue);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 0;
+  text-decoration: underline;
+}
+
 .sidebar-actions {
   display: grid;
   gap: 8px;
