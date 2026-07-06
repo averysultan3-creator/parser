@@ -390,7 +390,11 @@ async function loadConfig() {
     );
     setPill(els.robotsStatus, state.config.respectRobotsTxt ? 'robots.txt on' : 'robots.txt off', state.config.respectRobotsTxt);
     renderConfigDiagnostics({ openaiReady, amazonReady, googleReady, ceidgReady, internetReady, discoveryReady });
+    await loadHistory();
   } catch (error) {
+    try {
+      await loadHistory();
+    } catch {}
     state.config = null;
     els.discoverButton.disabled = true;
     if (els.allSourcesButton) els.allSourcesButton.disabled = true;
@@ -845,6 +849,7 @@ async function runDiscovery() {
       const job = await waitForDiscoveryCompletion(data.jobId);
       const companies = Array.isArray(job.companies) ? job.companies : [];
       if (!companies.length) {
+        await loadHistory();
         setDiscoverStatus('Компании не найдены. Попробуйте другую категорию или источник.', 'warn');
         setStatus('Поиск завершился без результатов.', 'warn');
         return;
@@ -871,6 +876,7 @@ async function runDiscovery() {
 
     const companies = data.companies || [];
     if (!companies.length) {
+      await loadHistory();
       setDiscoverStatus('Компании не найдены. Попробуйте другую категорию или источник.', 'warn');
       return;
     }

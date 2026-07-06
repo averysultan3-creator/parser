@@ -34,6 +34,10 @@ try {
     });
     const mapsRun = await waitForDiscoveryJob(mapsStart.jobId);
     assert((mapsRun?.companies || []).length > 0, 'maps_api discovery must return at least one company');
+    assert(mapsRun?.runId, 'maps_api discovery must expose runId for history');
+    const mapsHistoryRun = await getJson(`/api/history/runs/${mapsRun.runId}`);
+    assert(Array.isArray(mapsHistoryRun?.companies), 'history run payload must include companies');
+    assert((mapsHistoryRun?.companies || []).length > 0, 'history run must contain saved companies');
     results.push(`maps_api ok (${mapsRun.companies.length})`);
   } else {
     results.push('maps_api skipped (GOOGLE_PLACES_API_KEY missing)');
@@ -56,6 +60,10 @@ try {
     assert(allSourcesRun?.meta?.sourceFocus === 'all_sources', 'all_sources meta.sourceFocus must stay all_sources');
     assert(Array.isArray(allSourcesRun?.companies), 'all_sources must return a companies array');
     assert((allSourcesRun?.companies || []).length <= 3, 'all_sources must respect limit');
+    assert(allSourcesRun?.runId, 'all_sources discovery must expose runId for history');
+    const allSourcesHistoryRun = await getJson(`/api/history/runs/${allSourcesRun.runId}`);
+    assert(allSourcesHistoryRun?.run?.sourceFocus === 'all_sources', 'history run sourceFocus must stay all_sources');
+    assert(Array.isArray(allSourcesHistoryRun?.companies), 'all_sources history payload must include companies');
     if (config.registry?.googlePlacesConfigured) {
       assert((allSourcesRun?.companies || []).length > 0, 'all_sources must return companies when Google Places is configured');
     }
@@ -64,7 +72,10 @@ try {
     results.push('all_sources skipped (no discovery sources configured)');
   }
 
-  console.log(`Smoke OK: ${results.join(' | ')}`);
+  const history = await getJson('/api/history/runs');
+  assert(Array.isArray(history?.runs), 'history list must return runs array');
+  assert(history.runs.length > 0, 'history list must not be empty after smoke discovery');
+  console.log(`Smoke OK: ${results.join(' | ')} | history ok (${history.runs.length})`);
 } catch (error) {
   console.error(`Smoke FAILED: ${error.message || error}`);
   process.exitCode = 1;
