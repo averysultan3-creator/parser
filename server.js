@@ -130,6 +130,102 @@ let discoveryContext = { country: '', radiusKm: 0 };
 const discoveryJobs = new Map();
 let discoveryJobSeq = 1;
 
+function createDiscoveryJob(meta) {
+  const id = String(discoveryJobSeq++);
+  const now = new Date().toISOString();
+  const job = {
+    id,
+    status: 'queued',
+    createdAt: now,
+    updatedAt: now,
+    runId: '',
+    meta: {
+      niches: meta.niches || [],
+      city: meta.city || '',
+      country: meta.country || '',
+      district: meta.district || '',
+      radiusKm: meta.radiusKm || 0,
+      sourceFocus: meta.sourceFocus || 'internet',
+      limit: meta.limit || 0
+    },
+    progress: {
+      message: 'Ожидание запуска...',
+      currentNiche: '',
+      currentSource: '',
+      foundCount: 0,
+      processedNiches: 0,
+      totalNiches: Array.isArray(meta.niches) ? meta.niches.length : 0
+    },
+    partialCompanies: [],
+    warnings: [],
+    queries: [],
+    result: null,
+    error: ''
+  };
+  discoveryJobs.set(id, job);
+  return job;
+}
+
+function getDiscoveryJob(id) {
+  return discoveryJobs.get(String(id)) || null;
+}
+
+function updateDiscoveryJob(jobId, patch = {}) {
+  const job = getDiscoveryJob(jobId);
+  if (!job) return null;
+  if (patch.status) job.status = patch.status;
+  if (patch.runId !== undefined) job.runId = patch.runId;
+  if (patch.error !== undefined) job.error = patch.error;
+  if (patch.result !== undefined) job.result = patch.result;
+  if (patch.partialCompanies) {
+    job.partialCompanies = uniqueCompanies(normalizeItems(patch.partialCompanies)).slice(0, job.meta.limit || MAX_DISCOVERY_ITEMS);
+  }
+  if (patch.appendCompanies?.length) {
+    job.partialCompanies = uniqueCompanies([...job.partialCompanies, ...normalizeItems(patch.appendCompanies)]).slice(
+      0,
+      job.meta.limit || MAX_DISCOVERY_ITEMS
+    );
+  }
+  if (patch.appendWarnings?.length) {
+    job.warnings = unique([...job.warnings, ...patch.appendWarnings.map(cleanText)]).slice(0, 40);
+  }
+  if (patch.appendQueries?.length) {
+    job.queries = unique([...job.queries, ...patch.appendQueries.map(cleanText)]).slice(0, 50);
+  }
+  if (patch.progress) {
+    job.progress = {
+      ...job.progress,
+      ...patch.progress,
+      foundCount: patch.progress.foundCount ?? job.partialCompanies.length
+    };
+  } else {
+    job.progress.foundCount = job.partialCompanies.length;
+  }
+  job.updatedAt = new Date().toISOString();
+  return job;
+}
+
+function serializeDiscoveryJob(job) {
+  if (!job) return null;
+  return {
+    id: job.id,
+    status: job.status,
+    createdAt: job.createdAt,
+    updatedAt: job.updatedAt,
+    runId: job.runId,
+    meta: job.meta,
+    progress: {
+      ...job.progress,
+      foundCount: job.partialCompanies.length
+    },
+    companies: job.partialCompanies,
+    warnings: job.warnings,
+    queries: job.queries,
+    result: job.result,
+    error: job.error
+  };
+}
+
 const CEIDG_ENDPOINT =
   process.env.CEIDG_API_ENDPOINT || 'https://dane.biznes.gov.pl/api/ceidg/v3/firmy';
 const CEIDG_TOKEN = process.env.CEIDG_API_TOKEN || '';
@@ -218,6 +314,16 @@ app.use((req, res, next) => {
   res.setHeader('Vary', 'Origin');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'content-type');
+  // Chrome's Private Network Access policy requires this header on the
+  // preflight response whenever a page loaded from a public address (like
+  // https://averysultan3-creator.github.io) tries to fetch a private/local
+  // address (http://localhost:4317). Without it the browser silently fails
+  // the request with "Failed to fetch" even though CORS itself is configured
+  // correctly, which is why the GitHub Pages version could not reach the
+  // local backend.
+  if (req.headers['access-control-request-private-network'] === 'true') {
+    res.setHeader('Access-Control-Allow-Private-Network', 'true');
+  }
 
   if (req.method === 'OPTIONS') {
     return res.sendStatus(204);
@@ -251,6 +357,22 @@ app.get('/api/config', (_req, res) => {
       amazonLocationRegion: AWS_LOCATION_REGION,
       ceidgEndpoint: CEIDG_ENDPOINT
     }
+  });
+});
+
+app.get('/api/health', (_req, res) => {
+  res.json({
+    ok: true,
+    service: 'warsaw-site-parser',
+    port: PORT,
+    hasOpenAiKey: Boolean(openai),
+    discovery: {
+      googlePlacesConfigured: Boolean(GOOGLE_PLACES_API_KEY),
+      amazonLocationConfigured: Boolean(AWS_LOCATION_API_KEY),
+      ceidgConfigured: Boolean(CEIDG_TOKEN),
+      internetSearchConfigured: true
+    },
+    timestamp: new Date().toISOString()
   });
 });
 
@@ -310,8 +432,8 @@ app.post('/api/analyze', async (req, res) => {
 });
 
 app.post('/api/discover', async (req, res) => {
-  const runStartedAt = performance.now();
-  let run = null;
+  const runStartedAt = 0;
+  const run = null;
   try {
     const requestedNiches = Array.isArray(req.body?.niches)
       ? req.body.niches.map(cleanText).filter(Boolean)
@@ -334,74 +456,33 @@ app.post('/api/discover', async (req, res) => {
       return res.status(400).json({ error: 'Укажите город или страну для поиска.' });
     }
 
-    discoveryContext = { country, radiusKm, city };
-    run = store.createRun({
+    const job = createDiscoveryJob({
       niches,
       city: city || country,
+      country,
       district,
+      radiusKm,
       sourceFocus,
-      requestedLimit: limit
+      limit
     });
 
-    console.log(
-      `[discover] run=${run.id} niches=${JSON.stringify(niches)} city=${city || '(none)'} country=${country || '(none)'} district=${district || '(none)'} radiusKm=${radiusKm || '(default)'} sourceFocus=${sourceFocus} limit=${limit}`
-    );
-
-    const startedAt = performance.now();
-    const discovery = await discoverCompaniesBatchWithoutAI({
+    void runDiscoveryJob(job.id, {
       niches,
       city: city || country,
+      country,
       district,
-      limit,
-      sourceFocus
+      radiusKm,
+      sourceFocus,
+      limit
     });
-    const foundCount = (discovery.companies || []).length;
-    const companies = normalizeItems(discovery.companies || []).slice(0, limit);
-
-    let newCount = 0;
-    let duplicateCount = 0;
-    const companyIds = [];
-    for (const company of companies) {
-      const { id, isNew } = store.upsertCompany(company, { runId: run.id, stage: 'discovered' });
-      companyIds.push(id);
-      if (isNew) newCount += 1;
-      else duplicateCount += 1;
-    }
-    store.addCompanyIdsToRun(run.id, companyIds);
-    store.updateRun(run.id, {
-      status: 'completed',
-      finished_at: new Date().toISOString(),
-      found_count: foundCount,
-      new_count: newCount,
-      duplicate_count: duplicateCount,
-      warnings: Array.isArray(discovery.warnings) ? discovery.warnings.slice(0, 20) : []
-    });
-
-    console.log(
-      `[discover] run=${run.id} google_places_returned=${foundCount} deduped_removed=${Math.max(0, foundCount - companies.length)} after_filters=${companies.length} new=${newCount} duplicates=${duplicateCount}`
-    );
 
     res.json({
-      runId: run.id,
-      companies: companies.map((company, index) => ({ ...company, _companyId: companyIds[index] })),
-      queries: Array.isArray(discovery.queries) ? discovery.queries.slice(0, 10) : [],
-      warnings: Array.isArray(discovery.warnings) ? discovery.warnings.slice(0, 10) : [],
-      meta: {
-        count: companies.length,
-        newCount,
-        duplicateCount,
-        usedAi: false,
-        source: discovery.source,
-        sourceFocus,
-        categories: niches,
-        city: city || country,
-        country,
-        radiusKm,
-        elapsedMs: Math.round(performance.now() - startedAt)
-      }
+      jobId: job.id,
+      status: job.status,
+      meta: job.meta
     });
   } catch (error) {
-    console.error(`[discover] run=${run?.id || 'n/a'} failed:`, error);
+    console.error('[discover] failed to create discovery job:', error);
     if (run) {
       store.updateRun(run.id, {
         status: 'failed',
@@ -419,6 +500,12 @@ app.post('/api/discover', async (req, res) => {
     discoveryContext = { country: '', radiusKm: 0 };
     void runStartedAt;
   }
+});
+
+app.get('/api/discover/jobs/:id', (req, res) => {
+  const job = serializeDiscoveryJob(getDiscoveryJob(req.params.id));
+  if (!job) return res.status(404).json({ error: 'Discovery job not found.' });
+  res.json(job);
 });
 
 app.get('/api/history/runs', (_req, res) => {
@@ -600,7 +687,133 @@ function normalizeDiscoverySource(value) {
   return 'internet';
 }
 
-async function discoverCompaniesBatchWithoutAI({ niches, city, district, limit, sourceFocus }) {
+async function runDiscoveryJob(jobId, params) {
+  const runStartedAt = performance.now();
+  let run = null;
+
+  try {
+    updateDiscoveryJob(jobId, {
+      status: 'running',
+      progress: {
+        message: 'Запускаю поиск...',
+        currentNiche: params.niches[0] || '',
+        currentSource: params.sourceFocus,
+        processedNiches: 0,
+        totalNiches: params.niches.length
+      }
+    });
+
+    discoveryContext = { country: params.country, radiusKm: params.radiusKm, city: params.city };
+    run = store.createRun({
+      niches: params.niches,
+      city: params.city,
+      district: params.district,
+      sourceFocus: params.sourceFocus,
+      requestedLimit: params.limit
+    });
+    updateDiscoveryJob(jobId, { runId: run.id });
+
+    const discovery = await discoverCompaniesBatchWithoutAI({
+      niches: params.niches,
+      city: params.city,
+      district: params.district,
+      limit: params.limit,
+      sourceFocus: params.sourceFocus,
+      onProgress(event) {
+        updateDiscoveryJob(jobId, {
+          appendCompanies: event.companies || [],
+          appendQueries: event.queries || [],
+          appendWarnings: event.warnings || [],
+          progress: {
+            message: event.message || 'Ищу компании...',
+            currentNiche: event.niche || '',
+            currentSource: event.source || '',
+            processedNiches: event.processedNiches ?? 0,
+            totalNiches: params.niches.length,
+            foundCount: event.foundSoFar ?? event.count ?? 0
+          }
+        });
+      }
+    });
+
+    const companies = normalizeItems(discovery.companies || []).slice(0, params.limit);
+    const foundCount = companies.length;
+    let newCount = 0;
+    let duplicateCount = 0;
+    const companyIds = [];
+
+    for (const company of companies) {
+      const { id, isNew } = store.upsertCompany(company, { runId: run.id, stage: 'discovered' });
+      companyIds.push(id);
+      if (isNew) newCount += 1;
+      else duplicateCount += 1;
+    }
+
+    store.addCompanyIdsToRun(run.id, companyIds);
+    store.updateRun(run.id, {
+      status: 'completed',
+      finished_at: new Date().toISOString(),
+      found_count: foundCount,
+      new_count: newCount,
+      duplicate_count: duplicateCount,
+      warnings: Array.isArray(discovery.warnings) ? discovery.warnings.slice(0, 20) : []
+    });
+
+    updateDiscoveryJob(jobId, {
+      status: 'completed',
+      partialCompanies: companies.map((company, index) => ({ ...company, _companyId: companyIds[index] })),
+      appendQueries: discovery.queries || [],
+      appendWarnings: discovery.warnings || [],
+      result: {
+        runId: run.id,
+        queries: Array.isArray(discovery.queries) ? discovery.queries.slice(0, 10) : [],
+        warnings: Array.isArray(discovery.warnings) ? discovery.warnings.slice(0, 10) : [],
+        meta: {
+          count: companies.length,
+          newCount,
+          duplicateCount,
+          usedAi: false,
+          source: discovery.source,
+          sourceFocus: params.sourceFocus,
+          categories: params.niches,
+          city: params.city,
+          country: params.country,
+          radiusKm: params.radiusKm,
+          elapsedMs: Math.round(performance.now() - runStartedAt)
+        }
+      },
+      progress: {
+        message: `Найдено ${companies.length} компаний. Поиск завершен.`,
+        currentNiche: '',
+        currentSource: discovery.source || params.sourceFocus,
+        processedNiches: params.niches.length,
+        totalNiches: params.niches.length,
+        foundCount: companies.length
+      }
+    });
+  } catch (error) {
+    console.error(`[discover-job] id=${jobId} run=${run?.id || 'n/a'} failed:`, error);
+    if (run) {
+      store.updateRun(run.id, {
+        status: 'failed',
+        finished_at: new Date().toISOString(),
+        warnings: [error.message || 'Ошибка поиска компаний.']
+      });
+    }
+    updateDiscoveryJob(jobId, {
+      status: 'failed',
+      error: error.message || 'Ошибка поиска компаний.',
+      appendWarnings: [error.message || 'Ошибка поиска компаний.'],
+      progress: {
+        message: error.message || 'Ошибка поиска компаний.'
+      }
+    });
+  } finally {
+    discoveryContext = { country: '', radiusKm: 0, city: '' };
+  }
+}
+
+async function discoverCompaniesBatchWithoutAI({ niches, city, district, limit, sourceFocus, onProgress }) {
   if (sourceFocus === 'amazon_location') {
     if (!AWS_LOCATION_API_KEY) {
       throw new Error('Для Amazon Location нужен AWS_LOCATION_API_KEY в .env.');
@@ -610,7 +823,27 @@ async function discoverCompaniesBatchWithoutAI({ niches, city, district, limit, 
     const perNicheLimit = Math.max(5, Math.ceil(limit / Math.max(1, niches.length)));
     for (const niche of niches) {
       if (uniqueCompanies(amazonDiscoveries.flatMap((item) => item.companies || [])).length >= limit) break;
-      amazonDiscoveries.push(await discoverCompaniesFromAmazonLocationExpanded({ niche, city, district, limit: perNicheLimit, sourceFocus }));
+      const discovery = await discoverCompaniesFromAmazonLocationExpanded({
+        niche,
+        city,
+        district,
+        limit: perNicheLimit,
+        sourceFocus,
+        onProgress
+      });
+      amazonDiscoveries.push(discovery);
+      if (typeof onProgress === 'function') {
+        onProgress({
+          niche,
+          source: discovery.source,
+          companies: discovery.companies || [],
+          queries: discovery.queries || [],
+          warnings: discovery.warnings || [],
+          foundSoFar: uniqueCompanies(amazonDiscoveries.flatMap((item) => item.companies || [])).length,
+          processedNiches: amazonDiscoveries.length,
+          message: `Найдено ${uniqueCompanies(amazonDiscoveries.flatMap((item) => item.companies || [])).length} компаний...`
+        });
+      }
     }
 
     return mergeDiscoveries(amazonDiscoveries, limit);
@@ -621,7 +854,27 @@ async function discoverCompaniesBatchWithoutAI({ niches, city, district, limit, 
     const perNicheLimit = Math.max(5, Math.ceil(limit / Math.max(1, niches.length)));
     for (const niche of niches) {
       if (uniqueCompanies(googleDiscoveries.flatMap((item) => item.companies || [])).length >= limit) break;
-      googleDiscoveries.push(await discoverCompaniesFromGooglePlacesExpanded({ niche, city, district, limit: perNicheLimit, sourceFocus }));
+      const discovery = await discoverCompaniesFromGooglePlacesExpanded({
+        niche,
+        city,
+        district,
+        limit: perNicheLimit,
+        sourceFocus,
+        onProgress
+      });
+      googleDiscoveries.push(discovery);
+      if (typeof onProgress === 'function') {
+        onProgress({
+          niche,
+          source: discovery.source,
+          companies: discovery.companies || [],
+          queries: discovery.queries || [],
+          warnings: discovery.warnings || [],
+          foundSoFar: uniqueCompanies(googleDiscoveries.flatMap((item) => item.companies || [])).length,
+          processedNiches: googleDiscoveries.length,
+          message: `Найдено ${uniqueCompanies(googleDiscoveries.flatMap((item) => item.companies || [])).length} компаний...`
+        });
+      }
     }
 
     return mergeDiscoveries(googleDiscoveries, limit);
@@ -647,12 +900,31 @@ async function discoverCompaniesBatchWithoutAI({ niches, city, district, limit, 
         city,
         district,
         limit: Math.max(perNicheLimit, remaining),
-        sourceFocus
+        sourceFocus,
+        onProgress: (event) => {
+          if (typeof onProgress !== 'function') return;
+          onProgress({
+            ...event,
+            processedNiches: Math.min(niches.indexOf(niche) + 1, niches.length)
+          });
+        }
       });
       sources.add(discovery.source);
       queries.push(...(discovery.queries || []));
       warnings.push(...(discovery.warnings || []));
       collected.push(...(discovery.companies || []));
+      if (typeof onProgress === 'function') {
+        onProgress({
+          niche,
+          source: discovery.source,
+          companies: discovery.companies || [],
+          queries: discovery.queries || [],
+          warnings: discovery.warnings || [],
+          foundSoFar: uniqueCompanies(collected).length,
+          processedNiches: Math.min(niches.indexOf(niche) + 1, niches.length),
+          message: `Найдено ${uniqueCompanies(collected).length} компаний...`
+        });
+      }
     } catch (error) {
       warnings.push(`Category "${niche}" skipped: ${error.message || 'unknown error'}`);
     }
@@ -699,9 +971,18 @@ async function discoverCompaniesWithoutAI({ niche, city, district, limit, source
 
     if (GOOGLE_PLACES_API_KEY) {
       try {
-        primary = await discoverCompaniesFromGooglePlacesExpanded({ niche, city, district, limit, sourceFocus });
+        primary = await discoverCompaniesFromGooglePlacesExpanded({ niche, city, district, limit, sourceFocus, onProgress });
         if (typeof onProgress === 'function') {
-          onProgress({ niche, source: 'google_places_api', foundSoFar: primary.companies.length, count: primary.companies.length });
+          onProgress({
+            niche,
+            source: 'google_places_api',
+            companies: primary.companies || [],
+            queries: primary.queries || [],
+            warnings: primary.warnings || [],
+            foundSoFar: primary.companies.length,
+            count: primary.companies.length,
+            message: `Google Places: найдено ${primary.companies.length}`
+          });
         }
       } catch (error) {
         warnings.push(`Google Places skipped: ${error.message || 'unknown error'}`);
@@ -710,9 +991,18 @@ async function discoverCompaniesWithoutAI({ niche, city, district, limit, source
 
     if (!primary?.companies?.length && AWS_LOCATION_API_KEY) {
       try {
-        primary = await discoverCompaniesFromAmazonLocationExpanded({ niche, city, district, limit, sourceFocus });
+        primary = await discoverCompaniesFromAmazonLocationExpanded({ niche, city, district, limit, sourceFocus, onProgress });
         if (typeof onProgress === 'function') {
-          onProgress({ niche, source: 'amazon_location', foundSoFar: primary.companies.length, count: primary.companies.length });
+          onProgress({
+            niche,
+            source: 'amazon_location',
+            companies: primary.companies || [],
+            queries: primary.queries || [],
+            warnings: primary.warnings || [],
+            foundSoFar: primary.companies.length,
+            count: primary.companies.length,
+            message: `Amazon Location: найдено ${primary.companies.length}`
+          });
         }
       } catch (error) {
         warnings.push(`Amazon Location skipped: ${error.message || 'unknown error'}`);
@@ -729,7 +1019,7 @@ async function discoverCompaniesWithoutAI({ niche, city, district, limit, source
 
     if (!primary?.companies?.length) {
       try {
-        primary = await discoverCompaniesFromPublicSearchExpanded({ niche, city, district, limit, sourceFocus });
+        primary = await discoverCompaniesFromPublicSearchExpanded({ niche, city, district, limit, sourceFocus, onProgress });
       } catch (error) {
         warnings.push(`Public search skipped: ${error.message || 'unknown error'}`);
       }
@@ -745,7 +1035,14 @@ async function discoverCompaniesWithoutAI({ niche, city, district, limit, source
 
     const enrichedCompanies = await enrichPrimaryCompaniesSmart(primary.companies, { warnings });
     if (typeof onProgress === 'function') {
-      onProgress({ niche, source: 'cross_verification', foundSoFar: enrichedCompanies.length, count: enrichedCompanies.length });
+      onProgress({
+        niche,
+        source: 'cross_verification',
+        companies: enrichedCompanies,
+        foundSoFar: enrichedCompanies.length,
+        count: enrichedCompanies.length,
+        message: `Сверяю и дополняю ${enrichedCompanies.length} компаний...`
+      });
     }
 
     return {
@@ -816,7 +1113,7 @@ function uniqueCompanies(companies) {
   return result;
 }
 
-async function discoverCompaniesFromAmazonLocationExpanded({ niche, city, district, limit, sourceFocus }) {
+async function discoverCompaniesFromAmazonLocationExpanded({ niche, city, district, limit, sourceFocus, onProgress }) {
   const cityIsWarsaw = isWarsawCity(city);
   const districts = district ? [district] : cityIsWarsaw ? ['', ...DEFAULT_WARSAW_DISTRICTS.slice(0, 8)] : [''];
   const queryNiches = district
@@ -852,6 +1149,19 @@ async function discoverCompaniesFromAmazonLocationExpanded({ niche, city, distri
           sourceFocus
         })
       );
+      if (typeof onProgress === 'function') {
+        const partial = mergeDiscoveries(discoveries, limit);
+        onProgress({
+          niche,
+          source: 'amazon_location',
+          companies: partial.companies || [],
+          queries: partial.queries || [],
+          warnings: partial.warnings || [],
+          foundSoFar: partial.companies?.length || 0,
+          count: partial.companies?.length || 0,
+          message: `Amazon Location: найдено ${partial.companies?.length || 0}`
+        });
+      }
     } catch (error) {
       warnings.push(`Amazon Location skipped ${districtName || city}: ${error.message || 'unknown error'}`);
       if (!districtName) break;
@@ -993,7 +1303,7 @@ function amazonLocationItemToCompany(item, { niche, city, district, sourceFocus 
   };
 }
 
-async function discoverCompaniesFromGooglePlacesExpanded({ niche, city, district, limit, sourceFocus }) {
+async function discoverCompaniesFromGooglePlacesExpanded({ niche, city, district, limit, sourceFocus, onProgress }) {
   const cityIsWarsaw = isWarsawCity(city);
   const districts = district ? [district] : cityIsWarsaw ? ['', ...DEFAULT_WARSAW_DISTRICTS] : [''];
   const perQueryLimit = Math.min(20, Math.max(5, Math.ceil(limit / Math.min(districts.length, 6))));
@@ -1014,6 +1324,19 @@ async function discoverCompaniesFromGooglePlacesExpanded({ niche, city, district
           sourceFocus
         })
       );
+      if (typeof onProgress === 'function') {
+        const partial = mergeDiscoveries(discoveries, limit);
+        onProgress({
+          niche,
+          source: 'google_places_api',
+          companies: partial.companies || [],
+          queries: partial.queries || [],
+          warnings: partial.warnings || [],
+          foundSoFar: partial.companies?.length || 0,
+          count: partial.companies?.length || 0,
+          message: `Google Places: найдено ${partial.companies?.length || 0}`
+        });
+      }
     } catch (error) {
       warnings.push(error.message || 'Google Places API error');
       break;
@@ -1165,7 +1488,7 @@ async function discoverCompaniesFromGooglePlaces({ niche, city, district, limit,
   };
 }
 
-async function discoverCompaniesFromPublicSearchExpanded({ niche, city, district, limit, sourceFocus }) {
+async function discoverCompaniesFromPublicSearchExpanded({ niche, city, district, limit, sourceFocus, onProgress }) {
   if (district) {
     return discoverCompaniesFromPublicSearch({ niche, city, district, limit, sourceFocus });
   }
@@ -1189,6 +1512,19 @@ async function discoverCompaniesFromPublicSearchExpanded({ niche, city, district
           sourceFocus
         })
       );
+      if (typeof onProgress === 'function') {
+        const partial = mergeDiscoveries(discoveries, limit);
+        onProgress({
+          niche,
+          source: `public_search_${sourceFocus}`,
+          companies: partial.companies || [],
+          queries: partial.queries || [],
+          warnings: partial.warnings || [],
+          foundSoFar: partial.companies?.length || 0,
+          count: partial.companies?.length || 0,
+          message: `Публичный поиск: найдено ${partial.companies?.length || 0}`
+        });
+      }
     } catch (error) {
       warnings.push(`Public search skipped ${districtName || city}: ${error.message || 'unknown error'}`);
     }

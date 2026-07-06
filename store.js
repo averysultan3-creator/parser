@@ -50,6 +50,24 @@ function persistRuns() {
   saveJson(RUNS_FILE, state.runs);
 }
 
+function markAbandonedRuns() {
+  const now = new Date().toISOString();
+  let changed = false;
+  for (const run of state.runs.runs) {
+    if (run?.status !== 'discovering') continue;
+    run.status = 'failed';
+    run.finished_at = run.finished_at || now;
+    run.warnings = [
+      ...(Array.isArray(run.warnings) ? run.warnings : []),
+      'Run was interrupted before completion (backend restart or page reload).'
+    ].slice(0, 20);
+    changed = true;
+  }
+  if (changed) persistRuns();
+}
+
+markAbandonedRuns();
+
 // --- small standalone text helpers (kept local so this module has no dependency
 // on server.js and can be safely imported from anywhere) ---
 function cleanIdentifier(value) {

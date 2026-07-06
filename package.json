@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "node server.js",
-    "start": "node server.js"
+    "start": "node server.js",
+    "smoke": "node scripts/smoke-test.mjs",
+    "smoke:boot": "node scripts/smoke-test.mjs --boot"
   },
   "dependencies": {
     "cheerio": "^1.0.0",

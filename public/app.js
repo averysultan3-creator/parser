@@ -6,6 +6,9 @@ const state = {
   historyLoaded: false,
   historyLoadingRunId: null,
   activeHistoryRun: null,
+  discoveryJobId: null,
+  discoveryPollTimer: null,
+  discoveryRunning: false,
   detailTab: 'overview',
   filters: {
     text: '',
@@ -569,6 +572,7 @@ function renderHistory(runs) {
 }
 
 async function openHistoryRun(runId) {
+  stopDiscoveryPolling();
   try {
     state.historyLoadingRunId = runId;
     renderHistory(state.historyRuns);
@@ -592,6 +596,27 @@ async function openHistoryRun(runId) {
     state.results = historyRecordsToResults(records);
     state.selectedId = state.results[0]?.id || null;
     state.detailTab = 'overview';
+    // Reset all result filters when opening a saved history run. Otherwise the
+    // sidebar's default "Есть телефон" checkbox (and any other filter left over
+    // from a previous search) can silently hide every saved company, making the
+    // history run look empty/broken even though it opened correctly.
+    els.resultFilterText.value = '';
+    els.resultFilterSite.value = 'all';
+    els.sidebarSiteFilter.value = 'all';
+    els.resultFilterSize.value = 'all';
+    els.resultFilterPriority.value = 'all';
+    els.resultFilterMinScore.value = '0';
+    els.sidebarMinScore.value = '0';
+    els.sidebarHasPhone.checked = false;
+    els.sidebarHasSocial.checked = false;
+    els.sidebarHasEmail.checked = false;
+    state.filters = {
+      text: '',
+      site: 'all',
+      size: 'all',
+      priority: 'all',
+      minScore: 0
+    };
     renderResultsContext();
     renderHistory(state.historyRuns);
     renderResults();
@@ -601,6 +626,7 @@ async function openHistoryRun(runId) {
     els.headerExportCsvButton.disabled = false;
     els.exportJsonButton.disabled = false;
     setStatus(`Открыт запуск из истории: ${state.results.length} компаний.`, 'ok');
+
   } catch (error) {
     state.historyLoadingRunId = null;
     renderHistory(state.historyRuns);
@@ -626,7 +652,114 @@ async function handleFile(event) {
   els.csvInput.value = await file.text();
 }
 
+function stopDiscoveryPolling({ clearResults = false } = {}) {
+  if (state.discoveryPollTimer) {
+    clearTimeout(state.discoveryPollTimer);
+    state.discoveryPollTimer = null;
+  }
+  state.discoveryJobId = null;
+  if (clearResults) {
+    state.results = [];
+    state.selectedId = null;
+    state.detailTab = 'overview';
+  }
+}
+
+function setCurrentResults(results, { resetDetailTab = false } = {}) {
+  const nextResults = Array.isArray(results) ? results : [];
+  const selectedId = state.selectedId;
+  state.results = nextResults;
+  if (resetDetailTab) state.detailTab = 'overview';
+  if (!selectedId || !nextResults.some((result) => result.id === selectedId)) {
+    state.selectedId = nextResults[0]?.id || null;
+    if (nextResults.length) state.detailTab = 'overview';
+  }
+  renderResults();
+  renderMetrics();
+  renderDetail();
+  const hasResults = nextResults.length > 0;
+  els.exportCsvButton.disabled = !hasResults;
+  els.headerExportCsvButton.disabled = !hasResults;
+  els.exportJsonButton.disabled = !hasResults;
+}
+
+function applyDiscoveryPreview(companies) {
+  const previewResults = companiesToPreviewResults(companies);
+  setCurrentResults(previewResults);
+}
+
+async function fetchDiscoveryJob(jobId) {
+  const response = await fetch(apiUrl(`/api/discover/jobs/${jobId}`));
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Ошибка чтения статуса поиска.');
+  return data;
+}
+
+function buildDiscoveryStatusText(job) {
+  const foundCount = job?.progress?.foundCount ?? job?.companies?.length ?? 0;
+  const message = String(job?.progress?.message || '').trim();
+  const niche = displayCategory(job?.progress?.currentNiche || '');
+  const source = displaySourceLabel(job?.progress?.currentSource || job?.meta?.sourceFocus || '');
+  const parts = [message || `Найдено ${foundCount}`];
+  if (niche && niche !== '-') parts.push(niche);
+  if (source && source !== '-') parts.push(source);
+  return parts.join(' - ');
+}
+
+async function waitForDiscoveryCompletion(jobId) {
+  while (state.discoveryJobId === jobId) {
+    const job = await fetchDiscoveryJob(jobId);
+    const companies = Array.isArray(job.companies) ? job.companies : [];
+
+    if (companies.length) {
+      els.csvInput.value = itemsToCsv(companies);
+      applyDiscoveryPreview(companies);
+    }
+
+    const statusText = buildDiscoveryStatusText(job);
+    setDiscoverStatus(statusText, job.status === 'failed' ? 'warn' : job.status === 'completed' ? 'ok' : 'work');
+    setStatus(
+      job.status === 'completed'
+        ? `Поиск завершен. Найдено ${companies.length} компаний.`
+        : `${statusText}. Промежуточные результаты уже доступны.`,
+      job.status === 'failed' ? 'warn' : job.status === 'completed' ? 'ok' : 'work'
+    );
+
+    if (job.status === 'completed') {
+      stopDiscoveryPolling();
+      return job;
+    }
+    if (job.status === 'failed') {
+      stopDiscoveryPolling();
+      throw new Error(job.error || 'Ошибка поиска компаний.');
+    }
+
+    await new Promise((resolve) => {
+      state.discoveryPollTimer = window.setTimeout(resolve, 1200);
+    });
+    state.discoveryPollTimer = null;
+  }
+
+  throw new Error('Поиск был остановлен.');
+}
+
 async function runDiscovery() {
+  // Guard against overlapping discovery runs. Without this, clicking the
+  // "Найти компании" button again while a previous search is still in
+  // progress (a common thing to do because the smart-search pipeline can
+  // take a while) spawns a second parallel job on the backend for the same
+  // niche/city. The newer jobId then replaces state.discoveryJobId, so the
+  // UI ends up polling a different job than the one actually doing the work,
+  // which can surface a stale/empty "Компании не найдены" result even though
+  // the backend is still busy finding companies (visible in server logs as
+  // duplicate repeated queries).
+  if (state.discoveryRunning) {
+    setDiscoverStatus('Поиск уже выполняется, дождитесь завершения текущего запроса.', 'warn');
+    return;
+  }
+  state.discoveryRunning = true;
+
+  stopDiscoveryPolling();
   clearHistoryContext();
   state.historyLoaded = false;
   const discoveryReady = Boolean(
@@ -637,8 +770,10 @@ async function runDiscovery() {
   );
   if (!discoveryReady) {
     setDiscoverStatus('Backend не готов. Запустите локальный сервер; публичный поиск должен работать даже без CEIDG API.', 'warn');
+    state.discoveryRunning = false;
     return;
   }
+
 
   const niches = selectedDiscoveryNiches();
   if (!niches.length) {
@@ -647,6 +782,17 @@ async function runDiscovery() {
   }
 
   els.discoverButton.disabled = true;
+  els.analyzeButton.disabled = true;
+  els.quickFindSitesButton.disabled = true;
+  els.exportCsvButton.disabled = true;
+  els.headerExportCsvButton.disabled = true;
+  els.exportJsonButton.disabled = true;
+  state.results = [];
+  state.selectedId = null;
+  state.detailTab = 'overview';
+  renderResults();
+  renderMetrics();
+  renderDetail();
   setDiscoverStatus(
     `Ищу компании: ${niches.length === 1 ? displayCategory(niches[0]) : `${niches.length} категорий`}...`,
     'work'
@@ -670,6 +816,34 @@ async function runDiscovery() {
 
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Ошибка поиска компаний.');
+
+    if (data.jobId) {
+      state.discoveryJobId = data.jobId;
+      const job = await waitForDiscoveryCompletion(data.jobId);
+      const companies = Array.isArray(job.companies) ? job.companies : [];
+      if (!companies.length) {
+        setDiscoverStatus('Компании не найдены. Попробуйте другую категорию или источник.', 'warn');
+        setStatus('Поиск завершился без результатов.', 'warn');
+        return;
+      }
+
+      els.csvInput.value = itemsToCsv(companies);
+      setDiscoverStatus(`Найдено ${companies.length}. Проверяю сайты и готовлю карточки...`, 'work');
+      setStatus(`Проверяю сайты у ${companies.length} компаний...`, 'work');
+      const analyzed = await analyzeCompanies(companies);
+      setCurrentResults(analyzed.results || companiesToPreviewResults(companies), { resetDetailTab: true });
+      const warnings = Array.isArray(job.warnings) ? job.warnings.filter(Boolean).slice(0, 2) : [];
+      const warningText = warnings.length ? ` Предупреждение: ${warnings.join(' ')}` : '';
+      const withPhone = companies.filter((company) => company.phone).length;
+      const withEmail = companies.filter((company) => company.email).length;
+      const withSite = companies.filter((company) => company.website_url).length;
+      setDiscoverStatus(
+        `Найдено ${companies.length}: телефоны ${withPhone}, email ${withEmail}, сайты ${withSite}. CSV заполнен, можно запускать проверку сайтов.${warningText}`,
+        warnings.length ? 'warn' : 'ok'
+      );
+      setStatus('Список компаний готов к анализу.', 'ok');
+      return;
+    }
 
     const companies = data.companies || [];
     if (!companies.length) {
@@ -703,7 +877,11 @@ async function runDiscovery() {
   } catch (error) {
     setDiscoverStatus(error.message || 'Ошибка поиска компаний.', 'warn');
   } finally {
+    stopDiscoveryPolling();
+    state.discoveryRunning = false;
     els.discoverButton.disabled = !discoveryReady;
+    els.analyzeButton.disabled = false;
+    els.quickFindSitesButton.disabled = false;
     renderIcons();
   }
 }
@@ -736,6 +914,7 @@ async function analyzeCompanies(items) {
 }
 
 async function runAnalysis() {
+  stopDiscoveryPolling();
   clearHistoryContext();
   const items = parseInput(els.csvInput.value);
   if (!items.length) {
@@ -870,7 +1049,7 @@ function buildPreviewResult(company, index, idPrefix = 'discovery') {
   );
 
   return {
-    id: `${idPrefix}-${input._companyId || Date.now()}-${index}`,
+    id: stablePreviewResultId(input, index, idPrefix),
     input,
     parsed: {
       ok: false,
@@ -904,6 +1083,15 @@ function buildPreviewResult(company, index, idPrefix = 'discovery') {
     },
     aiSiteAnalysis: { status: 'NOT_REQUESTED' }
   };
+}
+
+function stablePreviewResultId(input, index, idPrefix = 'discovery') {
+  const base =
+    input._companyId ||
+    [input.company, input.address, input.phone, input.source_profile, input.website_url].filter(Boolean).join('|') ||
+    String(index);
+  const normalized = normalizeLookupValue(base).replace(/\s+/g, '-');
+  return `${idPrefix}-${normalized || index}`;
 }
 
 function companiesToPreviewResults(companies) {
