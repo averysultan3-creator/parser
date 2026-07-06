@@ -21,6 +21,21 @@ const state = {
 
 const API_BASE_STORAGE_KEY = 'parserApiBase';
 
+// ngrok на бесплатном тарифе показывает HTML-заглушку для запросов из браузера.
+// Заголовок ngrok-skip-browser-warning отключает её. Добавляем его во все
+// fetch-запросы к ngrok-адресам через глобальную обёртку.
+const nativeFetch = window.fetch.bind(window);
+window.fetch = (url, options = {}) => {
+  const target = String(url || '');
+  if (/ngrok/i.test(target)) {
+    options = {
+      ...options,
+      headers: { ...(options.headers || {}), 'ngrok-skip-browser-warning': '1' }
+    };
+  }
+  return nativeFetch(url, options);
+};
+
 function normalizeApiBase(value) {
   if (!value) return '';
   let cleaned = String(value).trim().replace(/\/+$/, '');
@@ -56,49 +71,85 @@ function resolveApiBase() {
   return '';
 }
 
-const API_BASE = resolveApiBase();
+let apiBase = resolveApiBase();
+
+function getApiBase() {
+  return apiBase;
+}
+
+function persistApiBase(value) {
+  try {
+    if (value) localStorage.setItem(API_BASE_STORAGE_KEY, value);
+    else localStorage.removeItem(API_BASE_STORAGE_KEY);
+  } catch {}
+}
+
+function setApiBase(value, { persist = false } = {}) {
+  apiBase = normalizeApiBase(value);
+  if (persist) persistApiBase(apiBase);
+  return apiBase;
+}
+
+const API_BASE = apiBase;
 
 // На GitHub Pages рядом с index.html лежит tunnel.json, который батник
 // start-parser.bat обновляет при каждом запуске (в нём свежий адрес
 // cloudflared-туннеля). Работнику достаточно открыть обычную ссылку на
 // Pages: скрипт сам подхватит рабочий адрес backend и перезагрузит страницу.
-void syncApiBaseFromTunnelConfig();
+async function isApiBaseReachable(base) {
+  const cleaned = normalizeApiBase(base);
+  if (!cleaned) return false;
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), 5000);
+  try {
+    const response = await fetch(`${cleaned}/api/health`, { cache: 'no-store', signal: controller.signal });
+    return response.ok;
+  } catch {
+    return false;
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+}
 
-async function syncApiBaseFromTunnelConfig() {
+async function syncApiBaseFromTunnelConfig({ reloadOnChange = false } = {}) {
   const onPagesOrFile =
     window.location.protocol === 'file:' || window.location.hostname.endsWith('github.io');
-  if (!onPagesOrFile) return;
+  if (!onPagesOrFile) return false;
   try {
-    if (new URLSearchParams(window.location.search).get('api')) return;
+    if (new URLSearchParams(window.location.search).get('api')) return false;
   } catch {}
   try {
     const response = await fetch(`tunnel.json?t=${Date.now()}`, { cache: 'no-store' });
-    if (!response.ok) return;
+    if (!response.ok) return false;
     const data = await response.json();
     const cleaned = normalizeApiBase(data.api || data.url || '');
-    if (!cleaned || cleaned === API_BASE) return;
+    if (!cleaned) return false;
     // Переключаемся только если новый адрес реально отвечает,
     // чтобы не сломать рабочий адрес из-за устаревшего tunnel.json в кеше CDN.
-    const health = await fetch(`${cleaned}/api/health`, { cache: 'no-store' });
-    if (!health.ok) return;
-    try {
-      localStorage.setItem(API_BASE_STORAGE_KEY, cleaned);
-    } catch {}
-    window.location.reload();
-  } catch {}
+    if (!(await isApiBaseReachable(cleaned))) return false;
+    if (cleaned !== getApiBase()) {
+      setApiBase(cleaned, { persist: true });
+      if (reloadOnChange) {
+        window.location.reload();
+        return true;
+      }
+    } else {
+      persistApiBase(cleaned);
+    }
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function apiUrl(path) {
 
-  return `${API_BASE}${path}`;
+  return `${getApiBase()}${path}`;
 }
 
 function saveApiBaseAndReload(value) {
   const cleaned = normalizeApiBase(value);
-  try {
-    if (cleaned) localStorage.setItem(API_BASE_STORAGE_KEY, cleaned);
-    else localStorage.removeItem(API_BASE_STORAGE_KEY);
-  } catch {}
+  setApiBase(cleaned, { persist: true });
   const url = new URL(window.location.href);
   url.searchParams.delete('api');
   window.location.href = url.toString();
@@ -391,6 +442,7 @@ function renderResultsContext() {
 init();
 
 async function init() {
+  await syncApiBaseFromTunnelConfig({ reloadOnChange: true });
   ensureResultsContext();
   populateCategoryPreset();
   els.discoverCategoryPreset.value = 'cat:Klimatyzacja';
@@ -479,7 +531,7 @@ async function loadConfig() {
     setPill(els.webSearchStatus, 'Crawler unknown', false);
     setPill(els.registryStatus, 'Sources unknown', false);
     setDiscoverStatus(
-      API_BASE.includes('localhost')
+      getApiBase().includes('localhost')
         ? 'Не могу прочитать /api/config. Откройте http://localhost:4317/ и проверьте, что npm run dev запущен. С другого компьютера укажите публичный адрес backend ниже.'
         : `Backend по адресу ${API_BASE || window.location.origin} не отвечает. Проверьте адрес сервера ниже.`,
       'warn'

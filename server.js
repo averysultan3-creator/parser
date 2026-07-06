@@ -318,7 +318,7 @@ app.use((req, res, next) => {
 
   res.setHeader('Vary', 'Origin');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'content-type');
+  res.setHeader('Access-Control-Allow-Headers', 'content-type, ngrok-skip-browser-warning');
   // Chrome's Private Network Access policy requires this header on the
   // preflight response whenever a page loaded from a public address (like
   // https://averysultan3-creator.github.io) tries to fetch a private/local

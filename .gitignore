@@ -8,3 +8,5 @@ exports/
 server-out.log
 server-err.log
 tunnel.log
+ngrok.log
+ngrok.err.log
