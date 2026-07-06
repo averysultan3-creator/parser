@@ -2,6 +2,10 @@ const state = {
   config: null,
   results: [],
   selectedId: null,
+  historyRuns: [],
+  historyLoaded: false,
+  historyLoadingRunId: null,
+  activeHistoryRun: null,
   detailTab: 'overview',
   filters: {
     text: '',
@@ -86,68 +90,70 @@ Detailing Premium Warsaw,Auto detailing / PDR,Wola,+48500111222,detailingpremium
 Klima Expert,Klimatyzacja,Mokotow,+48500999888,kontakt@klimaexpert.pl,,https://facebook.com/demo,,32,4.6,2026-05-28,"montaż klimatyzacji;serwis klimatyzacji",true,true,3,"works across Warsaw, prices from visible in posts"
 Old Site Remonty,Wykończenia wnętrz,Ursynow,+48500777777,biuro@example.com,https://example.com,,15,4.2,2026-04-01,"remont łazienki;wykończenia pod klucz",true,true,2-4,"has website but it looks like placeholder"`;
 
-const topCategories = [
-  'Klimatyzacja',
-  'Auto detailing',
-  'Remonty i wykończenia wnętrz',
-  'Medycyna estetyczna',
-  'Stomatologia',
-  'Fizjoterapia',
-  'Salon kosmetyczny',
-  'Księgowość',
-  'Przedszkole prywatne',
-  'Auto serwis',
-  'Fotowoltaika',
-  'Catering dietetyczny'
+const categoryOptions = [
+  { value: 'Klimatyzacja', label: 'Кондиционирование' },
+  { value: 'Auto detailing', label: 'Автодетейлинг' },
+  { value: 'Remonty i wykończenia wnętrz', label: 'Ремонт и отделка интерьеров' },
+  { value: 'Medycyna estetyczna', label: 'Эстетическая медицина' },
+  { value: 'Stomatologia', label: 'Стоматология' },
+  { value: 'Fizjoterapia', label: 'Физиотерапия' },
+  { value: 'Salon kosmetyczny', label: 'Косметологический салон' },
+  { value: 'Księgowość', label: 'Бухгалтерия' },
+  { value: 'Przedszkole prywatne', label: 'Частный детский сад' },
+  { value: 'Auto serwis', label: 'Автосервис' },
+  { value: 'Fotowoltaika', label: 'Солнечные панели' },
+  { value: 'Catering dietetyczny', label: 'Диетический кейтеринг' },
+  { value: 'Law firm / kancelaria prawna', label: 'Юридическая фирма' },
+  { value: 'Biuro rachunkowe', label: 'Бухгалтерское бюро' },
+  { value: 'Architekt wnętrz', label: 'Дизайнер интерьеров' },
+  { value: 'Projektowanie ogrodów', label: 'Ландшафтный дизайн' },
+  { value: 'Instalacje elektryczne', label: 'Электромонтаж' },
+  { value: 'Hydraulik', label: 'Сантехник' },
+  { value: 'Ogrzewanie i pompy ciepła', label: 'Отопление и тепловые насосы' },
+  { value: 'Serwis AGD', label: 'Ремонт бытовой техники' },
+  { value: 'Sprzątanie biur', label: 'Уборка офисов' },
+  { value: 'Pralnia', label: 'Прачечная' },
+  { value: 'Fryzjer', label: 'Парикмахер' },
+  { value: 'Barber', label: 'Барбершоп' },
+  { value: 'Studio paznokci', label: 'Ногтевая студия' },
+  { value: 'Spa i masaż', label: 'Спа и массаж' },
+  { value: 'Trener personalny', label: 'Персональный тренер' },
+  { value: 'Szkoła językowa', label: 'Языковая школа' },
+  { value: 'Korepetycje', label: 'Репетиторы' },
+  { value: 'Szkoła tańca', label: 'Школа танцев' },
+  { value: 'Restauracja', label: 'Ресторан' },
+  { value: 'Kawiarnia', label: 'Кофейня' },
+  { value: 'Hotel / apartamenty', label: 'Отель / апартаменты' },
+  { value: 'Event venue', label: 'Площадка для мероприятий' },
+  { value: 'Wedding services', label: 'Свадебные услуги' },
+  { value: 'Fotograf', label: 'Фотограф' },
+  { value: 'Drukarnia', label: 'Типография' },
+  { value: 'Meble na wymiar', label: 'Мебель на заказ' },
+  { value: 'Rolety i okna', label: 'Роллеты и окна' },
+  { value: 'Bramy garażowe', label: 'Гаражные ворота' },
+  { value: 'Ochrona', label: 'Охрана' },
+  { value: 'Przeprowadzki', label: 'Переезды' },
+  { value: 'Magazyny self storage', label: 'Self-storage склады' },
+  { value: 'Weterynarz', label: 'Ветеринар' },
+  { value: 'Gabinet psychologiczny', label: 'Психологический кабинет' },
+  { value: 'Dietetyk', label: 'Диетолог' },
+  { value: 'Rehabilitacja', label: 'Реабилитация' },
+  { value: 'Klinika prywatna', label: 'Частная клиника' },
+  { value: 'Sklep specjalistyczny', label: 'Специализированный магазин' },
+  { value: 'Serwis rowerowy', label: 'Велосервис' },
+  { value: 'Detailing motocykli', label: 'Мотодетейлинг' },
+  { value: 'Wulkanizacja', label: 'Шиномонтаж' },
+  { value: 'Tuning samochodowy', label: 'Автотюнинг' },
+  { value: 'Szkoła jazdy', label: 'Автошкола' },
+  { value: 'Nieruchomości', label: 'Недвижимость' },
+  { value: 'Ubezpieczenia', label: 'Страхование' }
 ];
 
-const allCategories = [
-  ...topCategories,
-  'Law firm / kancelaria prawna',
-  'Biuro rachunkowe',
-  'Architekt wnętrz',
-  'Projektowanie ogrodów',
-  'Instalacje elektryczne',
-  'Hydraulik',
-  'Ogrzewanie i pompy ciepła',
-  'Serwis AGD',
-  'Sprzątanie biur',
-  'Pralnia',
-  'Fryzjer',
-  'Barber',
-  'Studio paznokci',
-  'Spa i masaż',
-  'Trener personalny',
-  'Szkoła językowa',
-  'Korepetycje',
-  'Szkoła tańca',
-  'Restauracja',
-  'Kawiarnia',
-  'Hotel / apartamenty',
-  'Event venue',
-  'Wedding services',
-  'Fotograf',
-  'Drukarnia',
-  'Meble na wymiar',
-  'Rolety i okna',
-  'Bramy garażowe',
-  'Ochrona',
-  'Przeprowadzki',
-  'Magazyny self storage',
-  'Weterynarz',
-  'Gabinet psychologiczny',
-  'Dietetyk',
-  'Rehabilitacja',
-  'Klinika prywatna',
-  'Sklep specjalistyczny',
-  'Serwis rowerowy',
-  'Detailing motocykli',
-  'Wulkanizacja',
-  'Tuning samochodowy',
-  'Szkoła jazdy',
-  'Nieruchomości',
-  'Ubezpieczenia'
-];
+const topCategories = categoryOptions.slice(0, 12);
+const allCategories = categoryOptions;
+const categoryLabelMap = new Map(
+  categoryOptions.map((option) => [normalizeLookupValue(option.value), option.label])
+);
 
 const inputCsvHeaders = [
   '_companyId',
@@ -185,9 +191,127 @@ const inputCsvHeaders = [
   'notes'
 ];
 
+function normalizeLookupValue(value) {
+  return String(value || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function displayCategory(value) {
+  return categoryLabelMap.get(normalizeLookupValue(value)) || String(value || '').trim() || '-';
+}
+
+function formatCategoryList(values) {
+  const list = Array.isArray(values) ? values : [values];
+  return list.map(displayCategory).filter(Boolean).join(', ') || '-';
+}
+
+function displaySourceLabel(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '-';
+
+  const labels = raw
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((part) => {
+      if (part === 'all_sources') return 'Смарт-поиск';
+      if (part === 'maps_api' || part.startsWith('google_places')) return 'Google Places API';
+      if (part === 'amazon_location' || part.startsWith('amazon_location')) return 'Amazon Location API';
+      if (part === 'internet' || part.startsWith('public_search_')) return 'Интернет и публичные профили';
+      if (part === 'registries' || part.startsWith('public_registry') || part.startsWith('ceidg')) return 'Реестры';
+      if (part === 'directories') return 'Каталоги';
+      if (part === 'booking') return 'Booksy / запись';
+      if (part === 'social') return 'Соцсети';
+      if (part === 'cross_verification') return 'Сверка источников';
+      return part;
+    });
+
+  return [...new Set(labels)].join(', ');
+}
+
+function ensureResultsContext() {
+  if (document.querySelector('#resultsContext')) return;
+  const context = document.createElement('div');
+  context.id = 'resultsContext';
+  context.className = 'results-context hidden-field';
+  els.configDiagnostics?.insertAdjacentElement('afterend', context);
+}
+
+function resultsContextElement() {
+  return document.querySelector('#resultsContext');
+}
+
+function applyStaticCopy() {
+  els.discoverButton.innerHTML = '<i data-lucide="radar"></i>Найти компании и сверить';
+  els.analyzeButton.innerHTML = '<i data-lucide="list-checks"></i>Проверить CSV / текущий список';
+  els.runStatus.textContent =
+    'Поиск компаний уже делает пред-проверку сайтов. Эта кнопка нужна для CSV-импорта и ручного повторного запуска проверки.';
+  els.discoverStatus.textContent =
+    'Смарт-поиск сначала собирает компании, затем дополняет и сверяет контакты, сайт и сигналы по другим источникам.';
+
+  if (els.allSourcesButton) {
+    els.allSourcesButton.classList.add('hidden-field');
+    els.allSourcesButton.setAttribute('aria-hidden', 'true');
+    els.allSourcesButton.tabIndex = -1;
+  }
+
+  const sourceLabels = {
+    all_sources: 'Смарт-поиск: Google -> Amazon -> реестры -> веб',
+    amazon_location: 'Amazon Location API',
+    maps_api: 'Google Places API',
+    internet: 'Интернет и публичные профили',
+    registries: 'CEIDG / госреестры',
+    directories: 'Каталоги и сервисы',
+    booking: 'Booksy / запись',
+    social: 'Соцсети'
+  };
+
+  Array.from(els.discoverSource.options).forEach((option) => {
+    option.textContent = sourceLabels[option.value] || option.textContent;
+  });
+}
+
+function clearHistoryContext() {
+  state.activeHistoryRun = null;
+  state.historyLoadingRunId = null;
+  renderResultsContext();
+  if (state.historyRuns.length) renderHistory(state.historyRuns);
+}
+
+function renderResultsContext() {
+  const element = resultsContextElement();
+  if (!element) return;
+  if (!state.activeHistoryRun) {
+    element.classList.add('hidden-field');
+    element.innerHTML = '';
+    return;
+  }
+
+  const run = state.activeHistoryRun;
+  const date = run.started_at ? new Date(run.started_at).toLocaleString() : '';
+  const parts = [
+    date,
+    formatCategoryList(run.niches || []),
+    run.city || run.district || '',
+    displaySourceLabel(run.sourceFocus),
+    `найдено: ${run.found_count ?? state.results.length}`
+  ].filter(Boolean);
+
+  element.classList.remove('hidden-field');
+  element.innerHTML = `
+    <strong>Открыт запуск из истории</strong>
+    <span>${escapeHtml(parts.join(' · '))}</span>
+  `;
+}
+
 init();
 
 async function init() {
+  ensureResultsContext();
   populateCategoryPreset();
   els.discoverCategoryPreset.value = 'cat:Klimatyzacja';
   els.sidebarHasSocial.checked = false;
@@ -195,27 +319,29 @@ async function init() {
   els.sidebarHasEmail.checked = false;
   els.sidebarSiteFilter.value = 'no_site';
   els.resultFilterSite.value = 'no_site';
+  applyStaticCopy();
   await loadConfig();
   bindEvents();
   els.csvInput.value = sampleCsv;
+  renderResultsContext();
   renderIcons();
 }
 
 function populateCategoryPreset() {
   const topOptions = topCategories
-    .map((category) => `<option value="cat:${escapeAttribute(category)}">${escapeHtml(category)}</option>`)
+    .map((category) => `<option value="cat:${escapeAttribute(category.value)}">${escapeHtml(category.label)}</option>`)
     .join('');
   const allOptions = allCategories
-    .filter((category) => !topCategories.includes(category))
-    .map((category) => `<option value="cat:${escapeAttribute(category)}">${escapeHtml(category)}</option>`)
+    .filter((category) => !topCategories.some((topCategory) => topCategory.value === category.value))
+    .map((category) => `<option value="cat:${escapeAttribute(category.value)}">${escapeHtml(category.label)}</option>`)
     .join('');
 
   els.discoverCategoryPreset.innerHTML = `
-    <option value="top_all">Top kategorie dla stron</option>
-    <option value="all_categories">Wszystkie kategorie</option>
-    <option value="custom">Własna kategoria</option>
-    <optgroup label="Top kategorie">${topOptions}</optgroup>
-    <optgroup label="Wszystkie kategorie">${allOptions}</optgroup>
+    <option value="top_all">Топ-категории для сайтов</option>
+    <option value="all_categories">Все категории</option>
+    <option value="custom">Своя категория</option>
+    <optgroup label="Топ-категории">${topOptions}</optgroup>
+    <optgroup label="Все категории">${allOptions}</optgroup>
   `;
 }
 
@@ -237,7 +363,10 @@ async function loadConfig() {
     const internetReady = Boolean(state.config.internetSearchConfigured);
     const discoveryReady = amazonReady || googleReady || ceidgReady || internetReady;
     els.discoverButton.disabled = !discoveryReady;
-    els.allSourcesButton.disabled = !discoveryReady;
+    if (els.allSourcesButton) {
+      els.allSourcesButton.disabled = true;
+      els.allSourcesButton.classList.add('hidden-field');
+    }
     els.discoverLimit.max = String(Math.min(state.config.maxDiscoveryItems || 15, state.config.maxItems || 40));
     if (Number(els.discoverLimit.value) > Number(els.discoverLimit.max)) {
       els.discoverLimit.value = els.discoverLimit.max;
@@ -261,7 +390,7 @@ async function loadConfig() {
   } catch (error) {
     state.config = null;
     els.discoverButton.disabled = true;
-    els.allSourcesButton.disabled = true;
+    if (els.allSourcesButton) els.allSourcesButton.disabled = true;
     setPill(els.apiStatus, 'Config API offline', false);
     setPill(els.webSearchStatus, 'Crawler unknown', false);
     setPill(els.registryStatus, 'Sources unknown', false);
@@ -354,10 +483,6 @@ function bindEvents() {
     els.csvInput.value = sampleCsv;
   });
   els.discoverCategoryPreset.addEventListener('change', handleCategoryPresetChange);
-  els.allSourcesButton.addEventListener('click', () => {
-    els.discoverSource.value = 'all_sources';
-    runDiscovery();
-  });
   els.discoverButton.addEventListener('click', runDiscovery);
   els.analyzeButton.addEventListener('click', runAnalysis);
   els.quickFindSitesButton.addEventListener('click', runAnalysis);
@@ -386,17 +511,21 @@ function switchView(view) {
   els.viewTabHistory.classList.toggle('active', isHistory);
   els.resultsView.classList.toggle('hidden-field', isHistory);
   els.historyView.classList.toggle('hidden-field', !isHistory);
-  if (isHistory) loadHistory();
+  if (isHistory && !state.historyLoaded) loadHistory();
 }
 
 async function loadHistory() {
+  state.historyLoadingRunId = null;
   els.historyBody.innerHTML = '<tr class="empty-row"><td colspan="8">Загрузка истории...</td></tr>';
   try {
     const response = await fetch(apiUrl('/api/history/runs'));
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Не удалось загрузить историю.');
-    renderHistory(data.runs || []);
+    state.historyRuns = Array.isArray(data.runs) ? data.runs : [];
+    state.historyLoaded = true;
+    renderHistory(state.historyRuns);
   } catch (error) {
+    state.historyLoaded = false;
     els.historyBody.innerHTML = `<tr class="empty-row"><td colspan="8">${escapeHtml(error.message || 'Ошибка загрузки истории.')}</td></tr>`;
   }
 }
@@ -412,12 +541,19 @@ function renderHistory(runs) {
       const date = run.started_at ? new Date(run.started_at).toLocaleString() : '-';
       const location = [run.city, run.district].filter(Boolean).join(' · ') || '-';
       const statusClassName = ['completed', 'failed', 'discovering'].includes(run.status) ? run.status : 'discovering';
+      const rowStateClass = [
+        'history-row',
+        state.activeHistoryRun?.id === run.id ? 'active' : '',
+        state.historyLoadingRunId === run.id ? 'loading' : ''
+      ]
+        .filter(Boolean)
+        .join(' ');
       return `
-        <tr class="history-row" data-run-id="${escapeHtml(run.id)}">
+        <tr class="${rowStateClass}" data-run-id="${escapeHtml(run.id)}">
           <td>${escapeHtml(date)}</td>
-          <td>${escapeHtml((run.niches || []).join(', ') || '-')}</td>
+          <td>${escapeHtml(formatCategoryList(run.niches || []))}</td>
           <td>${escapeHtml(location)}</td>
-          <td>${escapeHtml(run.sourceFocus || '-')}</td>
+          <td>${escapeHtml(displaySourceLabel(run.sourceFocus || '-'))}</td>
           <td>${escapeHtml(String(run.found_count ?? 0))}</td>
           <td>${escapeHtml(String(run.new_count ?? 0))}</td>
           <td>${escapeHtml(String(run.duplicate_count ?? 0))}</td>
@@ -434,30 +570,40 @@ function renderHistory(runs) {
 
 async function openHistoryRun(runId) {
   try {
+    state.historyLoadingRunId = runId;
+    renderHistory(state.historyRuns);
     const response = await fetch(apiUrl(`/api/history/runs/${runId}`));
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Не удалось открыть запуск.');
 
-    const companies = (data.companies || []).map((record) => ({ ...record.data, _companyId: record.id }));
-    if (!companies.length) {
+    const records = Array.isArray(data.companies) ? data.companies : [];
+    if (!records.length) {
+      state.historyLoadingRunId = null;
+      renderHistory(state.historyRuns);
       setStatus('В этом запуске нет сохраненных компаний.', 'warn');
       return;
     }
 
+    state.activeHistoryRun = data.run || { id: runId };
+    state.historyLoadingRunId = null;
+    els.csvInput.value = itemsToCsv(records.map((record) => ({ ...record.data, _companyId: record.id })));
     switchView('results');
-    setStatus(`Открываю результаты запуска от ${new Date(data.run.started_at).toLocaleString()}...`, 'work');
-    const analyzed = await analyzeCompanies(companies);
-    state.results = analyzed.results || companiesToPreviewResults(companies);
+    setStatus(`Открываю сохраненный запуск от ${new Date(data.run.started_at).toLocaleString()}...`, 'work');
+    state.results = historyRecordsToResults(records);
     state.selectedId = state.results[0]?.id || null;
     state.detailTab = 'overview';
+    renderResultsContext();
+    renderHistory(state.historyRuns);
     renderResults();
     renderMetrics();
     renderDetail();
     els.exportCsvButton.disabled = false;
     els.headerExportCsvButton.disabled = false;
     els.exportJsonButton.disabled = false;
-    setStatus(`Открыт запуск: ${state.results.length} компаний.`, 'ok');
+    setStatus(`Открыт запуск из истории: ${state.results.length} компаний.`, 'ok');
   } catch (error) {
+    state.historyLoadingRunId = null;
+    renderHistory(state.historyRuns);
     setStatus(error.message || 'Ошибка при открытии запуска.', 'warn');
   } finally {
     renderIcons();
@@ -481,6 +627,8 @@ async function handleFile(event) {
 }
 
 async function runDiscovery() {
+  clearHistoryContext();
+  state.historyLoaded = false;
   const discoveryReady = Boolean(
     state.config?.registry?.amazonLocationConfigured ||
       state.config?.registry?.googlePlacesConfigured ||
@@ -499,7 +647,10 @@ async function runDiscovery() {
   }
 
   els.discoverButton.disabled = true;
-  setDiscoverStatus(`Ищу компании: ${niches.length === 1 ? niches[0] : `${niches.length} категорий`}...`, 'work');
+  setDiscoverStatus(
+    `Ищу компании: ${niches.length === 1 ? displayCategory(niches[0]) : `${niches.length} категорий`}...`,
+    'work'
+  );
 
   try {
     const response = await fetch(apiUrl('/api/discover'), {
@@ -512,7 +663,7 @@ async function runDiscovery() {
         city: els.discoverCity.value.trim(),
         district: els.discoverDistrict.value.trim(),
         radiusKm: Number(els.discoverRadius.value || 0) || undefined,
-        limit: Math.min(Number(els.discoverLimit.value || 8), state.config?.maxItems || 40),
+        limit: Math.min(Number(els.discoverLimit.value || 8), state.config?.maxItems || 100),
         sourceFocus: els.discoverSource.value
       })
     });
@@ -553,15 +704,14 @@ async function runDiscovery() {
     setDiscoverStatus(error.message || 'Ошибка поиска компаний.', 'warn');
   } finally {
     els.discoverButton.disabled = !discoveryReady;
-    els.allSourcesButton.disabled = !discoveryReady;
     renderIcons();
   }
 }
 
 function selectedDiscoveryNiches() {
   const value = els.discoverCategoryPreset.value;
-  if (value === 'top_all') return topCategories;
-  if (value === 'all_categories') return allCategories;
+  if (value === 'top_all') return topCategories.map((category) => category.value);
+  if (value === 'all_categories') return allCategories.map((category) => category.value);
   if (value === 'custom') return [els.discoverNiche.value.trim()].filter(Boolean);
   if (value.startsWith('cat:')) return [value.slice(4)];
   return [];
@@ -586,6 +736,7 @@ async function analyzeCompanies(items) {
 }
 
 async function runAnalysis() {
+  clearHistoryContext();
   const items = parseInput(els.csvInput.value);
   if (!items.length) {
     setStatus('Добавьте CSV с компаниями.', 'warn');
@@ -684,66 +835,113 @@ function itemsToCsv(items) {
   return rows.map(csvLine).join('\n');
 }
 
-function companiesToPreviewResults(companies) {
-  return companies.map((company, index) => {
-    const socialProfiles = company.social_profiles || {};
-    const input = {
-      ...company,
-      social_profiles: {
-        instagram: socialProfiles.instagram || company.instagram || '',
-        facebook: socialProfiles.facebook || company.facebook || '',
-        tiktok: socialProfiles.tiktok || company.tiktok || ''
-      },
-      city: company.city || 'Warszawa',
-      source: company.source || 'discovery',
-      source_profile: company.source_profile || company.website_url || '',
-      services: Array.isArray(company.services) ? company.services : parseList(company.services || company.niche || ''),
-      physical_location: company.physical_location !== false
-    };
-    const hasWebsite = Boolean(input.website_url);
-    const hasSocial = hasAnySocial(input);
-    const sourceProfile = input.source_profile || input.website_url || '';
-    const websiteStatus = hasWebsite ? 'UNCERTAIN' : hasSocial ? 'SOCIAL_ONLY' : 'DIRECTORY_ONLY';
-    const score = Math.min(
-      88,
-      42 +
-        (hasWebsite ? 10 : 0) +
-        (hasSocial ? 10 : 0) +
-        (input.phone ? 12 : 0) +
-        (input.email ? 8 : 0) +
-        (input.review_count ? 8 : 0) +
-        (input.rating ? 4 : 0)
-    );
+function normalizeResultInput(company = {}) {
+  const socialProfiles = company.social_profiles || {};
+  return {
+    ...company,
+    social_profiles: {
+      instagram: socialProfiles.instagram || company.instagram || '',
+      facebook: socialProfiles.facebook || company.facebook || '',
+      tiktok: socialProfiles.tiktok || company.tiktok || ''
+    },
+    city: company.city || 'Warszawa',
+    source: company.source || 'discovery',
+    source_profile: company.source_profile || company.website_url || '',
+    services: Array.isArray(company.services) ? company.services : parseList(company.services || company.niche || ''),
+    physical_location: company.physical_location !== false
+  };
+}
 
+function buildPreviewResult(company, index, idPrefix = 'discovery') {
+  const input = normalizeResultInput(company);
+  const hasWebsite = Boolean(input.website_url);
+  const hasSocial = hasAnySocial(input);
+  const sourceProfile = input.source_profile || input.website_url || '';
+  const websiteStatus = hasWebsite ? 'UNCERTAIN' : hasSocial ? 'SOCIAL_ONLY' : 'DIRECTORY_ONLY';
+  const score = Math.min(
+    88,
+    42 +
+      (hasWebsite ? 10 : 0) +
+      (hasSocial ? 10 : 0) +
+      (input.phone ? 12 : 0) +
+      (input.email ? 8 : 0) +
+      (input.review_count ? 8 : 0) +
+      (input.rating ? 4 : 0)
+  );
+
+  return {
+    id: `${idPrefix}-${input._companyId || Date.now()}-${index}`,
+    input,
+    parsed: {
+      ok: false,
+      error: '',
+      normalizedUrl: input.website_url || '',
+      signals: buildFallbackSignals(input)
+    },
+    websiteResolution: {
+      selectedUrl: input.website_url || '',
+      websiteStatus,
+      websiteConfidence: hasWebsite ? 0.45 : 0.25,
+      domainVerification: { score: 0, matched: [] },
+      checks_completed: { discovery: true, website_crawl: false },
+      candidates: sourceProfile ? [{ url: sourceProfile, source: input.source || 'discovery', confidence: 0.45 }] : []
+    },
+    analysis: {
+      website_status: websiteStatus,
+      website_confidence: hasWebsite ? 0.45 : 0.25,
+      website_quality_score: 0,
+      lead_score: score,
+      lead_category: score >= 75 ? 'A' : score >= 55 ? 'B' : 'C',
+      priority: score >= 75 ? 'A' : score >= 55 ? 'B' : 'C',
+      requires_manual_review: true,
+      main_problem: 'Компания найдена. Нажмите "Найти сайты", чтобы проверить сайт, контакты и качество страницы.',
+      recommended_website: 'Лендинг / Визитка',
+      recommended_package: 'Проверить сайт, контакты, услуги, доверие и форму заявки.',
+      business_activity: 'FOUND_BY_DISCOVERY',
+      mini_audit_points: [],
+      first_message_ru: '',
+      first_message_pl: ''
+    },
+    aiSiteAnalysis: { status: 'NOT_REQUESTED' }
+  };
+}
+
+function companiesToPreviewResults(companies) {
+  return companies.map((company, index) => buildPreviewResult(company, index));
+}
+
+function buildFallbackSignals(input = {}, summary = {}) {
+  return {
+    title: summary.title || input.company || '',
+    pageCount: Number(summary.pageCount || 0),
+    forms: Number(summary.forms || 0),
+    nonSvgImages: Number(summary.nonSvgImages || 0),
+    phones: [],
+    emails: [],
+    allTextSample: summary.textSample || '',
+    importantLinks: Array.isArray(summary.importantLinks) ? summary.importantLinks : []
+  };
+}
+
+function historyRecordsToResults(records) {
+  return records.map((record, index) => {
+    const fallback = buildPreviewResult({ ...(record.data || {}), _companyId: record.id }, index, 'history');
+    const website = record.website || {};
+    const resolution = website.resolution || fallback.websiteResolution;
     return {
-      id: `discovery-${Date.now()}-${index}`,
-      input,
-      parsed: { signals: { title: input.company || '', pageCount: 0, forms: 0, nonSvgImages: 0 } },
-      websiteResolution: {
-        selectedUrl: input.website_url || '',
-        websiteStatus,
-        websiteConfidence: hasWebsite ? 0.45 : 0.25,
-        domainVerification: { score: 0, matched: [] },
-        checks_completed: { discovery: true, website_crawl: false },
-        candidates: sourceProfile ? [{ url: sourceProfile, source: input.source || 'discovery', confidence: 0.45 }] : []
+      ...fallback,
+      id: `history-${record.id || index}`,
+      input: normalizeResultInput({ ...(record.data || {}), _companyId: record.id }),
+      parsed: {
+        ok: Boolean(website.parsedOk),
+        error: website.parsedError || '',
+        normalizedUrl: website.normalizedUrl || resolution.selectedUrl || fallback.parsed.normalizedUrl,
+        signals: buildFallbackSignals(record.data || {}, website.summary || {})
       },
-      analysis: {
-        website_status: websiteStatus,
-        website_confidence: hasWebsite ? 0.45 : 0.25,
-        website_quality_score: 0,
-        lead_score: score,
-        lead_category: score >= 75 ? 'A' : score >= 55 ? 'B' : 'C',
-        priority: score >= 75 ? 'A' : score >= 55 ? 'B' : 'C',
-        requires_manual_review: true,
-        main_problem: 'Компания найдена. Нажмите "Найти сайты", чтобы проверить сайт, контакты и качество страницы.',
-        recommended_website: 'Лендинг / Визитка',
-        recommended_package: 'Проверить сайт, контакты, услуги, доверие и форму заявки.',
-        business_activity: 'FOUND_BY_DISCOVERY',
-        mini_audit_points: [],
-        first_message_ru: '',
-        first_message_pl: ''
-      },
-      aiSiteAnalysis: { status: 'NOT_REQUESTED' }
+      websiteResolution: resolution,
+      heuristic: record.heuristic || fallback.analysis,
+      analysis: record.analysis || record.heuristic || fallback.analysis,
+      aiSiteAnalysis: record.aiSiteAnalysis || fallback.aiSiteAnalysis
     };
   });
 }
@@ -813,10 +1011,12 @@ function getFilteredResults() {
         input.company,
         input.legal_name,
         input.niche,
+        displayCategory(input.niche),
         input.city,
         input.district,
         input.address,
         input.source,
+        displaySourceLabel(input.source),
         input.source_profile,
         input.notes,
         status,
@@ -1084,7 +1284,7 @@ function renderResults() {
             <strong>${escapeHtml(input.company || result.parsed?.signals?.title || '-')}</strong>
             <span class="company-subline">${companyLine}</span>
           </td>
-          <td>${escapeHtml(input.niche || '-')}</td>
+          <td>${escapeHtml(displayCategory(input.niche || '-'))}</td>
           <td><span class="size-pill ${escapeHtml(size.key)}">${escapeHtml(size.label)}</span></td>
           <td>${contactIcons(input, result)}</td>
           <td><span class="score-badge ${scoreClass(score)}">${escapeHtml(String(score || '-'))}</span></td>
@@ -1303,7 +1503,7 @@ function renderOverviewTab(result) {
       <section class="detail-card">
         <h3>Краткая информация</h3>
         <p>${escapeHtml(input.notes || a.main_problem || 'Локальная компания. Данные собраны из импорта, публичного профиля или подключенного источника.')}</p>
-        <p class="muted-text">${escapeHtml([input.niche, input.city, input.district].filter(Boolean).join(' · ') || '-')}</p>
+        <p class="muted-text">${escapeHtml([displayCategory(input.niche), input.city, input.district].filter(Boolean).join(' · ') || '-')}</p>
       </section>
 
       <section class="detail-card">
@@ -1349,11 +1549,11 @@ function renderGeneralTab(result) {
     <section class="detail-section">
       <h3>Общее</h3>
       <p><strong>Компания:</strong> ${escapeHtml(input.company || '-')}</p>
-      <p><strong>Категория:</strong> ${escapeHtml(input.niche || '-')}</p>
+      <p><strong>Категория:</strong> ${escapeHtml(displayCategory(input.niche || '-'))}</p>
       <p><strong>Размер:</strong> ${escapeHtml(size.label)}</p>
       <p><strong>Локация:</strong> ${escapeHtml([input.city, input.district, input.address].filter(Boolean).join(', ') || '-')}</p>
       <p><strong>Статус:</strong> ${escapeHtml(input.status || 'UNKNOWN')}</p>
-      <p><strong>Источник:</strong> ${escapeHtml(input.source || 'CSV/import')} ${input.source_profile ? `· ${linkOrDash(input.source_profile)}` : ''}</p>
+      <p><strong>Источник:</strong> ${escapeHtml(displaySourceLabel(input.source || 'CSV/import'))} ${input.source_profile ? `· ${linkOrDash(input.source_profile)}` : ''}</p>
       <p><strong>Возраст/дата старта:</strong> ${escapeHtml(input.registration_date || 'UNKNOWN')}</p>
       <p><strong>Business score:</strong> ${escapeHtml(String(a.lead_score ?? '-'))}/100 · ${escapeHtml(a.lead_category || '-')}</p>
       <p><strong>Priority:</strong> ${escapeHtml(a.priority || '-')} · manual review: ${a.requires_manual_review ? 'yes' : 'no'}</p>
@@ -1483,7 +1683,7 @@ function renderSourcesTab(result) {
   return `
     <section class="detail-section">
       <h3>Источники</h3>
-      <p><strong>Источник:</strong> ${escapeHtml(input.source || '-')}</p>
+      <p><strong>Источник:</strong> ${escapeHtml(displaySourceLabel(input.source || '-'))}</p>
       <p><strong>Профиль:</strong> ${linkOrDash(input.source_profile)}</p>
       <p><strong>Кандидаты домена:</strong></p>
       <ul>${candidates.length ? candidates.map((candidate) => `<li>${linkOrDash(candidate.url)} · ${escapeHtml(candidate.source || '')} · ${escapeHtml(String(candidate.confidence || 0))}</li>`).join('') : '<li>Нет кандидатов</li>'}</ul>

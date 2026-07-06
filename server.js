@@ -686,79 +686,73 @@ function discoveryPriority(discovery) {
 
 async function discoverCompaniesWithoutAI({ niche, city, district, limit, sourceFocus, onProgress }) {
   if (sourceFocus === 'all_sources') {
-    // Run every configured source and keep accumulating until the requested
-    // limit is reached, instead of stopping early once one source returns a
-    // few results. Each source is capped so it doesn't overshoot, but if the
-    // combined total is still under the limit after all sources ran, that's
-    // simply all that could be found for this niche/location right now.
-    const discoveries = [];
+    // Smart pipeline: one source finds the primary list of companies (up to
+    // the requested limit), then every other configured source is used only
+    // to CONFIRM and FILL IN missing data (phone, email, website, NIP/REGON)
+    // on those same companies - matched by name/address similarity - instead
+    // of blindly adding more "new" companies from each source in parallel.
+    // This keeps the list accurate: Google Places (or Amazon Location as a
+    // fallback) decides which companies exist, the other sources cross-check
+    // and enrich them.
     const warnings = [];
-    const combinedCount = () => uniqueCompanies(discoveries.flatMap((item) => item.companies || [])).length;
-    const remaining = () => Math.max(0, limit - combinedCount());
-    const report = (sourceLabel, count) => {
-      if (typeof onProgress === 'function') onProgress({ niche, source: sourceLabel, foundSoFar: combinedCount(), count });
-    };
+    let primary = null;
 
-    if (AWS_LOCATION_API_KEY && remaining() > 0) {
+    if (GOOGLE_PLACES_API_KEY) {
       try {
-        const result = await discoverCompaniesFromAmazonLocationExpanded({ niche, city, district, limit, sourceFocus });
-        discoveries.push(result);
-        report('amazon_location', result.companies.length);
-      } catch (error) {
-        warnings.push(`Amazon Location skipped: ${error.message || 'unknown error'}`);
-      }
-    }
-
-    if (GOOGLE_PLACES_API_KEY && remaining() > 0) {
-      try {
-        const result = await discoverCompaniesFromGooglePlacesExpanded({ niche, city, district, limit: remaining(), sourceFocus });
-        discoveries.push(result);
-        report('google_places_api', result.companies.length);
+        primary = await discoverCompaniesFromGooglePlacesExpanded({ niche, city, district, limit, sourceFocus });
+        if (typeof onProgress === 'function') {
+          onProgress({ niche, source: 'google_places_api', foundSoFar: primary.companies.length, count: primary.companies.length });
+        }
       } catch (error) {
         warnings.push(`Google Places skipped: ${error.message || 'unknown error'}`);
       }
     }
 
-    if (CEIDG_TOKEN && remaining() > 0) {
+    if (!primary?.companies?.length && AWS_LOCATION_API_KEY) {
       try {
-        const result = await discoverCompaniesFromCeidg({ niche, city, district, limit: remaining() });
-        discoveries.push(result);
-        report('ceidg_api', result.companies.length);
-      } catch (error) {
-        warnings.push(`CEIDG skipped: ${error.message || 'unknown error'}`);
-      }
-    } else if (!CEIDG_TOKEN && remaining() > 0) {
-      try {
-        const registryDiscovery = await discoverCompaniesFromPublicRegistries({ niche, city, district, limit: remaining() });
-        if (registryDiscovery.companies.length) {
-          discoveries.push(registryDiscovery);
-          report('public_registry_search', registryDiscovery.companies.length);
+        primary = await discoverCompaniesFromAmazonLocationExpanded({ niche, city, district, limit, sourceFocus });
+        if (typeof onProgress === 'function') {
+          onProgress({ niche, source: 'amazon_location', foundSoFar: primary.companies.length, count: primary.companies.length });
         }
       } catch (error) {
-        warnings.push(`Public registries skipped: ${error.message || 'unknown error'}`);
+        warnings.push(`Amazon Location skipped: ${error.message || 'unknown error'}`);
       }
     }
 
-    if (remaining() > 0) {
+    if (!primary?.companies?.length && CEIDG_TOKEN) {
       try {
-        const publicDiscovery = await discoverCompaniesFromPublicSearchExpanded({ niche, city, district, limit: remaining(), sourceFocus });
-        if (publicDiscovery.companies.length) {
-          discoveries.push(publicDiscovery);
-          report(`public_search_${sourceFocus}`, publicDiscovery.companies.length);
-        }
-        warnings.push(...(publicDiscovery.warnings || []));
+        primary = await discoverCompaniesFromCeidg({ niche, city, district, limit });
+      } catch (error) {
+        warnings.push(`CEIDG skipped: ${error.message || 'unknown error'}`);
+      }
+    }
+
+    if (!primary?.companies?.length) {
+      try {
+        primary = await discoverCompaniesFromPublicSearchExpanded({ niche, city, district, limit, sourceFocus });
       } catch (error) {
         warnings.push(`Public search skipped: ${error.message || 'unknown error'}`);
       }
     }
 
-    if (!discoveries.length) {
+    if (!primary?.companies?.length) {
       throw new Error(`No companies found in configured non-AI sources. ${warnings.join(' ')}`);
     }
-    const orderedDiscoveries = [...discoveries].sort((left, right) => discoveryPriority(left) - discoveryPriority(right));
+
+    console.log(
+      `[all_sources] niche="${niche}" primary_source=${primary.source} primary_count=${primary.companies.length}; running cross-source verification (Amazon Location / CEIDG / public search) to fill missing contact data on the same companies...`
+    );
+
+    const enrichedCompanies = await enrichPrimaryCompaniesSmart(primary.companies, { warnings });
+    if (typeof onProgress === 'function') {
+      onProgress({ niche, source: 'cross_verification', foundSoFar: enrichedCompanies.length, count: enrichedCompanies.length });
+    }
+
     return {
-      ...mergeDiscoveries(orderedDiscoveries, limit),
-      warnings: unique(warnings).slice(0, 30)
+      source: primary.source,
+      queries: primary.queries || [],
+      warnings: unique([...(primary.warnings || []), ...warnings]).slice(0, 30),
+      companies: enrichedCompanies.slice(0, limit)
     };
   }
 
@@ -1421,6 +1415,193 @@ async function discoverCompaniesFromPublicRegistries({ niche, city, district, li
     warnings,
     companies: enriched.slice(0, limit)
   };
+}
+
+async function enrichPrimaryCompaniesSmart(primaryCompanies, { warnings = [] } = {}) {
+  const baseCompanies = await enrichDiscoveredCompanyContacts(uniqueCompanies(primaryCompanies), {
+    limit: Math.min(primaryCompanies.length, 30),
+    warnings
+  });
+
+  return mapLimit(baseCompanies, 3, async (company) => {
+    try {
+      return await crossVerifyPrimaryCompany(company, warnings);
+    } catch (error) {
+      warnings.push(`Cross-check skipped ${company.company || company.source_profile || 'company'}: ${error.message || 'unknown error'}`);
+      return company;
+    }
+  });
+}
+
+async function crossVerifyPrimaryCompany(company, warnings) {
+  let current = { ...company };
+  const needsRegistry = !current.nip && !current.regon;
+  const needsContacts = !current.phone || !current.email || !current.website_url;
+
+  if (!needsRegistry && !needsContacts) {
+    return current;
+  }
+
+  const city = current.city || discoveryContext.city || 'Warszawa';
+  const district = current.district || '';
+  const candidates = [];
+
+  if (needsContacts && AWS_LOCATION_API_KEY) {
+    try {
+      const amazonMatches = await discoverCompaniesFromAmazonLocation({
+        niche: current.company,
+        city,
+        district,
+        limit: 5,
+        sourceFocus: 'all_sources'
+      });
+      candidates.push(...(amazonMatches.companies || []));
+    } catch (error) {
+      warnings.push(`Amazon cross-check skipped ${current.company || city}: ${error.message || 'unknown error'}`);
+    }
+  }
+
+  if (needsRegistry) {
+    try {
+      const registryMatches = await discoverCompaniesFromPublicRegistries({
+        niche: current.company,
+        city,
+        district,
+        limit: 5
+      });
+      candidates.push(...(registryMatches.companies || []));
+    } catch (error) {
+      warnings.push(`Registry cross-check skipped ${current.company || city}: ${error.message || 'unknown error'}`);
+    }
+  }
+
+  if (needsContacts) {
+    try {
+      const publicMatches = await discoverCompaniesFromPublicSearch({
+        niche: current.company,
+        city,
+        district,
+        limit: 5,
+        sourceFocus: 'internet'
+      });
+      candidates.push(...(publicMatches.companies || []));
+    } catch (error) {
+      warnings.push(`Public search cross-check skipped ${current.company || city}: ${error.message || 'unknown error'}`);
+    }
+  }
+
+  const bestMatch = pickBestCompanyMatch(current, candidates);
+  if (!bestMatch) {
+    return current;
+  }
+
+  current = mergeCompanyEvidence(current, bestMatch);
+  if (needsContacts && (current.source_profile || current.website_url)) {
+    try {
+      current = await enrichOneDiscoveredCompany(current);
+    } catch (error) {
+      warnings.push(`Final site crawl skipped ${current.company || city}: ${error.message || 'unknown error'}`);
+    }
+  }
+
+  return current;
+}
+
+function pickBestCompanyMatch(targetCompany, candidates) {
+  let best = null;
+  let bestScore = 0;
+
+  for (const candidate of candidates || []) {
+    const score = scoreCompanyMatch(targetCompany, candidate);
+    if (score > bestScore) {
+      best = candidate;
+      bestScore = score;
+    }
+  }
+
+  return bestScore >= 45 ? best : null;
+}
+
+function scoreCompanyMatch(targetCompany, candidate) {
+  if (!candidate) return 0;
+
+  let score = 0;
+  const targetName = normalizeSearchText(targetCompany.company || targetCompany.legal_name || '');
+  const candidateName = normalizeSearchText(candidate.company || candidate.legal_name || '');
+  const targetAddress = normalizeSearchText(targetCompany.address || '');
+  const candidateAddress = normalizeSearchText(candidate.address || '');
+  const targetWebsiteHost = safeHostname(targetCompany.website_url || targetCompany.source_profile || '');
+  const candidateWebsiteHost = safeHostname(candidate.website_url || candidate.source_profile || '');
+  const targetCity = normalizeSearchText(targetCompany.city || '');
+  const candidateCity = normalizeSearchText(candidate.city || '');
+
+  if (targetName && candidateName) {
+    if (targetName === candidateName) score += 50;
+    else if (targetName.includes(candidateName) || candidateName.includes(targetName)) score += 35;
+    else {
+      const overlap = tokenOverlapRatio(targetName, candidateName);
+      score += Math.round(overlap * 30);
+    }
+  }
+
+  if (targetCompany.phone && candidate.phone && phoneMatches(splitPhoneValues(candidate.phone), targetCompany.phone)) {
+    score += 35;
+  }
+
+  if (targetAddress && candidateAddress) {
+    if (targetAddress === candidateAddress) score += 25;
+    else if (addressMatches(targetCompany.address, candidateAddress)) score += 12;
+  }
+
+  if (targetWebsiteHost && candidateWebsiteHost && targetWebsiteHost === candidateWebsiteHost) {
+    score += 30;
+  }
+
+  if (targetCity && candidateCity && targetCity === candidateCity) {
+    score += 5;
+  }
+
+  return score;
+}
+
+function tokenOverlapRatio(left, right) {
+  const leftTokens = new Set(String(left || '').split(/\s+/).filter((token) => token.length >= 4));
+  const rightTokens = new Set(String(right || '').split(/\s+/).filter((token) => token.length >= 4));
+  if (!leftTokens.size || !rightTokens.size) return 0;
+  const matches = [...leftTokens].filter((token) => rightTokens.has(token)).length;
+  return matches / Math.max(leftTokens.size, rightTokens.size);
+}
+
+function mergeCompanyEvidence(targetCompany, evidenceCompany) {
+  const merged = { ...targetCompany };
+
+  if (!merged.phone && evidenceCompany.phone) merged.phone = evidenceCompany.phone;
+  if (!merged.email && evidenceCompany.email) merged.email = evidenceCompany.email;
+  if ((!merged.website_url || isKnownNonCompanyHost(safeHostname(merged.website_url))) && evidenceCompany.website_url) {
+    merged.website_url = evidenceCompany.website_url;
+  }
+  if (!merged.nip && evidenceCompany.nip) merged.nip = evidenceCompany.nip;
+  if (!merged.regon && evidenceCompany.regon) merged.regon = evidenceCompany.regon;
+  if (!merged.krs && evidenceCompany.krs) merged.krs = evidenceCompany.krs;
+  if (!merged.source_profile && evidenceCompany.source_profile) merged.source_profile = evidenceCompany.source_profile;
+
+  const socialProfiles = {
+    instagram: merged.instagram || merged.social_profiles?.instagram || evidenceCompany.instagram || evidenceCompany.social_profiles?.instagram || '',
+    facebook: merged.facebook || merged.social_profiles?.facebook || evidenceCompany.facebook || evidenceCompany.social_profiles?.facebook || '',
+    tiktok: merged.tiktok || merged.social_profiles?.tiktok || evidenceCompany.tiktok || evidenceCompany.social_profiles?.tiktok || ''
+  };
+
+  merged.instagram = socialProfiles.instagram;
+  merged.facebook = socialProfiles.facebook;
+  merged.tiktok = socialProfiles.tiktok;
+  merged.social_profiles = socialProfiles;
+  merged.notes = unique([
+    cleanText(targetCompany.notes || ''),
+    cleanText(evidenceCompany.notes || ''),
+    evidenceCompany.source ? `cross-check: ${evidenceCompany.source}` : ''
+  ]).join(' | ');
+
+  return merged;
 }
 
 async function enrichDiscoveredCompanyContacts(companies, { limit, warnings }) {

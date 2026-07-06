@@ -311,6 +311,14 @@ h2 {
   color: var(--amber);
 }
 
+.history-row.active {
+  background: #eff6ff;
+}
+
+.history-row.loading {
+  opacity: 0.7;
+}
+
 .history-company-link {
   background: transparent;
   border: 0;
@@ -505,6 +513,29 @@ svg {
 
 .config-diagnostics {
   margin: 10px 0 12px;
+}
+
+.results-context {
+  align-items: center;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  color: #1d4ed8;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+}
+
+.results-context strong {
+  color: #1e3a8a;
+  font-size: 12px;
+}
+
+.results-context span {
+  color: #334155;
+  font-size: 12px;
 }
 
 .config-diagnostics-title {
