@@ -413,7 +413,7 @@ function renderHistory(runs) {
       const location = [run.city, run.district].filter(Boolean).join(' · ') || '-';
       const statusClassName = ['completed', 'failed', 'discovering'].includes(run.status) ? run.status : 'discovering';
       return `
-        <tr>
+        <tr class="history-row" data-run-id="${escapeHtml(run.id)}">
           <td>${escapeHtml(date)}</td>
           <td>${escapeHtml((run.niches || []).join(', ') || '-')}</td>
           <td>${escapeHtml(location)}</td>
@@ -426,6 +426,42 @@ function renderHistory(runs) {
       `;
     })
     .join('');
+
+  els.historyBody.querySelectorAll('tr[data-run-id]').forEach((row) => {
+    row.addEventListener('click', () => openHistoryRun(row.dataset.runId));
+  });
+}
+
+async function openHistoryRun(runId) {
+  try {
+    const response = await fetch(apiUrl(`/api/history/runs/${runId}`));
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Не удалось открыть запуск.');
+
+    const companies = (data.companies || []).map((record) => ({ ...record.data, _companyId: record.id }));
+    if (!companies.length) {
+      setStatus('В этом запуске нет сохраненных компаний.', 'warn');
+      return;
+    }
+
+    switchView('results');
+    setStatus(`Открываю результаты запуска от ${new Date(data.run.started_at).toLocaleString()}...`, 'work');
+    const analyzed = await analyzeCompanies(companies);
+    state.results = analyzed.results || companiesToPreviewResults(companies);
+    state.selectedId = state.results[0]?.id || null;
+    state.detailTab = 'overview';
+    renderResults();
+    renderMetrics();
+    renderDetail();
+    els.exportCsvButton.disabled = false;
+    els.headerExportCsvButton.disabled = false;
+    els.exportJsonButton.disabled = false;
+    setStatus(`Открыт запуск: ${state.results.length} компаний.`, 'ok');
+  } catch (error) {
+    setStatus(error.message || 'Ошибка при открытии запуска.', 'warn');
+  } finally {
+    renderIcons();
+  }
 }
 
 function handleCategoryPresetChange() {

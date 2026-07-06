@@ -122,6 +122,14 @@ function isWarsawCity(city) {
 // through every function in the discovery call graph.
 let discoveryContext = { country: '', radiusKm: 0 };
 
+// In-memory discovery job registry. Discovery runs happen in the background and
+// the frontend polls /api/discover/jobs/:id so results can stream in
+// incrementally (per niche/per source) instead of blocking until every source
+// is exhausted. Jobs are ephemeral (lost on server restart) - the durable
+// record of a run lives in store.js (data/runs.json, data/companies.json).
+const discoveryJobs = new Map();
+let discoveryJobSeq = 1;
+
 const CEIDG_ENDPOINT =
   process.env.CEIDG_API_ENDPOINT || 'https://dane.biznes.gov.pl/api/ceidg/v3/firmy';
 const CEIDG_TOKEN = process.env.CEIDG_API_TOKEN || '';
@@ -619,95 +627,41 @@ async function discoverCompaniesBatchWithoutAI({ niches, city, district, limit, 
     return mergeDiscoveries(googleDiscoveries, limit);
   }
 
-  const internetFocusedSources = ['internet', 'directories', 'booking', 'social', 'all_sources'];
-  if (internetFocusedSources.includes(sourceFocus) && niches.length > 1) {
-    const amazonDiscoveries = [];
-    const amazonWarnings = [];
-    if (sourceFocus === 'all_sources' && AWS_LOCATION_API_KEY) {
-      const perNicheAmazonLimit = Math.max(5, Math.ceil(Math.min(limit, 100) / Math.min(niches.length, 12)));
-      for (const niche of niches.slice(0, 12)) {
-        try {
-          amazonDiscoveries.push(
-            await discoverCompaniesFromAmazonLocationExpanded({
-              niche,
-              city,
-              district,
-              limit: perNicheAmazonLimit,
-              sourceFocus
-            })
-          );
-        } catch (error) {
-          amazonWarnings.push(`Amazon Location skipped: ${error.message || 'unknown error'}`);
-          break;
-        }
-      }
-    }
-
-    const googleDiscoveries = [];
-    const googleWarnings = [];
-    if (sourceFocus === 'all_sources' && GOOGLE_PLACES_API_KEY && !amazonDiscoveries.length) {
-      const perNicheGoogleLimit = Math.max(5, Math.ceil(Math.min(limit, 80) / Math.min(niches.length, 12)));
-      for (const niche of niches.slice(0, 12)) {
-        try {
-          googleDiscoveries.push(
-            await discoverCompaniesFromGooglePlacesExpanded({
-              niche,
-              city,
-              district,
-              limit: perNicheGoogleLimit,
-              sourceFocus
-            })
-          );
-        } catch (error) {
-          googleWarnings.push(`Google Places skipped: ${error.message || 'unknown error'}`);
-          break;
-        }
-      }
-    }
-
-    const publicLimit = Math.max(2, Math.ceil(Math.min(limit, 36) / Math.min(niches.length, 12)));
-    const publicDiscoveries = await Promise.all(
-      niches
-        .slice(0, 12)
-        .map((niche) => discoverCompaniesFromPublicSearch({ niche, city, district, limit: publicLimit, sourceFocus }))
-    );
-    const mergedFast = mergeDiscoveries([...amazonDiscoveries, ...googleDiscoveries, ...publicDiscoveries], limit);
-    return {
-      ...mergedFast,
-      warnings: [
-        ...unique([...amazonWarnings, ...googleWarnings, ...(mergedFast.warnings || [])]),
-        `Broad category search used ${Math.min(niches.length, 12)} categories; Amazon Location is prioritized when API is enabled.`
-      ]
-    };
-  }
-
-  const perNicheLimit = ['internet', 'directories', 'booking', 'social', 'all_sources'].includes(sourceFocus)
-    ? Math.max(1, Math.ceil(limit / Math.max(1, niches.length)))
-    : Math.max(5, Math.ceil(limit / Math.max(1, niches.length)));
+  // For multiple categories, iterate every niche (no artificial 12-category cap)
+  // and keep every source running per niche until the overall limit is filled.
+  // Each niche gets its own fair share of the limit, but if earlier niches under-
+  // deliver, later niches can still contribute more since we stop only once the
+  // combined total reaches the requested limit.
   const collected = [];
   const queries = [];
   const warnings = [];
   const sources = new Set();
+  const perNicheLimit = Math.max(3, Math.ceil(limit / Math.max(1, niches.length)));
 
   for (const niche of niches) {
-    if (collected.length >= limit) break;
-    const discovery = await discoverCompaniesWithoutAI({
-      niche,
-      city,
-      district,
-      limit: perNicheLimit,
-      sourceFocus
-    });
-    sources.add(discovery.source);
-    queries.push(...(discovery.queries || []));
-    warnings.push(...(discovery.warnings || []));
-    collected.push(...(discovery.companies || []));
+    const remaining = limit - uniqueCompanies(collected).length;
+    if (remaining <= 0) break;
+    try {
+      const discovery = await discoverCompaniesWithoutAI({
+        niche,
+        city,
+        district,
+        limit: Math.max(perNicheLimit, remaining),
+        sourceFocus
+      });
+      sources.add(discovery.source);
+      queries.push(...(discovery.queries || []));
+      warnings.push(...(discovery.warnings || []));
+      collected.push(...(discovery.companies || []));
+    } catch (error) {
+      warnings.push(`Category "${niche}" skipped: ${error.message || 'unknown error'}`);
+    }
   }
 
   return {
     source: [...sources].join(',') || 'unknown',
-    queries: unique(queries).slice(0, 30),
-    warnings: unique(warnings).slice(0, 20),
+    queries: unique(queries).slice(0, 40),
+    warnings: unique(warnings).slice(0, 30),
     companies: uniqueCompanies(collected).slice(0, limit)
   };
 }
@@ -730,55 +684,82 @@ function discoveryPriority(discovery) {
   return 9;
 }
 
-async function discoverCompaniesWithoutAI({ niche, city, district, limit, sourceFocus }) {
+async function discoverCompaniesWithoutAI({ niche, city, district, limit, sourceFocus, onProgress }) {
   if (sourceFocus === 'all_sources') {
+    // Run every configured source and keep accumulating until the requested
+    // limit is reached, instead of stopping early once one source returns a
+    // few results. Each source is capped so it doesn't overshoot, but if the
+    // combined total is still under the limit after all sources ran, that's
+    // simply all that could be found for this niche/location right now.
     const discoveries = [];
     const warnings = [];
-    if (AWS_LOCATION_API_KEY) {
+    const combinedCount = () => uniqueCompanies(discoveries.flatMap((item) => item.companies || [])).length;
+    const remaining = () => Math.max(0, limit - combinedCount());
+    const report = (sourceLabel, count) => {
+      if (typeof onProgress === 'function') onProgress({ niche, source: sourceLabel, foundSoFar: combinedCount(), count });
+    };
+
+    if (AWS_LOCATION_API_KEY && remaining() > 0) {
       try {
-        discoveries.push(await discoverCompaniesFromAmazonLocationExpanded({ niche, city, district, limit, sourceFocus }));
+        const result = await discoverCompaniesFromAmazonLocationExpanded({ niche, city, district, limit, sourceFocus });
+        discoveries.push(result);
+        report('amazon_location', result.companies.length);
       } catch (error) {
         warnings.push(`Amazon Location skipped: ${error.message || 'unknown error'}`);
       }
-    } else if (false) {
-      warnings.push('AWS_LOCATION_API_KEY not set; Amazon Location skipped.');
     }
 
-    const amazonCount = uniqueCompanies(discoveries.flatMap((item) => item.companies || [])).length;
-    if (GOOGLE_PLACES_API_KEY && amazonCount < Math.min(3, limit)) {
+    if (GOOGLE_PLACES_API_KEY && remaining() > 0) {
       try {
-        discoveries.push(await discoverCompaniesFromGooglePlacesExpanded({ niche, city, district, limit, sourceFocus }));
+        const result = await discoverCompaniesFromGooglePlacesExpanded({ niche, city, district, limit: remaining(), sourceFocus });
+        discoveries.push(result);
+        report('google_places_api', result.companies.length);
       } catch (error) {
-        if (!discoveries.length) warnings.push(`Google Places skipped: ${error.message || 'unknown error'}`);
+        warnings.push(`Google Places skipped: ${error.message || 'unknown error'}`);
       }
-    } else if (false) {
-      warnings.push('GOOGLE_PLACES_API_KEY не настроен, Google Places пропущен.');
     }
 
-    if (CEIDG_TOKEN) {
+    if (CEIDG_TOKEN && remaining() > 0) {
       try {
-        discoveries.push(await discoverCompaniesFromCeidg({ niche, city, district, limit }));
+        const result = await discoverCompaniesFromCeidg({ niche, city, district, limit: remaining() });
+        discoveries.push(result);
+        report('ceidg_api', result.companies.length);
       } catch (error) {
         warnings.push(`CEIDG skipped: ${error.message || 'unknown error'}`);
       }
-    } else if (false) {
-      const registryDiscovery = await discoverCompaniesFromPublicRegistries({ niche, city, district, limit });
-      if (registryDiscovery.companies.length) discoveries.push(registryDiscovery);
+    } else if (!CEIDG_TOKEN && remaining() > 0) {
+      try {
+        const registryDiscovery = await discoverCompaniesFromPublicRegistries({ niche, city, district, limit: remaining() });
+        if (registryDiscovery.companies.length) {
+          discoveries.push(registryDiscovery);
+          report('public_registry_search', registryDiscovery.companies.length);
+        }
+      } catch (error) {
+        warnings.push(`Public registries skipped: ${error.message || 'unknown error'}`);
+      }
     }
 
-    const publicDiscovery = await discoverCompaniesFromPublicSearchExpanded({ niche, city, district, limit, sourceFocus });
-    if (publicDiscovery.companies.length) discoveries.push(publicDiscovery);
+    if (remaining() > 0) {
+      try {
+        const publicDiscovery = await discoverCompaniesFromPublicSearchExpanded({ niche, city, district, limit: remaining(), sourceFocus });
+        if (publicDiscovery.companies.length) {
+          discoveries.push(publicDiscovery);
+          report(`public_search_${sourceFocus}`, publicDiscovery.companies.length);
+        }
+        warnings.push(...(publicDiscovery.warnings || []));
+      } catch (error) {
+        warnings.push(`Public search skipped: ${error.message || 'unknown error'}`);
+      }
+    }
+
     if (!discoveries.length) {
-      throw new Error(
-        `No companies found in configured non-AI sources. ${warnings.join(' ')} ${(publicDiscovery.warnings || []).join(' ')}`
-      );
+      throw new Error(`No companies found in configured non-AI sources. ${warnings.join(' ')}`);
     }
     const orderedDiscoveries = [...discoveries].sort((left, right) => discoveryPriority(left) - discoveryPriority(right));
     return {
       ...mergeDiscoveries(orderedDiscoveries, limit),
-      warnings: unique([...warnings, ...discoveries.flatMap((item) => item.warnings || [])]).slice(0, 30)
+      warnings: unique(warnings).slice(0, 30)
     };
-
   }
 
   if (['internet', 'directories', 'booking', 'social'].includes(sourceFocus)) {
@@ -2653,7 +2634,7 @@ async function analyzeSiteCardWithOpenAI({ item, parsed, websiteResolution, heur
     {
       role: 'system',
       content:
-        'You create a detailed website-opportunity analysis for one local company card. You must use only the provided parser facts. Do not invent missing data. If evidence is weak, say UNKNOWN. Be specific to the niche, services, activity, website status and materials. Return only JSON matching the schema.'
+        'You create a detailed website-opportunity analysis for one local company card. You must use only the provided parser facts. Do not invent missing data. If evidence is weak, say UNKNOWN. Be specific to the niche, services, activity, website status and materials. Write ALL text field values (company_summary, main_problem, why_website_needed, problems_solved_by_site, recommended_structure, required_features, existing_materials, missing_materials, personal_argument, recommended_offer, risks_or_skip_reasons, evidence_used) in Russian language, even if the source facts are in Polish. Keep first_message_ru in Russian and first_message_pl in Polish as usual. Return only JSON matching the schema.'
     },
     {
       role: 'user',
