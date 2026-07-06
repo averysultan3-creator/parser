@@ -892,7 +892,9 @@ tbody tr.selected {
 .detail-panel {
   align-self: start;
   max-height: 100vh;
-  overflow: auto;
+  min-width: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .detail-header {
@@ -935,6 +937,37 @@ tbody tr.selected {
   display: grid;
   gap: 12px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  min-width: 0;
+}
+
+.detail-card-grid > .detail-card {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.api-base-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.api-base-form input {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  flex: 1 1 260px;
+  min-width: 0;
+  padding: 10px 12px;
+}
+
+.api-base-form button {
+  background: var(--blue);
+  border: 0;
+  border-radius: 8px;
+  color: #fff;
+  font-weight: 700;
+  padding: 10px 14px;
 }
 
 .detail-card {

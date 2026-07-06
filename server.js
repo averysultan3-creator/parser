@@ -309,6 +309,11 @@ app.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
   } else if (origin && allowedOrigins.has(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin);
+  } else if (origin) {
+    // Reflect any other origin too. The backend may be exposed through a
+    // public tunnel (cloudflared/ngrok) and opened from GitHub Pages on a
+    // different computer; a strict allow-list would silently break fetch().
+    res.setHeader('Access-Control-Allow-Origin', origin);
   }
 
   res.setHeader('Vary', 'Origin');

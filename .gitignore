@@ -7,3 +7,4 @@ data/*.json
 exports/
 server-out.log
 server-err.log
+tunnel.log

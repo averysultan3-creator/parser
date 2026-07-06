@@ -19,14 +19,91 @@ const state = {
   }
 };
 
-const API_BASE =
-  window.location.protocol === 'file:' || window.location.hostname.endsWith('github.io')
-    ? 'http://localhost:4317'
-    : '';
+const API_BASE_STORAGE_KEY = 'parserApiBase';
+
+function normalizeApiBase(value) {
+  if (!value) return '';
+  let cleaned = String(value).trim().replace(/\/+$/, '');
+  if (!cleaned) return '';
+  if (!/^https?:\/\//i.test(cleaned)) {
+    cleaned = `https://${cleaned}`;
+  }
+  return cleaned;
+}
+
+function resolveApiBase() {
+  // 1) URL-параметр ?api=https://my-backend.example — сохраняется и используется дальше.
+  try {
+    const fromQuery = new URLSearchParams(window.location.search).get('api');
+    if (fromQuery !== null) {
+      const cleaned = normalizeApiBase(fromQuery);
+      try {
+        if (cleaned) localStorage.setItem(API_BASE_STORAGE_KEY, cleaned);
+        else localStorage.removeItem(API_BASE_STORAGE_KEY);
+      } catch {}
+      if (cleaned) return cleaned;
+    }
+  } catch {}
+  // 2) Сохранённый ранее адрес backend.
+  try {
+    const saved = normalizeApiBase(localStorage.getItem(API_BASE_STORAGE_KEY));
+    if (saved) return saved;
+  } catch {}
+  // 3) По умолчанию: с GitHub Pages / file:// пробуем локальный сервер.
+  if (window.location.protocol === 'file:' || window.location.hostname.endsWith('github.io')) {
+    return 'http://localhost:4317';
+  }
+  return '';
+}
+
+const API_BASE = resolveApiBase();
+
+// На GitHub Pages рядом с index.html лежит tunnel.json, который батник
+// start-parser.bat обновляет при каждом запуске (в нём свежий адрес
+// cloudflared-туннеля). Работнику достаточно открыть обычную ссылку на
+// Pages: скрипт сам подхватит рабочий адрес backend и перезагрузит страницу.
+void syncApiBaseFromTunnelConfig();
+
+async function syncApiBaseFromTunnelConfig() {
+  const onPagesOrFile =
+    window.location.protocol === 'file:' || window.location.hostname.endsWith('github.io');
+  if (!onPagesOrFile) return;
+  try {
+    if (new URLSearchParams(window.location.search).get('api')) return;
+  } catch {}
+  try {
+    const response = await fetch(`tunnel.json?t=${Date.now()}`, { cache: 'no-store' });
+    if (!response.ok) return;
+    const data = await response.json();
+    const cleaned = normalizeApiBase(data.api || data.url || '');
+    if (!cleaned || cleaned === API_BASE) return;
+    // Переключаемся только если новый адрес реально отвечает,
+    // чтобы не сломать рабочий адрес из-за устаревшего tunnel.json в кеше CDN.
+    const health = await fetch(`${cleaned}/api/health`, { cache: 'no-store' });
+    if (!health.ok) return;
+    try {
+      localStorage.setItem(API_BASE_STORAGE_KEY, cleaned);
+    } catch {}
+    window.location.reload();
+  } catch {}
+}
 
 function apiUrl(path) {
+
   return `${API_BASE}${path}`;
 }
+
+function saveApiBaseAndReload(value) {
+  const cleaned = normalizeApiBase(value);
+  try {
+    if (cleaned) localStorage.setItem(API_BASE_STORAGE_KEY, cleaned);
+    else localStorage.removeItem(API_BASE_STORAGE_KEY);
+  } catch {}
+  const url = new URL(window.location.href);
+  url.searchParams.delete('api');
+  window.location.href = url.toString();
+}
+
 
 const els = {
   apiStatus: document.querySelector('#apiStatus'),
@@ -401,7 +478,12 @@ async function loadConfig() {
     setPill(els.apiStatus, 'Config API offline', false);
     setPill(els.webSearchStatus, 'Crawler unknown', false);
     setPill(els.registryStatus, 'Sources unknown', false);
-    setDiscoverStatus('Не могу прочитать /api/config. Откройте http://localhost:4317/ и проверьте, что npm run dev запущен.', 'warn');
+    setDiscoverStatus(
+      API_BASE.includes('localhost')
+        ? 'Не могу прочитать /api/config. Откройте http://localhost:4317/ и проверьте, что npm run dev запущен. С другого компьютера укажите публичный адрес backend ниже.'
+        : `Backend по адресу ${API_BASE || window.location.origin} не отвечает. Проверьте адрес сервера ниже.`,
+      'warn'
+    );
     renderConfigError(error);
   }
 }
@@ -479,9 +561,21 @@ function renderConfigError(error) {
     <div class="config-diagnostics-title">Ошибка подключения к backend</div>
     <div class="config-diagnostic warn">
       <strong>Config API</strong>
-      <span>${escapeHtml(message)}. Запустите сервер через npm run dev и открывайте http://localhost:4317/.</span>
+      <span>${escapeHtml(message)}. Текущий адрес backend: ${escapeHtml(API_BASE || window.location.origin)}.</span>
+      <span>Локально: запустите сервер через npm run dev и открывайте http://localhost:4317/. С другого компьютера через GitHub Pages нужен публичный адрес backend (например, туннель cloudflared/ngrok): введите его ниже или откройте страницу с параметром ?api=https://адрес.</span>
+    </div>
+    <div class="api-base-form">
+      <input id="apiBaseInput" type="text" placeholder="https://адрес-вашего-backend" value="${escapeAttribute(API_BASE)}" />
+      <button id="apiBaseSaveButton" type="button">Сохранить адрес и перезагрузить</button>
     </div>
   `;
+
+  const input = els.configDiagnostics.querySelector('#apiBaseInput');
+  const button = els.configDiagnostics.querySelector('#apiBaseSaveButton');
+  button?.addEventListener('click', () => saveApiBaseAndReload(input?.value || ''));
+  input?.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') saveApiBaseAndReload(input.value);
+  });
 }
 
 function bindEvents() {
