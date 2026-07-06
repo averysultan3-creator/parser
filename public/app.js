@@ -20,6 +20,8 @@ const state = {
 };
 
 const API_BASE_STORAGE_KEY = 'parserApiBase';
+const TUNNEL_BOOTSTRAP_RETRIES = 4;
+const TUNNEL_BOOTSTRAP_DELAY_MS = 1200;
 
 // ngrok на бесплатном тарифе показывает HTML-заглушку для запросов из браузера.
 // Заголовок ngrok-skip-browser-warning отключает её. Добавляем его во все
@@ -46,6 +48,10 @@ function normalizeApiBase(value) {
   return cleaned;
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
 function resolveApiBase() {
   // 1) URL-параметр ?api=https://my-backend.example — сохраняется и используется дальше.
   try {
@@ -60,19 +66,21 @@ function resolveApiBase() {
     }
   } catch {}
   const onPages = window.location.hostname.endsWith('github.io');
-  // 2) На GitHub Pages не держим старый localhost в приоритете.
-  try {
-    const saved = normalizeApiBase(localStorage.getItem(API_BASE_STORAGE_KEY));
-    if (saved) {
-      if (onPages && saved.includes('localhost')) return '';
-      return saved;
-    }
-  } catch {}
-  // 3) По умолчанию: локально пробуем localhost, на Pages ждём tunnel.json.
   if (window.location.protocol === 'file:') {
     return 'http://localhost:4317';
   }
   if (onPages) return '';
+  // 2) Локально разрешаем сохранённый адрес backend.
+  try {
+    const saved = normalizeApiBase(localStorage.getItem(API_BASE_STORAGE_KEY));
+    if (saved) {
+      try {
+        if (new URL(saved).origin === window.location.origin) return '';
+      } catch {}
+      return saved;
+    }
+  } catch {}
+  // 3) По умолчанию локально пробуем localhost.
   return '';
 }
 
@@ -121,28 +129,26 @@ async function syncApiBaseFromTunnelConfig({ reloadOnChange = false } = {}) {
   try {
     if (new URLSearchParams(window.location.search).get('api')) return false;
   } catch {}
-  try {
-    const response = await fetch(`tunnel.json?t=${Date.now()}`, { cache: 'no-store' });
-    if (!response.ok) return false;
-    const data = await response.json();
-    const cleaned = normalizeApiBase(data.api || data.url || '');
-    if (!cleaned) return false;
-    // Переключаемся только если новый адрес реально отвечает,
-    // чтобы не сломать рабочий адрес из-за устаревшего tunnel.json в кеше CDN.
-    if (!(await isApiBaseReachable(cleaned))) return false;
-    if (cleaned !== getApiBase()) {
-      setApiBase(cleaned, { persist: true });
-      if (reloadOnChange) {
-        window.location.reload();
-        return true;
+  for (let attempt = 0; attempt < TUNNEL_BOOTSTRAP_RETRIES; attempt += 1) {
+    try {
+      const response = await fetch(`tunnel.json?t=${Date.now()}`, { cache: 'no-store' });
+      if (!response.ok) throw new Error(`tunnel.json returned ${response.status}`);
+      const data = await response.json();
+      const cleaned = normalizeApiBase(data.api || data.url || '');
+      if (!cleaned) throw new Error('tunnel.json missing api/url');
+      if (cleaned !== getApiBase()) {
+        setApiBase(cleaned, { persist: true });
+      } else {
+        persistApiBase(cleaned);
       }
-    } else {
-      persistApiBase(cleaned);
+      return true;
+    } catch {
+      if (attempt < TUNNEL_BOOTSTRAP_RETRIES - 1) {
+        await sleep(TUNNEL_BOOTSTRAP_DELAY_MS * (attempt + 1));
+      }
     }
-    return true;
-  } catch {
-    return false;
   }
+  return false;
 }
 
 function apiUrl(path) {
@@ -152,10 +158,62 @@ function apiUrl(path) {
 
 function saveApiBaseAndReload(value) {
   const cleaned = normalizeApiBase(value);
-  setApiBase(cleaned, { persist: true });
+  try {
+    const sameOrigin = new URL(cleaned).origin === window.location.origin;
+    if (sameOrigin) {
+      setApiBase('', { persist: true });
+    } else {
+      setApiBase(cleaned, { persist: true });
+    }
+  } catch {
+    setApiBase(cleaned, { persist: true });
+  }
   const url = new URL(window.location.href);
   url.searchParams.delete('api');
   window.location.href = url.toString();
+}
+
+async function bootstrapApiBase() {
+  const queryBase = (() => {
+    try {
+      return normalizeApiBase(new URLSearchParams(window.location.search).get('api'));
+    } catch {
+      return '';
+    }
+  })();
+  if (queryBase && (await isApiBaseReachable(queryBase))) {
+    setApiBase(queryBase, { persist: true });
+    return queryBase;
+  }
+
+  const onPagesOrFile = window.location.protocol === 'file:' || window.location.hostname.endsWith('github.io');
+  if (onPagesOrFile) {
+    const tunneled = await syncApiBaseFromTunnelConfig();
+    if (tunneled) return getApiBase();
+  }
+
+  try {
+    const saved = normalizeApiBase(localStorage.getItem(API_BASE_STORAGE_KEY));
+    if (saved) {
+      try {
+        if (new URL(saved).origin === window.location.origin) return getApiBase();
+      } catch {}
+      if (await isApiBaseReachable(saved)) {
+        setApiBase(saved, { persist: true });
+        return saved;
+      }
+    }
+  } catch {}
+
+  if (!onPagesOrFile && window.location.protocol !== 'file:') {
+    const localBase = 'http://localhost:4317';
+    if (await isApiBaseReachable(localBase)) {
+      setApiBase(localBase);
+      return localBase;
+    }
+  }
+
+  return getApiBase();
 }
 
 
@@ -445,7 +503,8 @@ function renderResultsContext() {
 init();
 
 async function init() {
-  await syncApiBaseFromTunnelConfig({ reloadOnChange: true });
+  setDiscoverStatus('Подключаю backend и читаю tunnel.json...', 'work');
+  await bootstrapApiBase();
   ensureResultsContext();
   populateCategoryPreset();
   els.discoverCategoryPreset.value = 'cat:Klimatyzacja';
@@ -612,11 +671,12 @@ function renderConfigDiagnostics({ openaiReady, amazonReady, googleReady, ceidgR
 
 function renderConfigError(error) {
   const message = error?.message || 'unknown config error';
+  const currentBackend = getApiBase() || (window.location.hostname.endsWith('github.io') ? 'tunnel.json / auto-bootstrap' : window.location.origin);
   els.configDiagnostics.innerHTML = `
     <div class="config-diagnostics-title">Ошибка подключения к backend</div>
     <div class="config-diagnostic warn">
       <strong>Config API</strong>
-      <span>${escapeHtml(message)}. Текущий адрес backend: ${escapeHtml(getApiBase() || window.location.origin)}.</span>
+      <span>${escapeHtml(message)}. Текущий адрес backend: ${escapeHtml(currentBackend)}.</span>
       <span>Локально: запустите сервер через npm run dev и открывайте http://localhost:4317/. С другого компьютера через GitHub Pages нужен публичный адрес backend (например, туннель cloudflared/ngrok): введите его ниже или откройте страницу с параметром ?api=https://адрес.</span>
     </div>
     <div class="api-base-form">
