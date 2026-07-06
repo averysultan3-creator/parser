@@ -1060,96 +1060,113 @@ async function discoverCompaniesFromGooglePlaces({ niche, city, district, limit,
     'nextPageToken'
   ].join(',');
 
-  const requestBody = {
-    textQuery,
-    languageCode,
-    regionCode,
-    pageSize: Math.min(limit, 20)
-  };
+  const locationBias =
+    cityPreset && !district
+      ? {
+          circle: {
+            center: { latitude: cityPreset.lat, longitude: cityPreset.lng },
+            radius: clamp(Math.round((discoveryContext.radiusKm || 15) * 1000), 1000, 50000)
+          }
+        }
+      : undefined;
 
-  // Apply a location bias circle when we know city coordinates. radiusKm from the
-  // request overrides the default radius; otherwise fall back to a sensible
-  // per-city default (~15km covers most single cities without bleeding into
-  // neighboring metro areas).
-  if (cityPreset && !district) {
-    const radiusMeters = Math.round((discoveryContext.radiusKm || 15) * 1000);
-    requestBody.locationBias = {
-      circle: {
-        center: { latitude: cityPreset.lat, longitude: cityPreset.lng },
-        radius: clamp(radiusMeters, 1000, 50000)
-      }
+  console.log(
+    `[google_places] query="${textQuery}" city=${city || '(country-wide)'} regionCode=${regionCode} radiusKm=${discoveryContext.radiusKm || '(default)'} bias=${Boolean(locationBias)}`
+  );
+
+  // Google Places (New) Text Search paginates with nextPageToken (max 20 per
+  // page, up to ~60 results total across 3 pages). Loop through pages until
+  // we hit the requested limit or run out of pages, instead of only reading
+  // the first page and discarding the rest.
+  const collected = [];
+  let pageToken = '';
+  let pageCount = 0;
+  let lastError = null;
+
+  while (collected.length < limit && pageCount < 3) {
+    const requestBody = {
+      textQuery,
+      languageCode,
+      regionCode,
+      pageSize: Math.min(limit - collected.length, 20)
     };
-  }
+    if (locationBias) requestBody.locationBias = locationBias;
+    if (pageToken) requestBody.pageToken = pageToken;
 
-  console.log(
-    `[google_places] query="${textQuery}" city=${city || '(country-wide)'} regionCode=${regionCode} radiusKm=${discoveryContext.radiusKm || '(default)'} bias=${Boolean(requestBody.locationBias)}`
-  );
-
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), GOOGLE_PLACES_TIMEOUT_MS);
-  let response;
-  try {
-    response = await fetch('https://places.googleapis.com/v1/places:searchText', {
-      method: 'POST',
-      signal: controller.signal,
-      headers: {
-        'content-type': 'application/json',
-        'X-Goog-Api-Key': GOOGLE_PLACES_API_KEY,
-        'X-Goog-FieldMask': fieldMask,
-        'user-agent': USER_AGENT
-      },
-      body: JSON.stringify(requestBody)
-    });
-  } catch (error) {
-    if (error?.name === 'AbortError') {
-      throw new Error('Google Places API timeout');
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), GOOGLE_PLACES_TIMEOUT_MS);
+    let response;
+    try {
+      response = await fetch('https://places.googleapis.com/v1/places:searchText', {
+        method: 'POST',
+        signal: controller.signal,
+        headers: {
+          'content-type': 'application/json',
+          'X-Goog-Api-Key': GOOGLE_PLACES_API_KEY,
+          'X-Goog-FieldMask': fieldMask,
+          'user-agent': USER_AGENT
+        },
+        body: JSON.stringify(requestBody)
+      });
+    } catch (error) {
+      lastError = error?.name === 'AbortError' ? new Error('Google Places API timeout') : error;
+      break;
+    } finally {
+      clearTimeout(timer);
     }
-    throw error;
-  } finally {
-    clearTimeout(timer);
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      console.log(`[google_places] query="${textQuery}" page=${pageCount + 1} error=${response.status} ${data.error?.message || ''}`);
+      lastError = new Error(data.error?.message || `Google Places API error ${response.status}`);
+      break;
+    }
+
+    const rawCount = (data.places || []).length;
+    const pageCompanies = (data.places || [])
+      .filter((place) => !place.businessStatus || place.businessStatus === 'OPERATIONAL')
+      .map((place) => ({
+        company: cleanText(place.displayName?.text || ''),
+        niche,
+        city: city || cleanText(place.formattedAddress || '').split(',').slice(-2, -1)[0]?.trim() || city,
+        district,
+        address: cleanText(place.formattedAddress || ''),
+        phone: normalizePhone(place.internationalPhoneNumber || place.nationalPhoneNumber || ''),
+        website_url: cleanText(place.websiteUri || ''),
+        source: 'google_places_api',
+        source_profile: cleanText(place.googleMapsUri || ''),
+        review_count: parseNumber(place.userRatingCount),
+        rating: parseNumber(place.rating),
+        status: place.businessStatus === 'OPERATIONAL' ? 'active' : cleanText(place.businessStatus || ''),
+        services: [niche],
+        physical_location: true,
+        notes: cleanText(
+          `Non-AI discovery from Google Places Text Search; source_focus=${sourceFocus}; types=${(place.types || [])
+            .slice(0, 6)
+            .join(';')}`
+        )
+      }))
+      .filter((company) => company.company);
+
+    collected.push(...pageCompanies);
+    pageCount += 1;
+    console.log(
+      `[google_places] query="${textQuery}" page=${pageCount} returned=${rawCount} after_operational_filter=${pageCompanies.length} total_collected=${collected.length}`
+    );
+
+    if (!data.nextPageToken) break;
+    pageToken = data.nextPageToken;
+    // Google requires a short delay before a pageToken becomes valid.
+    await new Promise((resolve) => setTimeout(resolve, 2000));
   }
 
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    console.log(`[google_places] query="${textQuery}" error=${response.status} ${data.error?.message || ''}`);
-    throw new Error(data.error?.message || `Google Places API error ${response.status}`);
-  }
-
-  const rawCount = (data.places || []).length;
-  const companies = (data.places || [])
-    .filter((place) => !place.businessStatus || place.businessStatus === 'OPERATIONAL')
-    .map((place) => ({
-      company: cleanText(place.displayName?.text || ''),
-      niche,
-      city: city || cleanText(place.formattedAddress || '').split(',').slice(-2, -1)[0]?.trim() || city,
-      district,
-      address: cleanText(place.formattedAddress || ''),
-      phone: normalizePhone(place.internationalPhoneNumber || place.nationalPhoneNumber || ''),
-      website_url: cleanText(place.websiteUri || ''),
-      source: 'google_places_api',
-      source_profile: cleanText(place.googleMapsUri || ''),
-      review_count: parseNumber(place.userRatingCount),
-      rating: parseNumber(place.rating),
-      status: place.businessStatus === 'OPERATIONAL' ? 'active' : cleanText(place.businessStatus || ''),
-      services: [niche],
-      physical_location: true,
-      notes: cleanText(
-        `Non-AI discovery from Google Places Text Search; source_focus=${sourceFocus}; types=${(place.types || [])
-          .slice(0, 6)
-          .join(';')}`
-      )
-    }))
-    .filter((company) => company.company);
-
-  const dedupedCompanies = uniqueCompanies(companies);
-  console.log(
-    `[google_places] query="${textQuery}" returned=${rawCount} after_operational_filter=${companies.length} after_dedupe=${dedupedCompanies.length}`
-  );
+  const dedupedCompanies = uniqueCompanies(collected).slice(0, limit);
+  if (!dedupedCompanies.length && lastError) throw lastError;
 
   return {
     source: 'google_places_api',
     queries: [textQuery],
-    warnings: data.nextPageToken ? ['Есть следующая страница Google Places; текущий запуск взял первый пакет.'] : [],
+    warnings: pageToken && dedupedCompanies.length >= limit ? ['Google Places has more results than the requested limit; increase limit to fetch more.'] : [],
     companies: dedupedCompanies
   };
 }
