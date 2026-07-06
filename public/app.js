@@ -646,6 +646,26 @@ function syncSidebarFilters() {
   updateResultFilters();
 }
 
+function resetFiltersForDiscovery() {
+  els.resultFilterText.value = '';
+  els.resultFilterSite.value = 'all';
+  els.sidebarSiteFilter.value = 'all';
+  els.resultFilterSize.value = 'all';
+  els.resultFilterPriority.value = 'all';
+  els.resultFilterMinScore.value = '0';
+  els.sidebarMinScore.value = '0';
+  els.sidebarHasPhone.checked = false;
+  els.sidebarHasSocial.checked = false;
+  els.sidebarHasEmail.checked = false;
+  state.filters = {
+    text: '',
+    site: 'all',
+    size: 'all',
+    priority: 'all',
+    minScore: 0
+  };
+}
+
 async function handleFile(event) {
   const file = event.target.files?.[0];
   if (!file) return;
@@ -761,6 +781,7 @@ async function runDiscovery() {
 
   stopDiscoveryPolling();
   clearHistoryContext();
+  switchView('results');
   state.historyLoaded = false;
   const discoveryReady = Boolean(
     state.config?.registry?.amazonLocationConfigured ||
@@ -778,9 +799,11 @@ async function runDiscovery() {
   const niches = selectedDiscoveryNiches();
   if (!niches.length) {
     setDiscoverStatus('Укажите категорию или выберите набор категорий.', 'warn');
+    state.discoveryRunning = false;
     return;
   }
 
+  resetFiltersForDiscovery();
   els.discoverButton.disabled = true;
   els.analyzeButton.disabled = true;
   els.quickFindSitesButton.disabled = true;
@@ -842,6 +865,7 @@ async function runDiscovery() {
         warnings.length ? 'warn' : 'ok'
       );
       setStatus('Список компаний готов к анализу.', 'ok');
+      await loadHistory();
       return;
     }
 
