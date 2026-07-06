@@ -7,7 +7,8 @@
     "dev": "node server.js",
     "start": "node server.js",
     "smoke": "node scripts/smoke-test.mjs",
-    "smoke:boot": "node scripts/smoke-test.mjs --boot"
+    "smoke:boot": "node scripts/smoke-test.mjs --boot",
+    "smoke:pages": "node scripts/pages-smoke.mjs"
   },
   "dependencies": {
     "cheerio": "^1.0.0",
