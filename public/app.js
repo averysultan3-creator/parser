@@ -59,15 +59,20 @@ function resolveApiBase() {
       if (cleaned) return cleaned;
     }
   } catch {}
-  // 2) Сохранённый ранее адрес backend.
+  const onPages = window.location.hostname.endsWith('github.io');
+  // 2) На GitHub Pages не держим старый localhost в приоритете.
   try {
     const saved = normalizeApiBase(localStorage.getItem(API_BASE_STORAGE_KEY));
-    if (saved) return saved;
+    if (saved) {
+      if (onPages && saved.includes('localhost')) return '';
+      return saved;
+    }
   } catch {}
-  // 3) По умолчанию: с GitHub Pages / file:// пробуем локальный сервер.
-  if (window.location.protocol === 'file:' || window.location.hostname.endsWith('github.io')) {
+  // 3) По умолчанию: локально пробуем localhost, на Pages ждём tunnel.json.
+  if (window.location.protocol === 'file:') {
     return 'http://localhost:4317';
   }
+  if (onPages) return '';
   return '';
 }
 
@@ -89,8 +94,6 @@ function setApiBase(value, { persist = false } = {}) {
   if (persist) persistApiBase(apiBase);
   return apiBase;
 }
-
-const API_BASE = apiBase;
 
 // На GitHub Pages рядом с index.html лежит tunnel.json, который батник
 // start-parser.bat обновляет при каждом запуске (в нём свежий адрес
@@ -533,7 +536,7 @@ async function loadConfig() {
     setDiscoverStatus(
       getApiBase().includes('localhost')
         ? 'Не могу прочитать /api/config. Откройте http://localhost:4317/ и проверьте, что npm run dev запущен. С другого компьютера укажите публичный адрес backend ниже.'
-        : `Backend по адресу ${API_BASE || window.location.origin} не отвечает. Проверьте адрес сервера ниже.`,
+        : `Backend по адресу ${getApiBase() || window.location.origin} не отвечает. Проверьте адрес сервера ниже.`,
       'warn'
     );
     renderConfigError(error);
@@ -613,11 +616,11 @@ function renderConfigError(error) {
     <div class="config-diagnostics-title">Ошибка подключения к backend</div>
     <div class="config-diagnostic warn">
       <strong>Config API</strong>
-      <span>${escapeHtml(message)}. Текущий адрес backend: ${escapeHtml(API_BASE || window.location.origin)}.</span>
+      <span>${escapeHtml(message)}. Текущий адрес backend: ${escapeHtml(getApiBase() || window.location.origin)}.</span>
       <span>Локально: запустите сервер через npm run dev и открывайте http://localhost:4317/. С другого компьютера через GitHub Pages нужен публичный адрес backend (например, туннель cloudflared/ngrok): введите его ниже или откройте страницу с параметром ?api=https://адрес.</span>
     </div>
     <div class="api-base-form">
-      <input id="apiBaseInput" type="text" placeholder="https://адрес-вашего-backend" value="${escapeAttribute(API_BASE)}" />
+      <input id="apiBaseInput" type="text" placeholder="https://адрес-вашего-backend" value="${escapeAttribute(getApiBase())}" />
       <button id="apiBaseSaveButton" type="button">Сохранить адрес и перезагрузить</button>
     </div>
   `;
