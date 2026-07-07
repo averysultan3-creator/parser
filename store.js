@@ -366,7 +366,7 @@ export function upsertCompany(company, { runId, stage = 'discovered' } = {}) {
   return { id, isNew: true, record };
 }
 
-function normalizeWorkerId(workerId) {
+export function normalizeWorkerId(workerId) {
   return String(workerId || 'worker-default').trim().slice(0, 80) || 'worker-default';
 }
 
@@ -543,6 +543,190 @@ export function listLeadPool({ q = '', status = '', workerId = '', limit = 500 }
     })
     .slice(0, limit)
     .map((record) => ({ ...record, status: normalizeLeadStatus(record.status || record.stage) }));
+}
+
+function workerActivityAt(record) {
+  return record?.updated_at || record?.last_analyzed_at || record?.reserved_at || record?.last_seen_at || record?.first_seen_at || '';
+}
+
+function scoreValues(values) {
+  const scores = values.map(Number).filter(Number.isFinite);
+  return scores.length ? Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length) : 0;
+}
+
+function academySummary(user) {
+  if (!user) {
+    return {
+      completedModules: 0,
+      totalModules: 10,
+      completionPercent: 0,
+      averageQuizScore: 0,
+      lastActiveAt: ''
+    };
+  }
+  const completed = Array.isArray(user.completedModules) ? user.completedModules.length : 0;
+  const total = 10;
+  return {
+    completedModules: completed,
+    totalModules: total,
+    completionPercent: Math.round((completed / total) * 100),
+    averageQuizScore: scoreValues(Object.values(user.quizScores || {})),
+    lastActiveAt: user.lastActiveAt || ''
+  };
+}
+
+function buildWorkerRecord(workerId, seed = {}) {
+  const id = normalizeWorkerId(workerId);
+  return {
+    workerId: id,
+    displayName: seed.displayName || id,
+    leadsAssigned: 0,
+    visibleLeads: 0,
+    availableAfterReset: 0,
+    parserRuns: 0,
+    foundTotal: 0,
+    newTotal: 0,
+    duplicateTotal: 0,
+    analyzedLeads: 0,
+    aiAnalyses: 0,
+    meetingBooked: 0,
+    completed: 0,
+    statusCounts: {},
+    academy: academySummary(seed.academy),
+    lastActiveAt: seed.lastActiveAt || '',
+    sourceTags: new Set(seed.sourceTags || [])
+  };
+}
+
+function bumpWorkerDate(worker, dateValue) {
+  if (dateValue && (!worker.lastActiveAt || String(dateValue).localeCompare(worker.lastActiveAt) > 0)) {
+    worker.lastActiveAt = String(dateValue);
+  }
+}
+
+export function listWorkers() {
+  const workers = new Map();
+  const ensureWorker = (workerId, seed = {}) => {
+    const id = normalizeWorkerId(workerId);
+    if (!workers.has(id)) workers.set(id, buildWorkerRecord(id, seed));
+    const worker = workers.get(id);
+    if (seed.displayName && (!worker.displayName || worker.displayName === worker.workerId)) worker.displayName = seed.displayName;
+    if (seed.academy) worker.academy = academySummary(seed.academy);
+    if (seed.sourceTags?.length) seed.sourceTags.forEach((tag) => worker.sourceTags.add(tag));
+    bumpWorkerDate(worker, seed.lastActiveAt);
+    return worker;
+  };
+
+  for (const user of Object.values(state.academy.users || {})) {
+    ensureWorker(user.userId || user.displayName, {
+      displayName: user.displayName || user.userId,
+      academy: user,
+      lastActiveAt: user.lastActiveAt || user.createdAt || '',
+      sourceTags: ['academy']
+    });
+  }
+
+  for (const run of state.runs.runs) {
+    const worker = ensureWorker(run.worker_id || 'worker-default', {
+      lastActiveAt: run.finished_at || run.started_at || '',
+      sourceTags: ['parser']
+    });
+    worker.parserRuns += 1;
+    worker.foundTotal += Number(run.found_count || 0);
+    worker.newTotal += Number(run.new_count || 0);
+    worker.duplicateTotal += Number(run.duplicate_count || 0);
+    bumpWorkerDate(worker, run.finished_at || run.started_at || '');
+  }
+
+  for (const record of Object.values(state.companies.companies)) {
+    const workerId = record.assigned_worker_id || record.first_assigned_worker_id || '';
+    if (!workerId) continue;
+    const worker = ensureWorker(workerId, { sourceTags: ['leads'] });
+    const status = normalizeLeadStatus(record.status || record.stage);
+    worker.leadsAssigned += 1;
+    worker.visibleLeads += record.available_for_discovery ? 0 : 1;
+    worker.availableAfterReset += record.available_for_discovery ? 1 : 0;
+    worker.statusCounts[status] = (worker.statusCounts[status] || 0) + 1;
+    if (record.analysis) worker.analyzedLeads += 1;
+    if (record.aiSiteAnalysis?.ai_analysis_status === 'COMPLETED' || record.aiSiteAnalysis?.status === 'COMPLETED') worker.aiAnalyses += 1;
+    if (status === 'meeting_booked') worker.meetingBooked += 1;
+    if (status === 'completed') worker.completed += 1;
+    bumpWorkerDate(worker, workerActivityAt(record));
+  }
+
+  return [...workers.values()]
+    .map((worker) => ({
+      ...worker,
+      sourceTags: [...worker.sourceTags],
+      statusCounts: Object.fromEntries(Object.entries(worker.statusCounts).sort(([a], [b]) => a.localeCompare(b)))
+    }))
+    .sort((a, b) => (b.lastActiveAt || '').localeCompare(a.lastActiveAt || ''));
+}
+
+export function getWorkerDetail(workerId) {
+  const id = normalizeWorkerId(workerId);
+  const worker = listWorkers().find((item) => item.workerId === id) || buildWorkerRecord(id);
+  const runs = state.runs.runs.filter((run) => normalizeWorkerId(run.worker_id || '') === id);
+  const runIds = new Set(runs.map((run) => run.id));
+  const companies = getAllCompanies().filter((record) => {
+    const assignedWorkerId = record.assigned_worker_id || record.first_assigned_worker_id || '';
+    if (assignedWorkerId && normalizeWorkerId(assignedWorkerId) === id) return true;
+    return (record.claimed_run_ids || record.run_ids || []).some((runId) => runIds.has(runId));
+  });
+  const statusCounts = {};
+  for (const record of companies) {
+    const status = normalizeLeadStatus(record.status || record.stage);
+    statusCounts[status] = (statusCounts[status] || 0) + 1;
+  }
+  return {
+    worker,
+    runs,
+    companies: companies.map((record) => ({ ...record, status: normalizeLeadStatus(record.status || record.stage) })),
+    academy: state.academy.users[id] || null,
+    statusCounts
+  };
+}
+
+export function getRunDetail(runId) {
+  const run = getRun(runId);
+  if (!run) return null;
+  return { run, companies: getCompaniesByIds(run.company_ids).map((record) => ({ ...record, status: normalizeLeadStatus(record.status || record.stage) })) };
+}
+
+export function resetRunCompanies(runId) {
+  const run = getRun(runId);
+  if (!run) return [];
+  return resetCompanies(run.company_ids || []);
+}
+
+export function deleteRun(runId) {
+  const id = String(runId);
+  const index = state.runs.runs.findIndex((run) => run.id === id);
+  if (index === -1) return null;
+  const [deleted] = state.runs.runs.splice(index, 1);
+  for (const record of Object.values(state.companies.companies)) {
+    if (Array.isArray(record.run_ids)) record.run_ids = record.run_ids.filter((value) => value !== id);
+    if (Array.isArray(record.claimed_run_ids)) record.claimed_run_ids = record.claimed_run_ids.filter((value) => value !== id);
+    if (record.first_claimed_run_id === id) delete record.first_claimed_run_id;
+  }
+  persistRuns();
+  persistCompanies();
+  return deleted;
+}
+
+export function removeCompanyFromRun(runId, companyId) {
+  const run = getRun(runId);
+  const record = getCompany(companyId);
+  if (!run || !record) return null;
+  const id = String(companyId);
+  run.company_ids = (run.company_ids || []).filter((value) => String(value) !== id);
+  record.run_ids = (record.run_ids || []).filter((value) => String(value) !== String(runId));
+  record.claimed_run_ids = (record.claimed_run_ids || []).filter((value) => String(value) !== String(runId));
+  if (record.first_claimed_run_id === String(runId)) delete record.first_claimed_run_id;
+  run.found_count = Math.max(0, Number(run.found_count || 0) - 1);
+  persistRuns();
+  persistCompanies();
+  return { run, record };
 }
 
 // Cheap update used when the caller already knows the company id (e.g. it came

@@ -1,4 +1,4 @@
-const PAGES_URL = process.env.PARSER_PAGES_URL || 'https://averysultan3-creator.github.io/parser/public';
+const PAGES_URL = process.env.PARSER_PAGES_URL || 'https://parser.auraglobal-merchants.com';
 
 try {
   const { chromium } = await import('playwright');

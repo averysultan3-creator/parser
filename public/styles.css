@@ -1041,6 +1041,18 @@ tbody tr.selected {
   width: 15px;
 }
 
+.lead-workflow-card select {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  min-height: 40px;
+  padding: 8px 10px;
+  width: 100%;
+}
+
+.lead-workflow-card .muted-text {
+  margin-top: 8px;
+}
+
 .detail-section {
   border-top: 1px solid var(--line);
   padding-top: 13px;

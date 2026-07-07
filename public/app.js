@@ -19,6 +19,19 @@ const state = {
   }
 };
 
+const leadStatusOptions = [
+  { value: 'new', ru: 'Новый / сброшен', pl: 'Nowy / reset' },
+  { value: 'reserved', ru: 'В работе', pl: 'W pracy' },
+  { value: 'analyzed', ru: 'Проверен', pl: 'Sprawdzony' },
+  { value: 'called', ru: 'Позвонили', pl: 'Dzwonione' },
+  { value: 'meeting_booked', ru: 'Встреча назначена', pl: 'Spotkanie' },
+  { value: 'not_interested', ru: 'Не интересно', pl: 'Nie zainteresowany' },
+  { value: 'bad_fit', ru: 'Слабый лид', pl: 'Slaby lead' },
+  { value: 'no_phone', ru: 'Нет телефона', pl: 'Brak telefonu' },
+  { value: 'duplicate', ru: 'Дубль', pl: 'Duplikat' },
+  { value: 'completed', ru: 'Закрыто', pl: 'Zamkniete' }
+];
+
 const API_BASE_STORAGE_KEY = 'parserApiBase';
 const LANGUAGE_STORAGE_KEY = 'parserLanguage';
 const WORKER_ID_STORAGE_KEY = 'auraWorkerId';
@@ -2304,6 +2317,45 @@ function detailTabButton(id, label) {
   return `<button class="detail-tab ${state.detailTab === id ? 'active' : ''}" type="button" data-detail-tab="${id}">${escapeHtml(label)}</button>`;
 }
 
+function leadCompanyId(result) {
+  return result?._companyId || result?.input?._companyId || '';
+}
+
+function currentLeadStatus(result) {
+  return result?.input?.lead_status || result?.lead_status || (result?.analysis ? 'analyzed' : 'reserved');
+}
+
+function leadStatusLabel(value) {
+  const option = leadStatusOptions.find((item) => item.value === value);
+  if (!option) return value || 'new';
+  return currentLanguage === 'pl' ? option.pl : option.ru;
+}
+
+function renderLeadWorkflowCard(result) {
+  const companyId = leadCompanyId(result);
+  const status = currentLeadStatus(result);
+  const helper =
+    currentLanguage === 'pl'
+      ? 'Ten status zapisuje sie w backendzie i jest widoczny w panelu admina.'
+      : 'Этот статус сохраняется в backend и сразу виден в админке.';
+  const missing =
+    currentLanguage === 'pl'
+      ? 'Status mozna zapisac dla leadow z parsera/historii. Dla czystego CSV najpierw uruchom sprawdzenie.'
+      : 'Статус можно сохранить для лидов из парсера/истории. Для чистого CSV сначала запустите проверку.';
+
+  return `
+    <section class="detail-card lead-workflow-card">
+      <h3>${currentLanguage === 'pl' ? 'Status pracy' : 'Статус обработки'}</h3>
+      <select id="leadWorkflowStatus" ${companyId ? '' : 'disabled'}>
+        ${leadStatusOptions
+          .map((option) => `<option value="${escapeAttribute(option.value)}" ${option.value === status ? 'selected' : ''}>${escapeHtml(currentLanguage === 'pl' ? option.pl : option.ru)}</option>`)
+          .join('')}
+      </select>
+      <p class="muted-text">${escapeHtml(companyId ? helper : missing)}</p>
+    </section>
+  `;
+}
+
 function renderActiveDetailTab(result) {
   if (state.detailTab === 'overview') return renderOverviewTab(result);
   if (state.detailTab === 'sources') return renderSourcesTab(result);
@@ -2321,6 +2373,8 @@ function renderOverviewTab(result) {
   const services = Array.isArray(input.services) ? input.services : [];
   return `
     <div class="detail-card-grid">
+      ${renderLeadWorkflowCard(result)}
+
       <section class="detail-card">
         <h3>Краткая информация</h3>
         <p>${escapeHtml(input.notes || a.main_problem || 'Локальная компания. Данные собраны из импорта, публичного профиля или подключенного источника.')}</p>
@@ -2536,6 +2590,9 @@ function bindDetailActions(result) {
   });
 
   els.detailContent.querySelector('#siteAiButton')?.addEventListener('click', () => runSiteAiAnalysis(result.id));
+  els.detailContent.querySelector('#leadWorkflowStatus')?.addEventListener('change', (event) => {
+    updateLeadWorkflowStatus(result, event.target.value);
+  });
 
   els.detailContent.querySelectorAll('[data-copy]').forEach((button) => {
     button.addEventListener('click', async () => {
@@ -2547,6 +2604,29 @@ function bindDetailActions(result) {
       }, 1200);
     });
   });
+}
+
+async function updateLeadWorkflowStatus(result, status) {
+  const companyId = leadCompanyId(result);
+  if (!companyId) return;
+  const response = await fetch(apiUrl(`/api/leads/${encodeURIComponent(companyId)}/status`), {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-worker-id': getWorkerId()
+    },
+    body: JSON.stringify({ status, workerId: getWorkerId() })
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    setStatus(data.error || 'Не удалось сохранить статус лида.', 'warn');
+    return;
+  }
+  result.lead_status = data.company?.status || status;
+  if (result.input) result.input.lead_status = data.company?.status || status;
+  renderResults();
+  renderTabbedDetail();
+  setStatus(`${currentLanguage === 'pl' ? 'Status zapisany' : 'Статус сохранен'}: ${leadStatusLabel(status)}`, 'ok');
 }
 
 async function runSiteAiAnalysis(resultId) {

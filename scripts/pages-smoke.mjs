@@ -1,4 +1,4 @@
-const PAGES_URL = process.env.PARSER_PAGES_URL || 'https://averysultan3-creator.github.io/parser/public';
+const PAGES_URL = process.env.PARSER_PAGES_URL || 'https://parser.auraglobal-merchants.com';
 const PAGES_ORIGIN = new URL(PAGES_URL).origin;
 
 try {
@@ -7,9 +7,8 @@ try {
   assert(indexHtml.includes('app.js?v='), 'Pages HTML must load app.js');
   assert(indexHtml.indexOf('patch.js?v=') < indexHtml.indexOf('app.js?v='), 'patch.js must load before app.js');
 
-  const tunnelJson = await fetchJson(`${PAGES_URL}/tunnel.json`);
-  const backend = normalizeBase(tunnelJson.api || tunnelJson.url);
-  assert(backend, 'tunnel.json must provide api/url');
+  const backend = await resolveBackend();
+  assert(backend, 'public page must expose a backend');
 
   const health = await fetchJson(`${backend}/api/health`);
   assert(health.ok === true, 'backend health must return ok=true');
@@ -28,11 +27,21 @@ try {
   assert(preflight['access-control-allow-methods']?.includes('POST'), 'preflight must allow POST');
 
   console.log(
-    `Pages smoke OK: index.html + patch.js + app.js | tunnel ${backend} | health ok (${health.timestamp})`
+    `Pages smoke OK: index.html + patch.js + app.js | backend ${backend} | health ok (${health.timestamp})`
   );
 } catch (error) {
   console.error(`Pages smoke FAILED: ${error.message || error}`);
   process.exitCode = 1;
+}
+
+async function resolveBackend() {
+  try {
+    const sameOriginHealth = await fetchJson(`${PAGES_URL}/api/health`);
+    if (sameOriginHealth.ok) return normalizeBase(PAGES_URL);
+  } catch {}
+
+  const tunnelJson = await fetchJson(`${PAGES_URL}/tunnel.json`);
+  return normalizeBase(tunnelJson.api || tunnelJson.url);
 }
 
 async function fetchText(url) {

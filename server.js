@@ -548,6 +548,47 @@ app.get('/api/admin/leads', (req, res) => {
   res.json({ leads, stats: store.getStoreStats() });
 });
 
+app.get('/api/admin/workers', (_req, res) => {
+  res.json({
+    workers: store.listWorkers(),
+    stats: store.getStoreStats()
+  });
+});
+
+app.get('/api/admin/workers/:workerId', (req, res) => {
+  res.json(store.getWorkerDetail(req.params.workerId));
+});
+
+app.get('/api/admin/runs/:id', (req, res) => {
+  const detail = store.getRunDetail(req.params.id);
+  if (!detail) return res.status(404).json({ error: 'Run not found.' });
+  res.json(detail);
+});
+
+app.post('/api/admin/runs/:id/reset', (req, res) => {
+  const resetIds = store.resetRunCompanies(req.params.id);
+  if (!resetIds.length && !store.getRun(req.params.id)) return res.status(404).json({ error: 'Run not found.' });
+  res.json({ ok: true, resetIds, stats: store.getStoreStats() });
+});
+
+app.delete('/api/admin/runs/:id', (req, res) => {
+  const deletedRun = store.deleteRun(req.params.id);
+  if (!deletedRun) return res.status(404).json({ error: 'Run not found.' });
+  res.json({ ok: true, deletedRun, stats: store.getStoreStats() });
+});
+
+app.post('/api/admin/runs/:runId/leads/:leadId/reset', (req, res) => {
+  const resetIds = store.resetCompanies([req.params.leadId]);
+  if (!resetIds.length) return res.status(404).json({ error: 'Lead not found.' });
+  res.json({ ok: true, resetIds, stats: store.getStoreStats() });
+});
+
+app.delete('/api/admin/runs/:runId/leads/:leadId', (req, res) => {
+  const result = store.removeCompanyFromRun(req.params.runId, req.params.leadId);
+  if (!result) return res.status(404).json({ error: 'Run or lead not found.' });
+  res.json({ ok: true, stats: store.getStoreStats() });
+});
+
 app.post('/api/admin/leads/reset', (req, res) => {
   const ids = Array.isArray(req.body?.ids) ? req.body.ids : [];
   const resetIds = store.resetCompanies(ids);
