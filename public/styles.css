@@ -1252,14 +1252,17 @@ tbody tr.selected {
   }
 
   .discover-button {
-    bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
+    bottom: auto;
     box-shadow: 0 14px 28px rgba(37, 99, 235, 0.28);
     left: 12px;
     margin-top: 0;
+    min-height: 52px;
     position: fixed;
     right: 12px;
+    top: calc(100vh - 64px);
+    top: calc(100dvh - 64px - env(safe-area-inset-bottom, 0px));
     width: auto;
-    z-index: 30;
+    z-index: 1000;
   }
 
   .discover-status {

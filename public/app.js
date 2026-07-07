@@ -513,69 +513,74 @@ Klima Expert,Klimatyzacja,Mokotow,+48500999888,kontakt@klimaexpert.pl,,https://f
 Old Site Remonty,Wykończenia wnętrz,Ursynow,+48500777777,biuro@example.com,https://example.com,,15,4.2,2026-04-01,"remont łazienki;wykończenia pod klucz",true,true,2-4,"has website but it looks like placeholder"`;
 
 const categoryOptions = [
-  { value: 'Klimatyzacja', label: 'Кондиционирование' },
-  { value: 'Auto detailing', label: 'Автодетейлинг' },
-  { value: 'Remonty i wykończenia wnętrz', label: 'Ремонт и отделка интерьеров' },
-  { value: 'Medycyna estetyczna', label: 'Эстетическая медицина' },
-  { value: 'Stomatologia', label: 'Стоматология' },
-  { value: 'Fizjoterapia', label: 'Физиотерапия' },
-  { value: 'Salon kosmetyczny', label: 'Косметологический салон' },
-  { value: 'Księgowość', label: 'Бухгалтерия' },
-  { value: 'Przedszkole prywatne', label: 'Частный детский сад' },
-  { value: 'Auto serwis', label: 'Автосервис' },
-  { value: 'Fotowoltaika', label: 'Солнечные панели' },
-  { value: 'Catering dietetyczny', label: 'Диетический кейтеринг' },
-  { value: 'Law firm / kancelaria prawna', label: 'Юридическая фирма' },
-  { value: 'Biuro rachunkowe', label: 'Бухгалтерское бюро' },
-  { value: 'Architekt wnętrz', label: 'Дизайнер интерьеров' },
-  { value: 'Projektowanie ogrodów', label: 'Ландшафтный дизайн' },
-  { value: 'Instalacje elektryczne', label: 'Электромонтаж' },
-  { value: 'Hydraulik', label: 'Сантехник' },
-  { value: 'Ogrzewanie i pompy ciepła', label: 'Отопление и тепловые насосы' },
-  { value: 'Serwis AGD', label: 'Ремонт бытовой техники' },
-  { value: 'Sprzątanie biur', label: 'Уборка офисов' },
-  { value: 'Pralnia', label: 'Прачечная' },
-  { value: 'Fryzjer', label: 'Парикмахер' },
-  { value: 'Barber', label: 'Барбершоп' },
-  { value: 'Studio paznokci', label: 'Ногтевая студия' },
-  { value: 'Spa i masaż', label: 'Спа и массаж' },
-  { value: 'Trener personalny', label: 'Персональный тренер' },
-  { value: 'Szkoła językowa', label: 'Языковая школа' },
-  { value: 'Korepetycje', label: 'Репетиторы' },
-  { value: 'Szkoła tańca', label: 'Школа танцев' },
-  { value: 'Restauracja', label: 'Ресторан' },
-  { value: 'Kawiarnia', label: 'Кофейня' },
-  { value: 'Hotel / apartamenty', label: 'Отель / апартаменты' },
-  { value: 'Event venue', label: 'Площадка для мероприятий' },
-  { value: 'Wedding services', label: 'Свадебные услуги' },
-  { value: 'Fotograf', label: 'Фотограф' },
-  { value: 'Drukarnia', label: 'Типография' },
-  { value: 'Meble na wymiar', label: 'Мебель на заказ' },
-  { value: 'Rolety i okna', label: 'Роллеты и окна' },
-  { value: 'Bramy garażowe', label: 'Гаражные ворота' },
-  { value: 'Ochrona', label: 'Охрана' },
-  { value: 'Przeprowadzki', label: 'Переезды' },
-  { value: 'Magazyny self storage', label: 'Self-storage склады' },
-  { value: 'Weterynarz', label: 'Ветеринар' },
-  { value: 'Gabinet psychologiczny', label: 'Психологический кабинет' },
-  { value: 'Dietetyk', label: 'Диетолог' },
-  { value: 'Rehabilitacja', label: 'Реабилитация' },
-  { value: 'Klinika prywatna', label: 'Частная клиника' },
-  { value: 'Sklep specjalistyczny', label: 'Специализированный магазин' },
-  { value: 'Serwis rowerowy', label: 'Велосервис' },
-  { value: 'Detailing motocykli', label: 'Мотодетейлинг' },
-  { value: 'Wulkanizacja', label: 'Шиномонтаж' },
-  { value: 'Tuning samochodowy', label: 'Автотюнинг' },
-  { value: 'Szkoła jazdy', label: 'Автошкола' },
-  { value: 'Nieruchomości', label: 'Недвижимость' },
-  { value: 'Ubezpieczenia', label: 'Страхование' }
+  { id: 'hvac', value: 'Klimatyzacja', label: 'Кондиционирование', labelPl: 'Klimatyzacja' },
+  { id: 'auto_detailing', value: 'Auto detailing', label: 'Автодетейлинг', labelPl: 'Auto detailing' },
+  { id: 'renovations', value: 'Remonty i wykończenia wnętrz', label: 'Ремонт и отделка интерьеров', labelPl: 'Remonty i wykończenia wnętrz' },
+  { id: 'aesthetic_medicine', value: 'Medycyna estetyczna', label: 'Эстетическая медицина', labelPl: 'Medycyna estetyczna' },
+  { id: 'dentistry', value: 'Stomatologia', label: 'Стоматология', labelPl: 'Stomatologia' },
+  { id: 'physiotherapy', value: 'Fizjoterapia', label: 'Физиотерапия', labelPl: 'Fizjoterapia' },
+  { id: 'beauty_salon', value: 'Salon kosmetyczny', label: 'Косметологический салон', labelPl: 'Salon kosmetyczny' },
+  { id: 'accounting', value: 'Księgowość', label: 'Бухгалтерия', labelPl: 'Księgowość' },
+  { id: 'private_kindergarten', value: 'Przedszkole prywatne', label: 'Частный детский сад', labelPl: 'Przedszkole prywatne' },
+  { id: 'auto_service', value: 'Auto serwis', label: 'Автосервис', labelPl: 'Auto serwis' },
+  { id: 'solar', value: 'Fotowoltaika', label: 'Солнечные панели', labelPl: 'Fotowoltaika' },
+  { id: 'diet_catering', value: 'Catering dietetyczny', label: 'Диетический кейтеринг', labelPl: 'Catering dietetyczny' },
+  { id: 'law_firm', value: 'Kancelaria prawna', label: 'Юридическая фирма', labelPl: 'Kancelaria prawna' },
+  { id: 'accounting_office', value: 'Biuro rachunkowe', label: 'Бухгалтерское бюро', labelPl: 'Biuro rachunkowe' },
+  { id: 'interior_architect', value: 'Architekt wnętrz', label: 'Дизайнер интерьеров', labelPl: 'Architekt wnętrz' },
+  { id: 'garden_design', value: 'Projektowanie ogrodów', label: 'Ландшафтный дизайн', labelPl: 'Projektowanie ogrodów' },
+  { id: 'electrical', value: 'Instalacje elektryczne', label: 'Электромонтаж', labelPl: 'Instalacje elektryczne' },
+  { id: 'plumber', value: 'Hydraulik', label: 'Сантехник', labelPl: 'Hydraulik' },
+  { id: 'heating_heat_pumps', value: 'Ogrzewanie i pompy ciepła', label: 'Отопление и тепловые насосы', labelPl: 'Ogrzewanie i pompy ciepła' },
+  { id: 'appliance_service', value: 'Serwis AGD', label: 'Ремонт бытовой техники', labelPl: 'Serwis AGD' },
+  { id: 'office_cleaning', value: 'Sprzątanie biur', label: 'Уборка офисов', labelPl: 'Sprzątanie biur' },
+  { id: 'laundry', value: 'Pralnia', label: 'Прачечная', labelPl: 'Pralnia' },
+  { id: 'hairdresser', value: 'Fryzjer', label: 'Парикмахер', labelPl: 'Fryzjer' },
+  { id: 'barber', value: 'Barber', label: 'Барбершоп', labelPl: 'Barber' },
+  { id: 'nails', value: 'Studio paznokci', label: 'Ногтевая студия', labelPl: 'Studio paznokci' },
+  { id: 'spa_massage', value: 'Spa i masaż', label: 'Спа и массаж', labelPl: 'Spa i masaż' },
+  { id: 'personal_trainer', value: 'Trener personalny', label: 'Персональный тренер', labelPl: 'Trener personalny' },
+  { id: 'language_school', value: 'Szkoła językowa', label: 'Языковая школа', labelPl: 'Szkoła językowa' },
+  { id: 'tutoring', value: 'Korepetycje', label: 'Репетиторы', labelPl: 'Korepetycje' },
+  { id: 'dance_school', value: 'Szkoła tańca', label: 'Школа танцев', labelPl: 'Szkoła tańca' },
+  { id: 'restaurant', value: 'Restauracja', label: 'Ресторан', labelPl: 'Restauracja' },
+  { id: 'cafe', value: 'Kawiarnia', label: 'Кофейня', labelPl: 'Kawiarnia' },
+  { id: 'hotel_apartments', value: 'Hotel / apartamenty', label: 'Отель / апартаменты', labelPl: 'Hotel / apartamenty' },
+  { id: 'event_venue', value: 'Sala eventowa', label: 'Площадка для мероприятий', labelPl: 'Sala eventowa' },
+  { id: 'wedding_services', value: 'Usługi ślubne', label: 'Свадебные услуги', labelPl: 'Usługi ślubne' },
+  { id: 'photographer', value: 'Fotograf', label: 'Фотограф', labelPl: 'Fotograf' },
+  { id: 'printing', value: 'Drukarnia', label: 'Типография', labelPl: 'Drukarnia' },
+  { id: 'custom_furniture', value: 'Meble na wymiar', label: 'Мебель на заказ', labelPl: 'Meble na wymiar' },
+  { id: 'blinds_windows', value: 'Rolety i okna', label: 'Роллеты и окна', labelPl: 'Rolety i okna' },
+  { id: 'garage_doors', value: 'Bramy garażowe', label: 'Гаражные ворота', labelPl: 'Bramy garażowe' },
+  { id: 'security', value: 'Ochrona', label: 'Охрана', labelPl: 'Ochrona' },
+  { id: 'moving', value: 'Przeprowadzki', label: 'Переезды', labelPl: 'Przeprowadzki' },
+  { id: 'self_storage', value: 'Magazyny self storage', label: 'Self-storage склады', labelPl: 'Magazyny self storage' },
+  { id: 'veterinarian', value: 'Weterynarz', label: 'Ветеринар', labelPl: 'Weterynarz' },
+  { id: 'psychologist', value: 'Gabinet psychologiczny', label: 'Психологический кабинет', labelPl: 'Gabinet psychologiczny' },
+  { id: 'dietitian', value: 'Dietetyk', label: 'Диетолог', labelPl: 'Dietetyk' },
+  { id: 'rehabilitation', value: 'Rehabilitacja', label: 'Реабилитация', labelPl: 'Rehabilitacja' },
+  { id: 'private_clinic', value: 'Klinika prywatna', label: 'Частная клиника', labelPl: 'Klinika prywatna' },
+  { id: 'specialist_shop', value: 'Sklep specjalistyczny', label: 'Специализированный магазин', labelPl: 'Sklep specjalistyczny' },
+  { id: 'bike_service', value: 'Serwis rowerowy', label: 'Велосервис', labelPl: 'Serwis rowerowy' },
+  { id: 'motorcycle_detailing', value: 'Detailing motocykli', label: 'Мотодетейлинг', labelPl: 'Detailing motocykli' },
+  { id: 'tire_service', value: 'Wulkanizacja', label: 'Шиномонтаж', labelPl: 'Wulkanizacja' },
+  { id: 'car_tuning', value: 'Tuning samochodowy', label: 'Автотюнинг', labelPl: 'Tuning samochodowy' },
+  { id: 'driving_school', value: 'Szkoła jazdy', label: 'Автошкола', labelPl: 'Szkoła jazdy' },
+  { id: 'real_estate', value: 'Nieruchomości', label: 'Недвижимость', labelPl: 'Nieruchomości' },
+  { id: 'insurance', value: 'Ubezpieczenia', label: 'Страхование', labelPl: 'Ubezpieczenia' }
 ];
 
 const topCategories = categoryOptions.slice(0, 12);
 const allCategories = categoryOptions;
-const categoryLabelMap = new Map(
-  categoryOptions.map((option) => [normalizeLookupValue(option.value), option.label])
-);
+const categoryById = new Map(categoryOptions.map((option) => [option.id, option]));
+const categoryByLookup = new Map();
+for (const option of categoryOptions) {
+  [option.id, option.value, option.label, option.labelPl].filter(Boolean).forEach((key) => {
+    const lookupKey = normalizeLookupValue(key);
+    if (lookupKey) categoryByLookup.set(lookupKey, option);
+  });
+}
 
 const inputCsvHeaders = [
   '_companyId',
@@ -623,7 +628,9 @@ function normalizeLookupValue(value) {
 }
 
 function displayCategory(value) {
-  return categoryLabelMap.get(normalizeLookupValue(value)) || String(value || '').trim() || '-';
+  const option = categoryByLookup.get(normalizeLookupValue(value));
+  if (option) return currentLanguage === 'pl' ? option.labelPl || option.value : option.label || option.value;
+  return String(value || '').trim() || '-';
 }
 
 function formatCategoryList(values) {
@@ -728,6 +735,7 @@ function applyLanguage(lang = currentLanguage, { persist = true } = {}) {
   setButtonHtml('#resetFiltersButton', 'x', tr('reset'));
   setText('.detail-header .eyebrow', tr('companyCard'));
   setPlaceholder('#resultFilterText', currentLanguage === 'pl' ? 'Firma, nisza, dzielnica, zrodlo' : 'Компания, ниша, район, источник');
+  populateCategoryPreset();
 
   [
     ['#discoverCategoryPreset', tr('category')],
@@ -886,7 +894,7 @@ async function init() {
   await bootstrapApiBase();
   ensureResultsContext();
   populateCategoryPreset();
-  els.discoverCategoryPreset.value = 'cat:Klimatyzacja';
+  els.discoverCategoryPreset.value = 'cat:hvac';
   els.sidebarHasSocial.checked = false;
   els.sidebarHasPhone.checked = true;
   els.sidebarHasEmail.checked = false;
@@ -901,12 +909,13 @@ async function init() {
 }
 
 function populateCategoryPreset() {
+  const selectedValue = els.discoverCategoryPreset.value;
   const topOptions = topCategories
-    .map((category) => `<option value="cat:${escapeAttribute(category.value)}">${escapeHtml(category.label)}</option>`)
+    .map((category) => `<option value="cat:${escapeAttribute(category.id)}">${escapeHtml(displayCategory(category.id))}</option>`)
     .join('');
   const allOptions = allCategories
-    .filter((category) => !topCategories.some((topCategory) => topCategory.value === category.value))
-    .map((category) => `<option value="cat:${escapeAttribute(category.value)}">${escapeHtml(category.label)}</option>`)
+    .filter((category) => !topCategories.some((topCategory) => topCategory.id === category.id))
+    .map((category) => `<option value="cat:${escapeAttribute(category.id)}">${escapeHtml(displayCategory(category.id))}</option>`)
     .join('');
 
   els.discoverCategoryPreset.innerHTML = `
@@ -916,6 +925,9 @@ function populateCategoryPreset() {
     <optgroup label="${escapeAttribute(tr('topGroup'))}">${topOptions}</optgroup>
     <optgroup label="${escapeAttribute(tr('allGroup'))}">${allOptions}</optgroup>
   `;
+  if ([...els.discoverCategoryPreset.options].some((option) => option.value === selectedValue)) {
+    els.discoverCategoryPreset.value = selectedValue;
+  }
 }
 
 async function loadConfig() {
@@ -1510,7 +1522,10 @@ function selectedDiscoveryNiches() {
   if (value === 'top_all') return topCategories.map((category) => category.value);
   if (value === 'all_categories') return allCategories.map((category) => category.value);
   if (value === 'custom') return [els.discoverNiche.value.trim()].filter(Boolean);
-  if (value.startsWith('cat:')) return [value.slice(4)];
+  if (value.startsWith('cat:')) {
+    const option = categoryById.get(value.slice(4)) || categoryByLookup.get(normalizeLookupValue(value.slice(4)));
+    return [option?.value || value.slice(4)].filter(Boolean);
+  }
   return [];
 }
 

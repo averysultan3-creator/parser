@@ -81,23 +81,57 @@ function cleanIdentifier(value) {
 }
 
 function normalizePhone(value) {
+  const phones = splitPhoneValues(value);
+  if (phones.length) return phones[0];
   return String(value || '').replace(/[^\d+]/g, '');
 }
 
-function splitPhoneValues(value) {
+function splitPhoneValues(value, context = {}) {
   const raw = String(value || '').replace(/\u00a0/g, ' ');
-  const matches = raw.match(/\+?48\d{9}|\b\d{9}\b/g) || [];
+  const matches = raw.match(/(?:\+|00)?\d(?:[\s().-]*\d){6,14}/g) || [];
   return [
     ...new Set(
       matches
-        .map((match) => {
-          const digits = match.replace(/\D/g, '');
-          const local = digits.startsWith('48') && digits.length >= 11 ? digits.slice(2, 11) : digits.slice(0, 9);
-          return local.length === 9 && !local.startsWith('0') && !/^(\d)\1{8}$/.test(local) ? `+48${local}` : '';
-        })
+        .map((match) => normalizePhoneCandidate(match, context))
         .filter(Boolean)
     )
   ];
+}
+
+function normalizePhoneCandidate(value, context = {}) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  const startsWithPlus = /^\+/.test(raw);
+  const compact = raw.replace(/\s+/g, '');
+  const startsWithDoubleZero = /^00/.test(compact);
+  let digits = raw.replace(/\D/g, '');
+  if (!digits || digits.length < 7 || digits.length > 15) return '';
+  if (/^(\d)\1{6,}$/.test(digits)) return '';
+  if (startsWithDoubleZero) {
+    digits = digits.replace(/^00/, '');
+    return digits.length >= 7 && digits.length <= 15 ? `+${digits}` : '';
+  }
+  if (startsWithPlus) return `+${digits}`;
+  if (digits.startsWith('48') && digits.length === 11) return `+${digits}`;
+  if (digits.startsWith('380') && digits.length === 12) return `+${digits}`;
+
+  const region = getPhoneRegionFromContext(context);
+  if (region === 'PL' && digits.length === 9 && !digits.startsWith('0')) return `+48${digits}`;
+  if (region === 'UA') {
+    if (digits.length === 10 && digits.startsWith('0')) return `+38${digits}`;
+    if (digits.length === 9 && !digits.startsWith('0')) return `+380${digits}`;
+  }
+
+  return digits.length >= 7 && digits.length <= 12 ? digits : '';
+}
+
+function getPhoneRegionFromContext(context = {}) {
+  const explicit = String(context.regionCode || context.countryCode || '').trim().toUpperCase();
+  if (['PL', 'UA'].includes(explicit)) return explicit;
+  const text = normalizeSearchText([context.country, context.city].filter(Boolean).join(' '));
+  if (/(^| )polska|poland|warszawa|warsaw|krakow|wroclaw|gdansk|poznan( |$)/.test(text)) return 'PL';
+  if (/(^| )ukraine|ukraina|kyiv|kiev|dnipro|lviv|odesa|odessa( |$)/.test(text)) return 'UA';
+  return '';
 }
 
 function safeHostname(rawUrl) {
@@ -178,7 +212,7 @@ export function buildCompanyKeys(company) {
   const regon = cleanIdentifier(company?.regon);
   if (regon && regon.length >= 9) keys.push(`regon:${regon}`);
 
-  const phoneCandidates = splitPhoneValues(company?.phone);
+  const phoneCandidates = splitPhoneValues(company?.phone, { city: company?.city, country: company?.country });
   const directPhone = normalizePhone(company?.phone || '');
   for (const phone of phoneCandidates.length ? phoneCandidates : directPhone ? [directPhone] : []) {
     if (phone) keys.push(`phone:${phone}`);
@@ -213,11 +247,51 @@ export function buildCompanyKeys(company) {
 
 export function findExistingCompanyId(company) {
   const keys = buildCompanyKeys(company);
-  for (const key of keys) {
+  const strongKeys = keys.filter((key) => !key.startsWith('phone:'));
+  const phoneKeys = keys.filter((key) => key.startsWith('phone:'));
+
+  for (const key of strongKeys) {
     const id = state.companies.keyIndex[key];
     if (id && state.companies.companies[id]) return id;
   }
+
+  for (const key of phoneKeys) {
+    const id = state.companies.keyIndex[key];
+    const record = id ? state.companies.companies[id] : null;
+    if (record && isPhoneIdentityCompatible(record.data || {}, company || {})) return id;
+  }
+
   return null;
+}
+
+function isPhoneIdentityCompatible(existing, incoming) {
+  const existingCity = normalizeSearchText(existing?.city || '');
+  const incomingCity = normalizeSearchText(incoming?.city || '');
+  if (existingCity && incomingCity && existingCity !== incomingCity) return false;
+
+  const existingName = normalizeSearchText(existing?.company || existing?.legal_name || '');
+  const incomingName = normalizeSearchText(incoming?.company || incoming?.legal_name || '');
+  if (existingName && incomingName) {
+    if (existingName === incomingName) return true;
+    if (existingName.includes(incomingName) || incomingName.includes(existingName)) return true;
+    return tokenOverlapRatio(existingName, incomingName) >= 0.55;
+  }
+
+  const existingAddress = normalizeSearchText(existing?.address || '');
+  const incomingAddress = normalizeSearchText(incoming?.address || '');
+  if (existingAddress && incomingAddress) {
+    return existingAddress === incomingAddress || existingAddress.includes(incomingAddress) || incomingAddress.includes(existingAddress);
+  }
+
+  return false;
+}
+
+function tokenOverlapRatio(left, right) {
+  const leftTokens = new Set(String(left || '').split(/\s+/).filter((token) => token.length >= 4));
+  const rightTokens = new Set(String(right || '').split(/\s+/).filter((token) => token.length >= 4));
+  if (!leftTokens.size || !rightTokens.size) return 0;
+  const matches = [...leftTokens].filter((token) => rightTokens.has(token)).length;
+  return matches / Math.max(leftTokens.size, rightTokens.size);
 }
 
 export function getCompany(id) {
@@ -317,9 +391,10 @@ function normalizeLeadStatus(status) {
   return 'new';
 }
 
-function isClaimable(record, runId) {
+function isClaimable(record, runId, workerId) {
   if (!record) return false;
   if (runId && Array.isArray(record.claimed_run_ids) && record.claimed_run_ids.includes(runId)) return true;
+  if (workerId && record.assigned_worker_id && record.assigned_worker_id === workerId) return true;
   if (record.available_for_discovery) return true;
   if (!record.assigned_worker_id && ['new', 'reset'].includes(normalizeLeadStatus(record.status || 'new'))) return true;
   return false;
@@ -330,7 +405,7 @@ export function claimCompanyForRun(company, { runId, workerId, stage = 'reserved
   const normalizedWorkerId = normalizeWorkerId(workerId);
   const alreadyClaimedByRun = runId && Array.isArray(record.claimed_run_ids) && record.claimed_run_ids.includes(runId);
 
-  if (!alreadyClaimedByRun && !isClaimable(record, runId)) {
+  if (!alreadyClaimedByRun && !isClaimable(record, runId, normalizedWorkerId)) {
     return { id, isNew: false, isClaimed: false, record };
   }
 
@@ -355,7 +430,7 @@ export function claimCompanyForRun(company, { runId, workerId, stage = 'reserved
   };
 }
 
-export function claimCompaniesForRun(companies, { runId, workerId, limit = 100 } = {}) {
+export function claimCompaniesForRun(companies, { runId, workerId, limit = 100, includeDuplicates = false } = {}) {
   const claimed = [];
   const claimedIds = new Set();
   let newCount = 0;
@@ -366,6 +441,16 @@ export function claimCompaniesForRun(companies, { runId, workerId, limit = 100 }
     const result = claimCompanyForRun(company, { runId, workerId });
     if (!result.isClaimed) {
       duplicateCount += 1;
+      if (includeDuplicates && result.id && !claimedIds.has(result.id)) {
+        claimedIds.add(result.id);
+        claimed.push({
+          ...(result.record.data || company),
+          _companyId: result.id,
+          _duplicate: true,
+          lead_status: normalizeLeadStatus(result.record.status || result.record.stage || 'new'),
+          assigned_worker_id: result.record.assigned_worker_id || ''
+        });
+      }
       continue;
     }
     if (claimedIds.has(result.id)) continue;
@@ -442,8 +527,12 @@ export function listLeadPool({ q = '', status = '', workerId = '', limit = 500 }
         [
           record.data?.company,
           record.data?.legal_name,
+          record.data?.niche,
+          Array.isArray(record.data?.services) ? record.data.services.join(' ') : record.data?.services,
           record.data?.phone,
           record.data?.website_url,
+          record.data?.source,
+          record.data?.source_profile,
           record.data?.address,
           record.data?.city,
           normalizeLeadStatus(record.status || record.stage),

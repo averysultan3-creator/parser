@@ -32,7 +32,7 @@ try {
   assert(layout.settingsGrid === 'none', 'mobile should hide settings block');
   assert(!layout.hasSettingsButton, 'settings button should not be rendered');
 
-  await page.selectOption('#discoverCategoryPreset', 'cat:Klimatyzacja');
+  await page.selectOption('#discoverCategoryPreset', 'cat:hvac');
   await page.click('#discoverButton');
   await page.waitForTimeout(4000);
 

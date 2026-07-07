@@ -702,6 +702,8 @@ function normalizeItems(items) {
   return items
     .map((item) => {
       const sourceProfile = cleanText(item.source_profile || item.profile_url || item.source_url || '');
+      const city = cleanText(item.city || item.miasto || 'Warszawa');
+      const country = cleanText(item.country || item.kraj || discoveryContext.country || '');
       const socialProfiles = {
         instagram: cleanText(item.instagram || item.instagram_url || ''),
         facebook: cleanText(item.facebook || item.facebook_url || ''),
@@ -712,10 +714,11 @@ function normalizeItems(items) {
         company: cleanText(item.company || item.company_name || item.name || item.firma || ''),
         legal_name: cleanText(item.legal_name || item.official_name || ''),
         niche: cleanText(item.niche || item.category || item.kategoria || ''),
-        city: cleanText(item.city || item.miasto || 'Warszawa'),
+        city,
+        country,
         district: cleanText(item.district || item.area || item.dzielnica || ''),
         address: cleanText(item.address || item.adres || ''),
-        phone: normalizePhoneField(item.phone || item.telefon || ''),
+        phone: normalizePhoneField(item.phone || item.telefon || '', { city, country }),
         email: cleanText(item.email || item.mail || '').toLowerCase(),
         nip: cleanIdentifier(item.nip || item.NIP || ''),
         regon: cleanIdentifier(item.regon || item.REGON || ''),
@@ -1174,7 +1177,7 @@ function uniqueCompanies(companies) {
   for (const company of companies) {
     const key = [
       cleanText(company.nip || company.regon || ''),
-      normalizePhone(company.phone || ''),
+      splitPhoneValues(company.phone || '', { city: company.city, country: company.country }).join(',') || normalizePhone(company.phone || ''),
       cleanText(company.source_profile || '').toLowerCase(),
       cleanText(company.company || '').toLowerCase(),
       cleanText(company.address || '').toLowerCase()
@@ -1342,7 +1345,6 @@ function isRelevantAmazonPlace(item, niche) {
 
 function amazonLocationItemToCompany(item, { niche, city, district, sourceFocus }) {
   const contacts = item.Contacts || {};
-  const phones = unique((contacts.Phones || []).map((entry) => normalizePhoneField(entry.Value || entry.Label || '')).filter(Boolean));
   const emails = unique((contacts.Emails || []).map((entry) => cleanText(entry.Value || entry.Label || '').toLowerCase()).filter(Boolean));
   const websites = unique((contacts.Websites || []).map((entry) => safeUrl(entry.Value || entry.Label || '')).filter(Boolean));
   const address = item.Address || {};
@@ -1350,6 +1352,12 @@ function amazonLocationItemToCompany(item, { niche, city, district, sourceFocus 
   const title = cleanText(item.Title || item.Name || '');
   const label = cleanText(address.Label || '');
   const locality = cleanText(address.Locality || city || 'Warszawa');
+  const country = cleanText(address.Country || address.CountryCode || discoveryContext.country || '');
+  const phones = unique(
+    (contacts.Phones || [])
+      .map((entry) => normalizePhoneField(entry.Value || entry.Label || '', { city: locality, country }))
+      .filter(Boolean)
+  );
   const districtName = cleanText(address.District || address.SubDistrict || district || '');
   const position = Array.isArray(item.Position) ? item.Position.join(',') : '';
 
@@ -1517,27 +1525,36 @@ async function discoverCompaniesFromGooglePlaces({ niche, city, district, limit,
     const rawCount = (data.places || []).length;
     const pageCompanies = (data.places || [])
       .filter((place) => !place.businessStatus || place.businessStatus === 'OPERATIONAL')
-      .map((place) => ({
-        company: cleanText(place.displayName?.text || ''),
-        niche,
-        city: city || cleanText(place.formattedAddress || '').split(',').slice(-2, -1)[0]?.trim() || city,
-        district,
-        address: cleanText(place.formattedAddress || ''),
-        phone: normalizePhone(place.internationalPhoneNumber || place.nationalPhoneNumber || ''),
-        website_url: cleanText(place.websiteUri || ''),
-        source: 'google_places_api',
-        source_profile: cleanText(place.googleMapsUri || ''),
-        review_count: parseNumber(place.userRatingCount),
-        rating: parseNumber(place.rating),
-        status: place.businessStatus === 'OPERATIONAL' ? 'active' : cleanText(place.businessStatus || ''),
-        services: [niche],
-        physical_location: true,
-        notes: cleanText(
-          `Non-AI discovery from Google Places Text Search; source_focus=${sourceFocus}; types=${(place.types || [])
-            .slice(0, 6)
-            .join(';')}`
-        )
-      }))
+      .map((place) => {
+        const placeCity = city || cleanText(place.formattedAddress || '').split(',').slice(-2, -1)[0]?.trim() || city;
+        const country = countryPreset?.label || discoveryContext.country || '';
+        return {
+          company: cleanText(place.displayName?.text || ''),
+          niche,
+          city: placeCity,
+          country,
+          district,
+          address: cleanText(place.formattedAddress || ''),
+          phone: normalizePhoneField(place.internationalPhoneNumber || place.nationalPhoneNumber || '', {
+            city: placeCity,
+            country,
+            regionCode
+          }),
+          website_url: cleanText(place.websiteUri || ''),
+          source: 'google_places_api',
+          source_profile: cleanText(place.googleMapsUri || ''),
+          review_count: parseNumber(place.userRatingCount),
+          rating: parseNumber(place.rating),
+          status: place.businessStatus === 'OPERATIONAL' ? 'active' : cleanText(place.businessStatus || ''),
+          services: [niche],
+          physical_location: true,
+          notes: cleanText(
+            `Non-AI discovery from Google Places Text Search; source_focus=${sourceFocus}; types=${(place.types || [])
+              .slice(0, 6)
+              .join(';')}`
+          )
+        };
+      })
       .filter((company) => company.company);
 
     collected.push(...pageCompanies);
@@ -1695,7 +1712,7 @@ async function discoverCompaniesFromPublicSearch({ niche, city, district, limit,
           niche: inferNicheFromSearchResult(evidence, niche),
           city: city || 'Warszawa',
           district: district || '',
-          phone: extractPhones(evidence).join('; '),
+          phone: extractPhones(evidence, { city, country: discoveryContext.country }).join('; '),
           email: extractEmails(evidence).join('; '),
           website_url: ['official_candidate', 'free_subdomain'].includes(type) ? href : '',
           source: `public_search_${sourceFocus}`,
@@ -1771,7 +1788,7 @@ async function discoverCompaniesFromPublicRegistries({ niche, city, district, li
           niche: inferNicheFromSearchResult(evidence, niche),
           city: city || 'Warszawa',
           district: district || '',
-          phone: extractPhones(evidence).join('; '),
+          phone: extractPhones(evidence, { city, country: discoveryContext.country }).join('; '),
           email: extractEmails(evidence).join('; '),
           nip: (evidence.match(/\b\d{10}\b/) || [''])[0],
           regon: (evidence.match(/\b\d{9}\b/) || [''])[0],
@@ -2049,7 +2066,12 @@ async function enrichOneDiscoveredCompany(company) {
       companyName: company.company,
       niche: company.niche
     });
-  const phones = unique([company.phone, ...(signals.phones || []), ...(signals.telLinks || [])].flatMap(splitPhoneValues));
+  const phoneContext = { city: company.city, country: company.country || discoveryContext.country };
+  const phones = unique(
+    [company.phone, ...(signals.phones || []), ...(signals.telLinks || [])].flatMap((value) =>
+      splitPhoneValues(value, phoneContext)
+    )
+  );
   const emails = unique([company.email, ...(signals.emails || []), ...(signals.mailLinks || [])].flatMap((value) => String(value || '').split(/[;,|]/)).map((value) => cleanText(value).toLowerCase()).filter(Boolean));
   const notes = [
     company.notes,
@@ -2471,7 +2493,7 @@ async function discoverCompaniesFromOpenAIInternet({ niche, city, district, limi
       city: cleanText(row.city || city || 'Warszawa'),
       district: cleanText(row.district || district || ''),
       address: cleanText(row.address || ''),
-      phone: normalizePhone(row.phone || ''),
+      phone: normalizePhoneField(row.phone || '', { city: cleanText(row.city || city || 'Warszawa'), country: discoveryContext.country }),
       email: cleanText(row.email || '').toLowerCase(),
       website_url: cleanText(row.website_url || row.website || ''),
       source: `openai_web_search_${sourceFocus}`,
@@ -2638,7 +2660,8 @@ async function resolveWebsite(item, options) {
     name_search_domain: false,
     phone_search_domain: false,
     nip_search_domain: false,
-    social_profile_domain: false
+    social_profile_domain: false,
+    public_search_domain: false
   };
   const candidates = [];
   const socialLinks = collectSocialLinks(item);
@@ -2663,6 +2686,18 @@ async function resolveWebsite(item, options) {
   }
 
   let webSearch = null;
+  let publicWebSearch = null;
+  if (!candidates.length) {
+    publicWebSearch = await discoverWebsiteFromPublicSearch(item);
+    for (const candidate of publicWebSearch.candidates || []) {
+      addCandidate(candidates, candidate.url, 'public_website_search', candidate.confidence || 0.56, candidate.reason);
+    }
+    checks.name_search_domain = checks.name_search_domain || Boolean(publicWebSearch.checks?.name_search_domain);
+    checks.phone_search_domain = checks.phone_search_domain || Boolean(publicWebSearch.checks?.phone_search_domain);
+    checks.nip_search_domain = checks.nip_search_domain || Boolean(publicWebSearch.checks?.nip_search_domain);
+    checks.public_search_domain = Boolean(publicWebSearch.candidates?.length);
+  }
+
   if (!candidates.length && options.useWebSearch) {
     webSearch = await discoverWebsiteWithOpenAI(item, options.searchModel);
     for (const candidate of webSearch.candidates || []) {
@@ -2711,6 +2746,7 @@ async function resolveWebsite(item, options) {
     selectedUrl,
     selectedSource,
     candidates: normalizedCandidates,
+    publicWebSearch,
     webSearch,
     websiteStatus,
     websiteConfidence,
@@ -2721,6 +2757,100 @@ async function resolveWebsite(item, options) {
       matched: [],
       manual_review: !selectedUrl
     }
+  };
+}
+
+async function discoverWebsiteFromPublicSearch(item) {
+  const company = cleanText(item.company || item.legal_name || '');
+  if (!company) {
+    return { candidates: [], checks: {}, warnings: [], queries: [] };
+  }
+
+  const city = cleanText(item.city || discoveryContext.city || 'Warszawa');
+  const country = cleanText(item.country || discoveryContext.country || '');
+  const phoneTail = (splitPhoneValues(item.phone, { city, country })[0] || normalizePhone(item.phone || '')).slice(-9);
+  const queryParts = [
+    [`"${company}"`, city, 'strona kontakt'],
+    [company, item.niche, city, 'oficjalna strona kontakt'],
+    phoneTail ? [company, phoneTail, city, 'kontakt'] : [],
+    item.nip ? [company, item.nip, 'strona'] : [],
+    item.address ? [company, item.address, city] : []
+  ];
+  const queries = unique(queryParts.map((parts) => parts.filter(Boolean).join(' ').trim()).filter(Boolean)).slice(0, 4);
+  const candidates = [];
+  const warnings = [];
+  const checks = {
+    name_search_domain: false,
+    phone_search_domain: false,
+    nip_search_domain: false,
+    address_search_domain: false
+  };
+
+  for (const query of queries) {
+    const searchUrl = `https://www.bing.com/search?${new URLSearchParams({ q: query, count: '10' })}`;
+    try {
+      const html = await fetchText(searchUrl, 7_000);
+      const $ = cheerio.load(html);
+      for (const element of $('.b_algo').toArray()) {
+        const title = cleanText($(element).find('h2').first().text());
+        const href = normalizeSearchResultUrl($(element).find('h2 a').first().attr('href') || '');
+        if (!title || !href) continue;
+
+        const type = classifyUrlType(href);
+        if (!isAllowedPublicSearchResult(href, title, 'internet', type)) continue;
+        if (['social', 'directory', 'marketplace'].includes(type)) continue;
+
+        const snippet = cleanText($(element).find('.b_caption p, .b_snippet').first().text());
+        const evidence = cleanText(`${title} ${snippet} ${href}`);
+        if (hasConflictingCityEvidence(evidence, city)) continue;
+
+        const host = safeHostname(href);
+        const normalizedEvidence = normalizeSearchText(evidence);
+        let score = 0;
+        const matched = [];
+
+        if (domainFromEmail(item.email) && host.includes(domainFromEmail(item.email))) add('email_domain', 50);
+        if (companyNameMatches(item, normalizedEvidence, host)) add('name', 42);
+        if (item.phone && phoneMatches(extractPhones(evidence, { city, country }), item.phone)) add('phone', 28);
+        if (item.nip && normalizedEvidence.includes(item.nip)) add('nip', 32);
+        if (item.address && addressMatches(item.address, normalizedEvidence)) add('address', 18);
+        if (nicheMatches(item.niche, normalizedEvidence)) add('niche', 10);
+        if (isSearchEvidenceLocalToCity(evidence, city)) add('city', 8);
+
+        if (score < 34) continue;
+        checks.name_search_domain = checks.name_search_domain || matched.includes('name') || matched.includes('email_domain');
+        checks.phone_search_domain = checks.phone_search_domain || matched.includes('phone');
+        checks.nip_search_domain = checks.nip_search_domain || matched.includes('nip');
+        checks.address_search_domain = checks.address_search_domain || matched.includes('address');
+        candidates.push({
+          url: href,
+          confidence: clamp(0.5 + score / 180, 0.54, 0.88),
+          score,
+          reason: `public search: ${matched.join(', ')}; ${title}`.slice(0, 220)
+        });
+
+        function add(label, value) {
+          matched.push(label);
+          score += value;
+        }
+      }
+    } catch (error) {
+      warnings.push(`Website public search skipped: ${error.message || 'unknown error'}`);
+    }
+  }
+
+  const byHost = new Map();
+  for (const candidate of candidates.sort((a, b) => b.score - a.score)) {
+    const host = safeHostname(candidate.url);
+    if (!host || byHost.has(host)) continue;
+    byHost.set(host, candidate);
+  }
+
+  return {
+    candidates: [...byHost.values()].slice(0, 5),
+    checks,
+    warnings: warnings.slice(0, 5),
+    queries
   };
 }
 
@@ -3235,6 +3365,9 @@ async function analyzeSiteCardWithOpenAI({ item, parsed, websiteResolution, heur
       'Use only the facts in this payload.',
       'Do not search the internet.',
       'If data is missing, write UNKNOWN.',
+      'Every personalized claim must be supported by company name, category, city, website status, reviews/rating, services, address, contacts or parsed website evidence from this payload.',
+      'If the official website is found but weak, frame the offer as redesign/improvement, not as no-website.',
+      'If company/category/site match is uncertain, mention manual verification in risks_or_skip_reasons.',
       'Offer only website creation or website redesign. Do not offer ads, CRM, automation, SEO packages or marketing under key.'
     ]
   };
@@ -3243,7 +3376,7 @@ async function analyzeSiteCardWithOpenAI({ item, parsed, websiteResolution, heur
     {
       role: 'system',
       content:
-        'You create a detailed website-opportunity analysis for one local company card. You must use only the provided parser facts. Do not invent missing data. If evidence is weak, say UNKNOWN. Be specific to the niche, services, activity, website status and materials. Write ALL text field values (company_summary, main_problem, why_website_needed, problems_solved_by_site, recommended_structure, required_features, existing_materials, missing_materials, personal_argument, recommended_offer, risks_or_skip_reasons, evidence_used) in Russian language, even if the source facts are in Polish. Keep first_message_ru in Russian and first_message_pl in Polish as usual. Return only JSON matching the schema.'
+        'You create a fact-checked, personalized website-opportunity analysis for one local company card. Use only the provided parser facts; do not invent missing facts, services, owners, prices, years, team size, locations, awards or problems. If evidence is weak, say UNKNOWN and lower confidence. Base personalization on exact evidence: company name, category, city/district, address, phone/email, reviews/rating, services, source profile, website status, selected URL, parsed pages and domain verification. If website_status is WEBSITE_FOUND, FREE_SUBDOMAIN, ONE_PAGE_PLACEHOLDER or UNCERTAIN, explain the exact status and recommend redesign/improvement only when justified. If there is category/company/site mismatch risk, put it in risks_or_skip_reasons and evidence_used. first_message_pl must sound natural in Polish and mention at least two verified facts; first_message_ru must do the same in Russian. Write ALL other text field values (company_summary, main_problem, why_website_needed, problems_solved_by_site, recommended_structure, required_features, existing_materials, missing_materials, personal_argument, recommended_offer, risks_or_skip_reasons, evidence_used) in Russian. Return only JSON matching the schema.'
     },
     {
       role: 'user',
@@ -3942,10 +4075,18 @@ function companyNameMatches(item, text, host) {
 }
 
 function phoneMatches(foundPhones, inputPhone) {
-  const target = normalizePhone(inputPhone);
-  if (!target) return false;
-  const shortTarget = target.slice(-9);
-  return foundPhones.map(normalizePhone).some((phone) => phone.endsWith(shortTarget));
+  const targets = (splitPhoneValues(inputPhone).length ? splitPhoneValues(inputPhone) : [normalizePhone(inputPhone)])
+    .map((phone) => normalizePhone(phone))
+    .filter((phone) => phone.length >= 7);
+  if (!targets.length) return false;
+  const found = (Array.isArray(foundPhones) ? foundPhones : [foundPhones])
+    .flatMap((phone) => splitPhoneValues(phone).length ? splitPhoneValues(phone) : [normalizePhone(phone)])
+    .map((phone) => normalizePhone(phone))
+    .filter((phone) => phone.length >= 7);
+  return targets.some((target) => {
+    const shortTarget = target.slice(-9);
+    return found.some((phone) => phone.endsWith(shortTarget));
+  });
 }
 
 function addressMatches(address, text) {
@@ -3968,30 +4109,22 @@ function normalizeSearchText(value) {
     .trim();
 }
 
-function extractPhones(text) {
+function extractPhones(text, context = {}) {
   const normalizedText = String(text || '').replace(/\u00a0/g, ' ');
-  const matches = normalizedText.match(/(?:\+?48[\s().-]*)?(?:\d[\s().-]*){9}/g) || [];
-  const phones = [];
-  for (const match of matches) {
-    const digits = match.replace(/\D/g, '');
-    const local = digits.startsWith('48') && digits.length >= 11 ? digits.slice(2, 11) : digits.slice(0, 9);
-    if (local.length !== 9 || local.startsWith('0')) continue;
-    if (/^(\d)\1{8}$/.test(local)) continue;
-    phones.push(`+48${local}`);
-  }
-  return unique(phones).slice(0, 8);
-}
-
-function splitPhoneValues(value) {
-  const raw = String(value || '').replace(/\u00a0/g, ' ');
-  const matches = raw.match(/\+?48\d{9}|\b\d{9}\b/g) || [];
+  const matches = normalizedText.match(/(?:\+|00)?\d(?:[\s().-]*\d){6,14}/g) || [];
   return unique(
     matches
-      .map((match) => {
-        const digits = match.replace(/\D/g, '');
-        const local = digits.startsWith('48') && digits.length >= 11 ? digits.slice(2, 11) : digits.slice(0, 9);
-        return local.length === 9 && !local.startsWith('0') && !/^(\d)\1{8}$/.test(local) ? `+48${local}` : '';
-      })
+      .map((match) => normalizePhoneCandidate(match, context, { fromText: true }))
+      .filter(Boolean)
+  ).slice(0, 8);
+}
+
+function splitPhoneValues(value, context = {}) {
+  const raw = String(value || '').replace(/\u00a0/g, ' ');
+  const matches = raw.match(/(?:\+|00)?\d(?:[\s().-]*\d){6,14}/g) || [];
+  return unique(
+    matches
+      .map((match) => normalizePhoneCandidate(match, context))
       .filter(Boolean)
   );
 }
@@ -4058,13 +4191,70 @@ function nicheIsComparedBeforeBuying(niche) {
   return /klimatyz|remont|detailing|stomat|fizj|kosmet|księg|ksieg|przedszk/i.test(niche);
 }
 
+function getPhoneRegionFromContext(context = {}) {
+  const explicit = String(context.regionCode || context.countryCode || '').trim().toUpperCase();
+  if (['PL', 'UA'].includes(explicit)) return explicit;
+
+  const countryPreset = getCountryPreset(context.country || '');
+  if (countryPreset?.regionCode) return countryPreset.regionCode;
+
+  const cityPreset = getCityPreset(context.city || '');
+  if (cityPreset?.regionCode) return cityPreset.regionCode;
+
+  const text = normalizeSearchText([context.country, context.city].filter(Boolean).join(' '));
+  if (/(^| )polska|poland|warszawa|warsaw|krakow|wroclaw|gdansk|poznan( |$)/.test(text)) return 'PL';
+  if (/(^| )ukraine|ukraina|kyiv|kiev|dnipro|lviv|odesa|odessa( |$)/.test(text)) return 'UA';
+  return '';
+}
+
+function normalizePhoneCandidate(value, context = {}, options = {}) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+
+  const startsWithPlus = /^\+/.test(raw);
+  const startsWithDoubleZero = /^00/.test(raw.replace(/\s+/g, ''));
+  let digits = raw.replace(/\D/g, '');
+  if (!digits || digits.length < 7 || digits.length > 15) return '';
+  if (/^(\d)\1{6,}$/.test(digits)) return '';
+
+  if (startsWithDoubleZero) {
+    digits = digits.replace(/^00/, '');
+    return digits.length >= 7 && digits.length <= 15 ? `+${digits}` : '';
+  }
+
+  if (startsWithPlus) {
+    return digits.length >= 7 && digits.length <= 15 ? `+${digits}` : '';
+  }
+
+  if (digits.startsWith('48') && digits.length === 11) return `+${digits}`;
+  if (digits.startsWith('380') && digits.length === 12) return `+${digits}`;
+
+  const region = getPhoneRegionFromContext(context);
+  if (region === 'PL') {
+    if (digits.length === 9 && !digits.startsWith('0')) return `+48${digits}`;
+  }
+
+  if (region === 'UA') {
+    if (digits.length === 10 && digits.startsWith('0')) return `+38${digits}`;
+    if (digits.length === 9 && !digits.startsWith('0')) return `+380${digits}`;
+  }
+
+  // Without country context keep plausible local numbers local, not fake +48.
+  if (options.fromText && digits.length === 9 && !digits.startsWith('0')) return digits;
+  if (!options.fromText && digits.length >= 7 && digits.length <= 12) return digits;
+  return '';
+}
+
 function normalizePhone(value) {
+  const phones = splitPhoneValues(value);
+  if (phones.length) return phones[0];
   return String(value || '').replace(/[^\d+]/g, '');
 }
 
-function normalizePhoneField(value) {
-  const phones = splitPhoneValues(value);
-  return phones.length ? phones.slice(0, 4).join('; ') : normalizePhone(value);
+function normalizePhoneField(value, context = {}) {
+  const phones = splitPhoneValues(value, context);
+  if (phones.length) return phones.slice(0, 4).join('; ');
+  return normalizePhoneCandidate(value, context) || String(value || '').replace(/[^\d+]/g, '');
 }
 
 function cleanIdentifier(value) {
