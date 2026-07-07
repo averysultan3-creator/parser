@@ -395,7 +395,8 @@ select:focus {
 .file-button,
 .secondary-button,
 .primary-button,
-.icon-button {
+.icon-button,
+.language-toggle {
   align-items: center;
   border-radius: 8px;
   display: inline-flex;
@@ -406,11 +407,34 @@ select:focus {
 
 .file-button,
 .secondary-button,
-.icon-button {
+.icon-button,
+.language-toggle {
   background: #f8fafc;
   border: 1px solid var(--line);
   color: var(--ink);
   padding: 0 12px;
+}
+
+.language-toggle {
+  gap: 2px;
+  padding: 3px;
+}
+
+.language-toggle-option {
+  align-items: center;
+  border-radius: 6px;
+  color: var(--muted);
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 800;
+  height: 32px;
+  justify-content: center;
+  min-width: 34px;
+}
+
+.language-toggle-option.active {
+  background: var(--blue);
+  color: #ffffff;
 }
 
 .primary-button {
@@ -429,7 +453,8 @@ select:focus {
 
 .secondary-button:hover,
 .file-button:hover,
-.icon-button:hover:not(:disabled) {
+.icon-button:hover:not(:disabled),
+.language-toggle:hover {
   border-color: #b8c5cc;
 }
 

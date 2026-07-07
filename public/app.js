@@ -20,12 +20,200 @@ const state = {
 };
 
 const API_BASE_STORAGE_KEY = 'parserApiBase';
+const LANGUAGE_STORAGE_KEY = 'parserLanguage';
 const TUNNEL_BOOTSTRAP_RETRIES = 4;
 const TUNNEL_BOOTSTRAP_DELAY_MS = 1200;
 const CONFIG_BOOTSTRAP_RETRIES = 6;
 const CONFIG_BOOTSTRAP_DELAY_MS = 1500;
 let configBootstrapTimer = null;
 let configBootstrapAttempts = 0;
+
+const copy = {
+  ru: {
+    sidebarTitle: 'Поиск компаний',
+    categoryLocation: '1. Категория и локация',
+    filtersStep: '2. Фильтры',
+    category: 'Категория',
+    customCategory: 'Своя категория',
+    country: 'Страна',
+    city: 'Город',
+    radius: 'Радиус, км',
+    resultLimit: 'Лимит результатов',
+    dataSource: 'Источник данных',
+    siteStatus: 'Статус сайта',
+    minScore: 'Бизнес-score от',
+    hasSocial: 'Есть соц. профили',
+    hasPhone: 'Есть телефон',
+    hasEmail: 'Есть email',
+    discoverButton: 'Найти компании и сверить',
+    analyzeButton: 'Проверить CSV / текущий список',
+    importCsv: 'Импорт CSV',
+    sampleData: 'Пример данных',
+    csvData: 'CSV данные',
+    titleSubtitle: 'Поиск компаний в Варшаве и проверка наличия сайтов',
+    exportCsv: 'Экспорт CSV',
+    results: 'Результаты',
+    history: 'История парсов',
+    refresh: 'Обновить',
+    totalFound: 'Всего найдено',
+    companies: 'компаний',
+    withSite: 'С сайтом',
+    withoutSite: 'Без сайта',
+    inReview: 'На проверке',
+    needReview: 'Требуют проверки',
+    search: 'Поиск',
+    site: 'Сайт',
+    size: 'Размер',
+    findSites: 'Найти сайты',
+    reset: 'Сброс',
+    company: 'Компания',
+    niche: 'Ниша',
+    contacts: 'Контакты',
+    lastActivity: 'Последняя активность',
+    companyCard: 'Карточка компании',
+    chooseResult: 'Выберите результат',
+    detailEmpty: 'После анализа здесь появится статус сайта, проверки, score бизнеса, мини-аудит и текст первого контакта.',
+    filtersNone: 'Фильтры не применены',
+    resultsEmpty: 'Результатов пока нет',
+    historyEmpty: 'История пуста. Запустите поиск компаний.',
+    historyLoading: 'Загрузка истории...',
+    smartSearch: 'Смарт-поиск: Google -> Amazon -> реестры -> веб',
+    internetProfiles: 'Интернет и публичные профили',
+    registries: 'CEIDG / госреестры',
+    directories: 'Каталоги и сервисы',
+    social: 'Соцсети',
+    topCategories: 'Топ-категории для сайтов',
+    allCategories: 'Все категории',
+    custom: 'Своя категория',
+    topGroup: 'Топ-категории',
+    allGroup: 'Все категории',
+    all: 'Все',
+    noOwnSite: 'Нет своего сайта',
+    siteFound: 'Сайт найден',
+    weakSite: 'Слабый сайт',
+    uncertain: 'Нужна проверка',
+    small: 'Маленькая',
+    medium: 'Средняя',
+    large: 'Большая',
+    allStatuses: 'Все статусы',
+    noSite: 'Нет сайта',
+    runStatus: 'Поиск компаний уже делает пред-проверку сайтов. Эта кнопка нужна для CSV-импорта и ручного повторного запуска проверки.',
+    discoverStatus: 'Смарт-поиск сначала собирает компании, затем дополняет и сверяет контакты, сайт и сигналы по другим источникам.',
+    searchReady: 'Поиск готов: собирает базу через публичные реестры, каталоги, интернет, Amazon/Google если ключи включены.',
+    searchOff: 'Поиск выключен: backend не отвечает. Запустите локальный сервер, CSV-проверка сайтов отдельно работает.',
+    sourcesReady: 'Источники готовы',
+    sourcesMissing: 'Нужно подключить источники поиска',
+    backendError: 'Ошибка подключения к backend',
+    currentBackend: 'Текущий адрес backend',
+    saveReload: 'Сохранить адрес и перезагрузить',
+    openHistory: 'Открыт запуск из истории',
+    found: 'найдено',
+    shown: 'Показано',
+    from: 'из',
+    noFilterResults: 'По фильтрам ничего не найдено. Отключите фильтры соц. профилей, телефона или снизьте score.',
+    overview: 'Обзор',
+    sources: 'Источники',
+    aiAnalysis: 'AI-анализ'
+  },
+  pl: {
+    sidebarTitle: 'Wyszukiwanie firm',
+    categoryLocation: '1. Kategoria i lokalizacja',
+    filtersStep: '2. Filtry',
+    category: 'Kategoria',
+    customCategory: 'Własna kategoria',
+    country: 'Kraj',
+    city: 'Miasto',
+    radius: 'Promień, km',
+    resultLimit: 'Limit wyników',
+    dataSource: 'Źródło danych',
+    siteStatus: 'Status strony',
+    minScore: 'Business score od',
+    hasSocial: 'Ma profile społecznościowe',
+    hasPhone: 'Ma telefon',
+    hasEmail: 'Ma email',
+    discoverButton: 'Znajdź firmy i zweryfikuj',
+    analyzeButton: 'Sprawdź CSV / bieżącą listę',
+    importCsv: 'Import CSV',
+    sampleData: 'Przykładowe dane',
+    csvData: 'Dane CSV',
+    titleSubtitle: 'Wyszukiwanie firm w Warszawie i sprawdzanie stron',
+    exportCsv: 'Eksport CSV',
+    results: 'Wyniki',
+    history: 'Historia parsowań',
+    refresh: 'Odśwież',
+    totalFound: 'Łącznie znaleziono',
+    companies: 'firm',
+    withSite: 'Ze stroną',
+    withoutSite: 'Bez strony',
+    inReview: 'Do sprawdzenia',
+    needReview: 'Wymagają kontroli',
+    search: 'Szukaj',
+    site: 'Strona',
+    size: 'Rozmiar',
+    findSites: 'Znajdź strony',
+    reset: 'Reset',
+    company: 'Firma',
+    niche: 'Nisza',
+    contacts: 'Kontakty',
+    lastActivity: 'Ostatnia aktywność',
+    companyCard: 'Karta firmy',
+    chooseResult: 'Wybierz wynik',
+    detailEmpty: 'Po analizie pojawi się tutaj status strony, kontrole, business score, mini-audyt i tekst pierwszego kontaktu.',
+    filtersNone: 'Filtry nie są zastosowane',
+    resultsEmpty: 'Brak wyników',
+    historyEmpty: 'Historia jest pusta. Uruchom wyszukiwanie firm.',
+    historyLoading: 'Ładowanie historii...',
+    smartSearch: 'Smart search: Google -> Amazon -> rejestry -> web',
+    internetProfiles: 'Internet i publiczne profile',
+    registries: 'CEIDG / rejestry publiczne',
+    directories: 'Katalogi i serwisy',
+    social: 'Social media',
+    topCategories: 'Top kategorie dla stron',
+    allCategories: 'Wszystkie kategorie',
+    custom: 'Własna kategoria',
+    topGroup: 'Top kategorie',
+    allGroup: 'Wszystkie kategorie',
+    all: 'Wszystkie',
+    noOwnSite: 'Brak własnej strony',
+    siteFound: 'Strona znaleziona',
+    weakSite: 'Słaba strona',
+    uncertain: 'Wymaga sprawdzenia',
+    small: 'Mała',
+    medium: 'Średnia',
+    large: 'Duża',
+    allStatuses: 'Wszystkie statusy',
+    noSite: 'Brak strony',
+    runStatus: 'Wyszukiwanie firm już wykonuje wstępną kontrolę stron. Ten przycisk służy do importu CSV i ręcznego ponownego sprawdzenia.',
+    discoverStatus: 'Smart search najpierw zbiera firmy, potem uzupełnia i porównuje kontakty, stronę oraz sygnały z innych źródeł.',
+    searchReady: 'Wyszukiwanie gotowe: zbiera bazę przez rejestry publiczne, katalogi, internet oraz Amazon/Google, jeśli klucze są włączone.',
+    searchOff: 'Wyszukiwanie wyłączone: backend nie odpowiada. Uruchom lokalny serwer; osobne sprawdzanie CSV nadal działa.',
+    sourcesReady: 'Źródła gotowe',
+    sourcesMissing: 'Trzeba podłączyć źródła wyszukiwania',
+    backendError: 'Błąd połączenia z backendem',
+    currentBackend: 'Aktualny adres backendu',
+    saveReload: 'Zapisz adres i przeładuj',
+    openHistory: 'Otwarty przebieg z historii',
+    found: 'znaleziono',
+    shown: 'Pokazano',
+    from: 'z',
+    noFilterResults: 'Brak wyników dla filtrów. Wyłącz filtry profili, telefonu albo obniż score.',
+    overview: 'Przegląd',
+    sources: 'Źródła',
+    aiAnalysis: 'AI-analiza'
+  }
+};
+
+let currentLanguage = (() => {
+  try {
+    return localStorage.getItem(LANGUAGE_STORAGE_KEY) === 'pl' ? 'pl' : 'ru';
+  } catch {
+    return 'ru';
+  }
+})();
+
+function tr(key) {
+  return copy[currentLanguage]?.[key] || copy.ru[key] || key;
+}
 
 // ngrok на бесплатном тарифе показывает HTML-заглушку для запросов из браузера.
 // Заголовок ngrok-skip-browser-warning отключает её. Добавляем его во все
@@ -296,6 +484,7 @@ const els = {
   exportCsvButton: document.querySelector('#exportCsvButton'),
   headerExportCsvButton: document.querySelector('#headerExportCsvButton'),
   exportJsonButton: document.querySelector('#exportJsonButton'),
+  languageToggle: document.querySelector('#languageToggle'),
   resultsBody: document.querySelector('#resultsBody'),
   detailTitle: document.querySelector('#detailTitle'),
   detailPriority: document.querySelector('#detailPriority'),
@@ -468,13 +657,136 @@ function resultsContextElement() {
   return document.querySelector('#resultsContext');
 }
 
+function setText(selector, value) {
+  const element = document.querySelector(selector);
+  if (element) element.textContent = value;
+}
+
+function setPlaceholder(selector, value) {
+  const element = document.querySelector(selector);
+  if (element) element.setAttribute('placeholder', value);
+}
+
+function setButtonHtml(selector, icon, label) {
+  const element = document.querySelector(selector);
+  if (element) element.innerHTML = `<i data-lucide="${icon}"></i>${escapeHtml(label)}`;
+}
+
+function setOptionText(select, value, label) {
+  const option = select?.querySelector(`option[value="${CSS.escape(value)}"]`);
+  if (option) option.textContent = label;
+}
+
+function applyLanguage(lang = currentLanguage, { persist = true } = {}) {
+  currentLanguage = lang === 'pl' ? 'pl' : 'ru';
+  if (persist) {
+    try {
+      localStorage.setItem(LANGUAGE_STORAGE_KEY, currentLanguage);
+    } catch {}
+  }
+
+  document.documentElement.lang = currentLanguage;
+  els.languageToggle?.querySelectorAll('[data-lang-code]').forEach((item) => {
+    item.classList.toggle('active', item.dataset.langCode === currentLanguage);
+  });
+
+  setText('.sidebar-title h2', tr('sidebarTitle'));
+  const stepTitles = document.querySelectorAll('.discover-panel .step-title');
+  if (stepTitles[0]) stepTitles[0].textContent = tr('categoryLocation');
+  if (stepTitles[1]) stepTitles[1].textContent = tr('filtersStep');
+  setText('.main-header p', tr('titleSubtitle'));
+  setButtonHtml('#viewTabResults', 'table', tr('results'));
+  setButtonHtml('#viewTabHistory', 'history', tr('history'));
+  setButtonHtml('#headerExportCsvButton', 'download', tr('exportCsv'));
+  setButtonHtml('#sampleButton', 'list-plus', tr('sampleData'));
+  const importLabels = document.querySelectorAll('label[for="fileInput"]');
+  importLabels.forEach((label) => {
+    label.innerHTML = `<i data-lucide="${label.classList.contains('file-button') ? 'file-up' : 'upload'}"></i>${escapeHtml(tr('importCsv'))}`;
+  });
+  setButtonHtml('.history-header .secondary-button', 'refresh-cw', tr('refresh'));
+  setText('.metric-row > div:nth-child(1) .metric-label', tr('totalFound'));
+  setText('.metric-row > div:nth-child(1) em', tr('companies'));
+  setText('.metric-row > div:nth-child(2) .metric-label', tr('withSite'));
+  setText('.metric-row > div:nth-child(3) .metric-label', tr('withoutSite'));
+  setText('.metric-row > div:nth-child(4) .metric-label', tr('inReview'));
+  setText('.metric-row > div:nth-child(5) .metric-label', tr('needReview'));
+  setText('.results-filters label:nth-child(1) span', tr('search'));
+  setText('.results-filters label:nth-child(2) span', tr('site'));
+  setText('.results-filters label:nth-child(3) span', tr('size'));
+  setText('.results-filters label:nth-child(5) span', 'Score od');
+  setButtonHtml('#quickFindSitesButton', 'search-check', tr('findSites'));
+  setButtonHtml('#resetFiltersButton', 'x', tr('reset'));
+  setText('.detail-header .eyebrow', tr('companyCard'));
+  setPlaceholder('#resultFilterText', currentLanguage === 'pl' ? 'Firma, nisza, dzielnica, zrodlo' : 'Компания, ниша, район, источник');
+
+  [
+    ['#discoverCategoryPreset', tr('category')],
+    ['#discoverNiche', tr('customCategory')],
+    ['#discoverCountry', tr('country')],
+    ['#discoverCity', tr('city')],
+    ['#discoverRadius', tr('radius')],
+    ['#discoverLimit', tr('resultLimit')],
+    ['#discoverSource', tr('dataSource')],
+    ['#sidebarSiteFilter', tr('siteStatus')],
+    ['#sidebarMinScore', tr('minScore')]
+  ].forEach(([selector, label]) => {
+    const labelElement = document.querySelector(selector)?.closest('label')?.querySelector('span');
+    if (labelElement) labelElement.textContent = label;
+  });
+
+  [
+    ['#sidebarHasSocial', tr('hasSocial')],
+    ['#sidebarHasPhone', tr('hasPhone')],
+    ['#sidebarHasEmail', tr('hasEmail')]
+  ].forEach(([selector, label]) => {
+    const span = document.querySelector(selector)?.closest('label')?.querySelector('span');
+    if (span) span.textContent = label;
+  });
+
+  setOptionText(els.discoverCountry, '', currentLanguage === 'pl' ? 'Nie wskazano (wedlug miasta)' : 'Не указана (по городу)');
+  setOptionText(els.discoverCity, '', currentLanguage === 'pl' ? 'Wlasne / bez miasta (wedlug kraju)' : 'Своя / без города (по стране)');
+  setOptionText(els.resultFilterSite, 'all', tr('all'));
+  setOptionText(els.resultFilterSite, 'no_site', tr('noOwnSite'));
+  setOptionText(els.resultFilterSite, 'has_site', tr('siteFound'));
+  setOptionText(els.resultFilterSite, 'weak_site', tr('weakSite'));
+  setOptionText(els.resultFilterSite, 'uncertain', tr('uncertain'));
+  setOptionText(els.sidebarSiteFilter, 'all', tr('allStatuses'));
+  setOptionText(els.sidebarSiteFilter, 'no_site', tr('noSite'));
+  setOptionText(els.sidebarSiteFilter, 'has_site', tr('withSite'));
+  setOptionText(els.sidebarSiteFilter, 'weak_site', tr('weakSite'));
+  setOptionText(els.sidebarSiteFilter, 'uncertain', tr('inReview'));
+  setOptionText(els.resultFilterSize, 'all', tr('all'));
+  setOptionText(els.resultFilterSize, 'small', tr('small'));
+  setOptionText(els.resultFilterSize, 'medium', tr('medium'));
+  setOptionText(els.resultFilterSize, 'large', tr('large'));
+  setOptionText(els.resultFilterPriority, 'all', tr('all'));
+
+  const resultsHeaders = document.querySelectorAll('#resultsView thead th');
+  [null, tr('siteStatus'), tr('company'), tr('niche'), tr('size'), tr('contacts'), null, tr('lastActivity')].forEach((label, index) => {
+    if (label && resultsHeaders[index]) resultsHeaders[index].textContent = label;
+  });
+
+  const historyHeaders = document.querySelectorAll('#historyView thead th');
+  const historyLabels = currentLanguage === 'pl'
+    ? ['Data', 'Kategorie', 'Lokalizacja', 'Zrodlo', 'Znaleziono', 'Nowe', 'Duplikaty', 'Status']
+    : ['Дата', 'Категории', 'Локация', 'Источник', 'Найдено', 'Новых', 'Дублей', 'Статус'];
+  historyLabels.forEach((label, index) => {
+    if (historyHeaders[index]) historyHeaders[index].textContent = label;
+  });
+
+  applyStaticCopy();
+  if (!state.results.length) renderResults();
+  if (!state.selectedId) renderDetail();
+  if (state.historyRuns.length || state.historyLoaded) renderHistory(state.historyRuns);
+  renderResultsContext();
+  renderIcons();
+}
+
 function applyStaticCopy() {
-  els.discoverButton.innerHTML = '<i data-lucide="radar"></i>Найти компании и сверить';
-  els.analyzeButton.innerHTML = '<i data-lucide="list-checks"></i>Проверить CSV / текущий список';
-  els.runStatus.textContent =
-    'Поиск компаний уже делает пред-проверку сайтов. Эта кнопка нужна для CSV-импорта и ручного повторного запуска проверки.';
-  els.discoverStatus.textContent =
-    'Смарт-поиск сначала собирает компании, затем дополняет и сверяет контакты, сайт и сигналы по другим источникам.';
+  els.discoverButton.innerHTML = `<i data-lucide="radar"></i>${escapeHtml(tr('discoverButton'))}`;
+  els.analyzeButton.innerHTML = `<i data-lucide="list-checks"></i>${escapeHtml(tr('analyzeButton'))}`;
+  els.runStatus.textContent = tr('runStatus');
+  els.discoverStatus.textContent = tr('discoverStatus');
 
   if (els.allSourcesButton) {
     els.allSourcesButton.classList.add('hidden-field');
@@ -483,14 +795,14 @@ function applyStaticCopy() {
   }
 
   const sourceLabels = {
-    all_sources: 'Смарт-поиск: Google -> Amazon -> реестры -> веб',
+    all_sources: tr('smartSearch'),
     amazon_location: 'Amazon Location API',
     maps_api: 'Google Places API',
-    internet: 'Интернет и публичные профили',
-    registries: 'CEIDG / госреестры',
-    directories: 'Каталоги и сервисы',
-    booking: 'Booksy / запись',
-    social: 'Соцсети'
+    internet: tr('internetProfiles'),
+    registries: tr('registries'),
+    directories: tr('directories'),
+    booking: 'Booksy / zapisy',
+    social: tr('social')
   };
 
   Array.from(els.discoverSource.options).forEach((option) => {
@@ -552,7 +864,7 @@ function renderResultsContext() {
 
   element.classList.remove('hidden-field');
   element.innerHTML = `
-    <strong>Открыт запуск из истории</strong>
+    <strong>${escapeHtml(tr('openHistory'))}</strong>
     <span>${escapeHtml(parts.join(' · '))}</span>
   `;
 }
@@ -560,7 +872,7 @@ function renderResultsContext() {
 init();
 
 async function init() {
-  setDiscoverStatus('Подключаю backend и читаю tunnel.json...', 'work');
+  setDiscoverStatus(currentLanguage === 'pl' ? 'Łączę backend i czytam tunnel.json...' : 'Подключаю backend и читаю tunnel.json...', 'work');
   await bootstrapApiBase();
   ensureResultsContext();
   populateCategoryPreset();
@@ -570,7 +882,7 @@ async function init() {
   els.sidebarHasEmail.checked = false;
   els.sidebarSiteFilter.value = 'no_site';
   els.resultFilterSite.value = 'no_site';
-  applyStaticCopy();
+  applyLanguage(currentLanguage, { persist: false });
   await loadConfig();
   bindEvents();
   els.csvInput.value = sampleCsv;
@@ -588,11 +900,11 @@ function populateCategoryPreset() {
     .join('');
 
   els.discoverCategoryPreset.innerHTML = `
-    <option value="top_all">Топ-категории для сайтов</option>
-    <option value="all_categories">Все категории</option>
-    <option value="custom">Своя категория</option>
-    <optgroup label="Топ-категории">${topOptions}</optgroup>
-    <optgroup label="Все категории">${allOptions}</optgroup>
+    <option value="top_all">${escapeHtml(tr('topCategories'))}</option>
+    <option value="all_categories">${escapeHtml(tr('allCategories'))}</option>
+    <option value="custom">${escapeHtml(tr('custom'))}</option>
+    <optgroup label="${escapeAttribute(tr('topGroup'))}">${topOptions}</optgroup>
+    <optgroup label="${escapeAttribute(tr('allGroup'))}">${allOptions}</optgroup>
   `;
 }
 
@@ -625,8 +937,8 @@ async function loadConfig() {
     }
     setDiscoverStatus(
       discoveryReady
-        ? 'Поиск готов: собирает базу для прозвона через публичные реестры, каталоги, интернет, Amazon/Google если ключи включены.'
-        : 'Поиск выключен: backend не отвечает. Запустите локальный сервер, CSV-проверка сайтов отдельно работает.',
+        ? tr('searchReady')
+        : tr('searchOff'),
       discoveryReady ? 'ok' : 'warn'
     );
 
@@ -712,7 +1024,7 @@ function renderConfigDiagnostics({ openaiReady, amazonReady, googleReady, ceidgR
     : 'no CEIDG token; uses public CEIDG/registry web search and then parses contacts';
 
   els.configDiagnostics.innerHTML = `
-    <div class="config-diagnostics-title">${discoveryReady ? 'Источники готовы' : 'Нужно подключить источники поиска'}</div>
+    <div class="config-diagnostics-title">${escapeHtml(discoveryReady ? tr('sourcesReady') : tr('sourcesMissing'))}</div>
     <div class="config-diagnostics-grid">
       ${rows
         .map(
@@ -732,15 +1044,15 @@ function renderConfigError(error) {
   const message = error?.message || 'unknown config error';
   const currentBackend = getApiBase() || (window.location.hostname.endsWith('github.io') ? 'tunnel.json / auto-bootstrap' : window.location.origin);
   els.configDiagnostics.innerHTML = `
-    <div class="config-diagnostics-title">Ошибка подключения к backend</div>
+    <div class="config-diagnostics-title">${escapeHtml(tr('backendError'))}</div>
     <div class="config-diagnostic warn">
       <strong>Config API</strong>
-      <span>${escapeHtml(message)}. Текущий адрес backend: ${escapeHtml(currentBackend)}.</span>
+      <span>${escapeHtml(message)}. ${escapeHtml(tr('currentBackend'))}: ${escapeHtml(currentBackend)}.</span>
       <span>Локально: запустите сервер через npm run dev и открывайте http://localhost:4317/. С другого компьютера через GitHub Pages нужен публичный адрес backend (например, туннель cloudflared/ngrok): введите его ниже или откройте страницу с параметром ?api=https://адрес.</span>
     </div>
     <div class="api-base-form">
       <input id="apiBaseInput" type="text" placeholder="https://адрес-вашего-backend" value="${escapeAttribute(getApiBase())}" />
-      <button id="apiBaseSaveButton" type="button">Сохранить адрес и перезагрузить</button>
+      <button id="apiBaseSaveButton" type="button">${escapeHtml(tr('saveReload'))}</button>
     </div>
   `;
 
@@ -778,6 +1090,9 @@ function bindEvents() {
   els.viewTabResults.addEventListener('click', () => switchView('results'));
   els.viewTabHistory.addEventListener('click', () => switchView('history'));
   els.refreshHistoryButton.addEventListener('click', loadHistory);
+  els.languageToggle?.addEventListener('click', () => {
+    applyLanguage(currentLanguage === 'pl' ? 'ru' : 'pl');
+  });
 }
 
 function switchView(view) {
@@ -791,7 +1106,7 @@ function switchView(view) {
 
 async function loadHistory() {
   state.historyLoadingRunId = null;
-  els.historyBody.innerHTML = '<tr class="empty-row"><td colspan="8">Загрузка истории...</td></tr>';
+  els.historyBody.innerHTML = `<tr class="empty-row"><td colspan="8">${escapeHtml(tr('historyLoading'))}</td></tr>`;
   try {
     const response = await fetch(apiUrl('/api/history/runs'));
     const data = await response.json();
@@ -807,7 +1122,7 @@ async function loadHistory() {
 
 function renderHistory(runs) {
   if (!runs.length) {
-    els.historyBody.innerHTML = '<tr class="empty-row"><td colspan="8">История пуста. Запустите поиск компаний.</td></tr>';
+    els.historyBody.innerHTML = `<tr class="empty-row"><td colspan="8">${escapeHtml(tr('historyEmpty'))}</td></tr>`;
     return;
   }
 
@@ -1734,17 +2049,16 @@ function normalizeHeader(value) {
 
 function renderResults() {
   if (!state.results.length) {
-    els.resultsBody.innerHTML = '<tr class="empty-row"><td colspan="8">Результатов пока нет</td></tr>';
-    els.filterSummary.textContent = 'Фильтры не применены';
+    els.resultsBody.innerHTML = `<tr class="empty-row"><td colspan="8">${escapeHtml(tr('resultsEmpty'))}</td></tr>`;
+    els.filterSummary.textContent = tr('filtersNone');
     return;
   }
 
   const results = getFilteredResults();
-  els.filterSummary.textContent = `Показано ${results.length} из ${state.results.length}`;
+  els.filterSummary.textContent = `${tr('shown')} ${results.length} ${tr('from')} ${state.results.length}`;
 
   if (!results.length) {
-    els.resultsBody.innerHTML =
-      '<tr class="empty-row"><td colspan="8">По фильтрам ничего не найдено. Отключите фильтры "Есть соц. профили", "Есть телефон" или снизьте score.</td></tr>';
+    els.resultsBody.innerHTML = `<tr class="empty-row"><td colspan="8">${escapeHtml(tr('noFilterResults'))}</td></tr>`;
     return;
   }
 
@@ -1817,7 +2131,7 @@ function renderDetail() {
 
   const result = state.results.find((item) => item.id === state.selectedId);
   if (!result) {
-    els.detailTitle.textContent = 'Выберите результат';
+    els.detailTitle.textContent = tr('chooseResult');
     els.detailPriority.textContent = '-';
     els.detailPriority.className = 'priority-badge muted';
     els.detailContent.innerHTML =
@@ -1929,7 +2243,7 @@ function renderTabbedDetail() {
     els.detailPriority.textContent = '-';
     els.detailPriority.className = 'priority-badge muted';
     els.detailContent.innerHTML =
-      '<p class="muted-text">После массового парсинга здесь появится карточка компании. AI не запускается, пока вы не нажмете кнопку во вкладке "AI-анализ".</p>';
+      `<p class="muted-text">${escapeHtml(tr('detailEmpty'))}</p>`;
     return;
   }
 
@@ -1941,17 +2255,17 @@ function renderTabbedDetail() {
   const tabs = ['overview', 'sources', 'site', 'ai', 'history'];
   if (!tabs.includes(state.detailTab)) state.detailTab = 'overview';
 
-  els.detailTitle.textContent = title || 'Компания';
+  els.detailTitle.textContent = title || tr('company');
   els.detailPriority.textContent = a.lead_category || a.priority || '-';
   els.detailPriority.className = `priority-badge ${String(a.priority || '').toLowerCase()}`;
 
   els.detailContent.innerHTML = `
     <div class="detail-tabs">
-      ${detailTabButton('overview', 'Обзор')}
-      ${detailTabButton('sources', 'Источники')}
-      ${detailTabButton('site', 'Сайт')}
-      ${detailTabButton('ai', 'AI-анализ')}
-      ${detailTabButton('history', 'История')}
+      ${detailTabButton('overview', tr('overview'))}
+      ${detailTabButton('sources', tr('sources'))}
+      ${detailTabButton('site', tr('site'))}
+      ${detailTabButton('ai', tr('aiAnalysis'))}
+      ${detailTabButton('history', tr('history'))}
     </div>
     ${renderActiveDetailTab(result)}
   `;

@@ -7,10 +7,10 @@
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
     <title>Warsaw Site Parser</title>
-    <link rel="stylesheet" href="./styles.css?v=20260707-5" />
+    <link rel="stylesheet" href="./styles.css?v=20260707-6" />
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js" defer></script>
     <script src="./patch.js?v=20260707-3" defer></script>
-    <script src="./app.js?v=20260707-5" defer></script>
+    <script src="./app.js?v=20260707-6" defer></script>
   </head>
   <body>
     <div class="app-shell">
@@ -198,6 +198,10 @@
               <p>Поиск компаний в Варшаве и проверка наличия сайтов</p>
             </div>
             <div class="main-actions">
+              <button id="languageToggle" class="language-toggle" type="button" title="Zmien jezyk / Сменить язык">
+                <span class="language-toggle-option active" data-lang-code="ru">RU</span>
+                <span class="language-toggle-option" data-lang-code="pl">PL</span>
+              </button>
               <button id="headerExportCsvButton" class="secondary-button" type="button" disabled>
                 <i data-lucide="download"></i>
                 Экспорт CSV
