@@ -16,6 +16,7 @@ try {
     viewportH: window.innerHeight,
     discover: document.querySelector('#discoverButton')?.getBoundingClientRect(),
     analyze: document.querySelector('#analyzeButton')?.getBoundingClientRect(),
+    analyzeDisplay: getComputedStyle(document.querySelector('#analyzeButton')).display,
     sidebarActions: getComputedStyle(document.querySelector('.sidebar-actions')).display,
     csvDrawer: getComputedStyle(document.querySelector('.csv-drawer')).display,
     aiNote: getComputedStyle(document.querySelector('.ai-note')).display,
@@ -24,7 +25,7 @@ try {
   }));
 
   assert(layout.discover && layout.discover.bottom <= layout.viewportH, 'discover button must be visible on mobile');
-  assert(layout.analyze && layout.analyze.bottom <= layout.viewportH, 'analyze button must be visible on mobile');
+  assert(layout.analyzeDisplay === 'none', 'analyze button must stay hidden on mobile');
   assert(layout.sidebarActions === 'none', 'mobile should hide sidebar action block');
   assert(layout.csvDrawer === 'none', 'mobile should hide csv drawer');
   assert(layout.aiNote === 'none', 'mobile should hide ai note');

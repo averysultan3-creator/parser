@@ -1168,6 +1168,10 @@ tbody tr.selected {
     padding: 14px;
   }
 
+  .control-panel {
+    padding-bottom: 96px;
+  }
+
   .control-panel,
   .results-panel {
     border-right: 0;
@@ -1212,6 +1216,21 @@ tbody tr.selected {
 
   .status-row {
     flex-wrap: wrap;
+  }
+
+  .discover-button {
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
+    box-shadow: 0 14px 28px rgba(37, 99, 235, 0.28);
+    left: 12px;
+    margin-top: 0;
+    position: fixed;
+    right: 12px;
+    width: auto;
+    z-index: 30;
+  }
+
+  .discover-status {
+    margin-bottom: 60px;
   }
 
   .metric-row {
