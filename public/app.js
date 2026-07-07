@@ -498,6 +498,32 @@ function applyStaticCopy() {
   });
 }
 
+function isDiscoveryReady(config = state.config) {
+  return Boolean(
+    config?.registry?.amazonLocationConfigured ||
+      config?.registry?.googlePlacesConfigured ||
+      config?.registry?.ceidgConfigured ||
+      config?.internetSearchConfigured
+  );
+}
+
+async function handlePrimaryAction() {
+  if (!isDiscoveryReady()) {
+    setDiscoverStatus('Переподключаю backend и заново проверяю источники...', 'work');
+    try {
+      await bootstrapApiBase();
+      await loadConfig();
+    } catch {}
+  }
+
+  if (!isDiscoveryReady()) {
+    setDiscoverStatus('Backend пока не ответил. Нажмите еще раз через 2-3 секунды или проверьте tunnel/backend.', 'warn');
+    return;
+  }
+
+  await runDiscovery();
+}
+
 function clearHistoryContext() {
   state.activeHistoryRun = null;
   state.historyLoadingRunId = null;
@@ -587,8 +613,8 @@ async function loadConfig() {
     const googleReady = Boolean(state.config.registry?.googlePlacesConfigured);
     const ceidgReady = Boolean(state.config.registry?.ceidgConfigured);
     const internetReady = Boolean(state.config.internetSearchConfigured);
-    const discoveryReady = amazonReady || googleReady || ceidgReady || internetReady;
-    els.discoverButton.disabled = !discoveryReady;
+    const discoveryReady = isDiscoveryReady(state.config);
+    els.discoverButton.disabled = false;
     if (els.allSourcesButton) {
       els.allSourcesButton.disabled = true;
       els.allSourcesButton.classList.add('hidden-field');
@@ -619,7 +645,7 @@ async function loadConfig() {
       await loadHistory();
     } catch {}
     state.config = null;
-    els.discoverButton.disabled = true;
+    els.discoverButton.disabled = false;
     if (els.allSourcesButton) els.allSourcesButton.disabled = true;
     setPill(els.apiStatus, 'Config API offline', false);
     setPill(els.webSearchStatus, 'Crawler unknown', false);
@@ -732,7 +758,7 @@ function bindEvents() {
     els.csvInput.value = sampleCsv;
   });
   els.discoverCategoryPreset.addEventListener('change', handleCategoryPresetChange);
-  els.discoverButton.addEventListener('click', runDiscovery);
+  els.discoverButton.addEventListener('click', handlePrimaryAction);
   els.analyzeButton.addEventListener('click', runAnalysis);
   els.quickFindSitesButton.addEventListener('click', runAnalysis);
   els.resetFiltersButton.addEventListener('click', resetResultFilters);
@@ -1029,12 +1055,7 @@ async function runDiscovery() {
   clearHistoryContext();
   switchView('results');
   state.historyLoaded = false;
-  const discoveryReady = Boolean(
-    state.config?.registry?.amazonLocationConfigured ||
-      state.config?.registry?.googlePlacesConfigured ||
-      state.config?.registry?.ceidgConfigured ||
-      state.config?.internetSearchConfigured
-  );
+  const discoveryReady = isDiscoveryReady();
   if (!discoveryReady) {
     setDiscoverStatus('Backend не готов. Запустите локальный сервер; публичный поиск должен работать даже без CEIDG API.', 'warn');
     state.discoveryRunning = false;
@@ -1151,7 +1172,7 @@ async function runDiscovery() {
   } finally {
     stopDiscoveryPolling();
     state.discoveryRunning = false;
-    els.discoverButton.disabled = !discoveryReady;
+    els.discoverButton.disabled = false;
     els.analyzeButton.disabled = false;
     els.quickFindSitesButton.disabled = false;
     renderIcons();

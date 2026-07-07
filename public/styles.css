@@ -172,20 +172,6 @@ h2 {
   font-size: 17px;
 }
 
-.primary-action-stack {
-  background: linear-gradient(180deg, rgba(37, 99, 235, 0.05), rgba(37, 99, 235, 0.01));
-  border: 1px solid rgba(37, 99, 235, 0.18);
-  border-radius: 14px;
-  box-shadow: 0 12px 24px rgba(23, 32, 38, 0.05);
-  display: grid;
-  gap: 8px;
-  margin-bottom: 16px;
-  padding: 12px;
-  position: sticky;
-  top: 12px;
-  z-index: 4;
-}
-
 .step-title {
   color: var(--blue);
   font-size: 13px;
