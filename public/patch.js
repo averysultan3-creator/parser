@@ -3,8 +3,12 @@
   if (!isPages) return;
 
   const nativeFetch = window.fetch.bind(window);
+  const BACKEND_CACHE_TTL_MS = 15_000;
   const storageGetItem = Storage.prototype.getItem;
   const storageSetItem = Storage.prototype.setItem;
+  let backendPromise = null;
+  let cachedBackend = '';
+  let cachedBackendAt = 0;
 
   Storage.prototype.getItem = function (key) {
     if (key === 'parserApiBase') return null;
@@ -32,8 +36,6 @@
     return `${base}${target}`;
   }
 
-  let backendPromise = null;
-
   async function resolveBackendBase() {
     try {
       const fromQuery = normalizeApiBase(new URLSearchParams(window.location.search).get('api'));
@@ -52,18 +54,59 @@
     return '';
   }
 
-  async function getBackendBase() {
-    if (!backendPromise) backendPromise = resolveBackendBase();
+  function invalidateBackendBase() {
+    cachedBackend = '';
+    cachedBackendAt = 0;
+    backendPromise = null;
+  }
+
+  window.__parserRefreshBackendBase = invalidateBackendBase;
+
+  async function getBackendBase(forceRefresh = false) {
+    const age = Date.now() - cachedBackendAt;
+    if (!forceRefresh && cachedBackend && age < BACKEND_CACHE_TTL_MS) {
+      return cachedBackend;
+    }
+
+    if (!backendPromise || forceRefresh) {
+      backendPromise = resolveBackendBase().then((base) => {
+        cachedBackend = base;
+        cachedBackendAt = Date.now();
+        backendPromise = null;
+        return base;
+      });
+    }
+
     return backendPromise;
+  }
+
+  async function fetchApiTarget(target, init) {
+    const base = await getBackendBase(false);
+    if (!base) return nativeFetch(target, init);
+
+    try {
+      const response = await nativeFetch(`${base}${target}`, init);
+      if (response.ok) return response;
+      if (![502, 503, 504, 521, 522, 523, 524].includes(response.status)) {
+        return response;
+      }
+    } catch (error) {
+      // retry below
+    }
+
+    invalidateBackendBase();
+    const refreshed = await getBackendBase(true);
+    if (refreshed) {
+      return nativeFetch(`${refreshed}${target}`, init);
+    }
+
+    return nativeFetch(target, init);
   }
 
   window.fetch = async (input, init = {}) => {
     const target = typeof input === 'string' ? input : String(input?.url || '');
     if (target.startsWith('/api/')) {
-      const base = await getBackendBase();
-      if (base) {
-        return nativeFetch(`${base}${target}`, init);
-      }
+      return fetchApiTarget(target, init);
     }
     return nativeFetch(input, init);
   };

@@ -22,6 +22,10 @@ const state = {
 const API_BASE_STORAGE_KEY = 'parserApiBase';
 const TUNNEL_BOOTSTRAP_RETRIES = 4;
 const TUNNEL_BOOTSTRAP_DELAY_MS = 1200;
+const CONFIG_BOOTSTRAP_RETRIES = 6;
+const CONFIG_BOOTSTRAP_DELAY_MS = 1500;
+let configBootstrapTimer = null;
+let configBootstrapAttempts = 0;
 
 // ngrok на бесплатном тарифе показывает HTML-заглушку для запросов из браузера.
 // Заголовок ngrok-skip-browser-warning отключает её. Добавляем его во все
@@ -154,6 +158,33 @@ async function syncApiBaseFromTunnelConfig({ reloadOnChange = false } = {}) {
 function apiUrl(path) {
 
   return `${getApiBase()}${path}`;
+}
+
+function clearConfigBootstrapRetry() {
+  if (configBootstrapTimer) {
+    window.clearTimeout(configBootstrapTimer);
+    configBootstrapTimer = null;
+  }
+  configBootstrapAttempts = 0;
+}
+
+function scheduleConfigBootstrapRetry() {
+  const onPagesOrFile =
+    window.location.protocol === 'file:' || window.location.hostname.endsWith('github.io');
+  if (!onPagesOrFile) return;
+  if (configBootstrapTimer || configBootstrapAttempts >= CONFIG_BOOTSTRAP_RETRIES) return;
+
+  const delay = CONFIG_BOOTSTRAP_DELAY_MS * (configBootstrapAttempts + 1);
+  configBootstrapTimer = window.setTimeout(async () => {
+    configBootstrapTimer = null;
+    configBootstrapAttempts += 1;
+    try {
+      if (typeof window.__parserRefreshBackendBase === 'function') {
+        window.__parserRefreshBackendBase();
+      }
+      await loadConfig();
+    } catch {}
+  }, delay);
 }
 
 function saveApiBaseAndReload(value) {
@@ -544,6 +575,7 @@ async function loadConfig() {
     const response = await fetch(apiUrl('/api/config'));
     if (!response.ok) throw new Error(`Config API returned ${response.status}`);
     state.config = await response.json();
+    clearConfigBootstrapRetry();
     els.modelInput.value = state.config.defaultModel || '';
     els.searchModelInput.value = state.config.searchModel || '';
     els.useAi.checked = false;
@@ -599,6 +631,7 @@ async function loadConfig() {
       'warn'
     );
     renderConfigError(error);
+    scheduleConfigBootstrapRetry();
   }
 }
 
