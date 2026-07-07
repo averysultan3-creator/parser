@@ -1,210 +1,420 @@
-$ErrorActionPreference = 'Continue'
+param(
+  [switch]$NoBrowser,
+  [switch]$Restart,
+  [switch]$Tunnel
+)
+
+$ErrorActionPreference = 'Stop'
 $proj = Split-Path -Parent $PSScriptRoot
 Set-Location $proj
 
-function Normalize-Url([string]$value) {
-  if ([string]::IsNullOrWhiteSpace($value)) { return $null }
-  $cleaned = $value.Trim().TrimEnd('/')
-  if ($cleaned -notmatch '^https?://') {
-    $cleaned = "https://$cleaned"
+$runtimeDir = Join-Path $proj '.runtime'
+$null = New-Item -ItemType Directory -Path $runtimeDir -Force
+$pidFile = Join-Path $runtimeDir 'parser.pid'
+$cloudflaredPidFile = Join-Path $runtimeDir 'cloudflared.pid'
+$outLog = Join-Path $runtimeDir 'parser.out.log'
+$errLog = Join-Path $runtimeDir 'parser.err.log'
+$lastLinkFile = Join-Path $runtimeDir 'last-link.txt'
+$workerLinkFile = Join-Path $proj 'worker-link.txt'
+$publicTunnelFile = Join-Path $proj 'public\tunnel.json'
+
+function Get-ConfigValue([string]$Name, [string]$DefaultValue = '') {
+  $envValue = [Environment]::GetEnvironmentVariable($Name)
+  if (-not [string]::IsNullOrWhiteSpace($envValue)) {
+    return $envValue.Trim()
   }
-  return $cleaned
+
+  $envPath = Join-Path $proj '.env'
+  if (Test-Path $envPath) {
+    $match = Select-String -Path $envPath -Pattern ("^\s*{0}\s*=\s*(.*)\s*$" -f [Regex]::Escape($Name)) | Select-Object -First 1
+    if ($match) {
+      $raw = $match.Matches[0].Groups[1].Value.Trim()
+      if ($raw.StartsWith('"') -and $raw.EndsWith('"')) { $raw = $raw.Substring(1, $raw.Length - 2) }
+      if ($raw.StartsWith("'") -and $raw.EndsWith("'")) { $raw = $raw.Substring(1, $raw.Length - 2) }
+      if (-not [string]::IsNullOrWhiteSpace($raw)) {
+        return $raw
+      }
+    }
+  }
+
+  return $DefaultValue
 }
 
-function Get-TunnelHeaders([string]$url) {
-  if ($url -match 'ngrok') {
-    return @{ 'ngrok-skip-browser-warning' = '1' }
-  }
-  return @{}
+function Test-IsAdmin() {
+  $currentIdentity = [Security.Principal.WindowsIdentity]::GetCurrent()
+  $principal = New-Object Security.Principal.WindowsPrincipal($currentIdentity)
+  return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 }
 
-function Test-BackendHealth([string]$baseUrl, [int]$timeoutSec = 10) {
-  $cleaned = Normalize-Url $baseUrl
-  if (-not $cleaned) { return $false }
+function Test-BackendHealth([string]$BaseUrl, [int]$TimeoutSec = 4) {
   try {
-    $response = Invoke-WebRequest -Uri "$cleaned/api/health" -UseBasicParsing -TimeoutSec $timeoutSec -Headers (Get-TunnelHeaders $cleaned)
+    $response = Invoke-WebRequest -Uri "$BaseUrl/api/health" -UseBasicParsing -TimeoutSec $TimeoutSec
     return $response.StatusCode -eq 200
   } catch {
     return $false
   }
 }
 
-function Read-CurrentTunnelUrl() {
-  $path = Join-Path $proj 'public\tunnel.json'
-  if (-not (Test-Path $path)) { return $null }
+function Test-HostResolves([string]$Url) {
   try {
-    $json = Get-Content -Raw $path | ConvertFrom-Json
-    if ($json.api) { return Normalize-Url $json.api }
-    if ($json.url) { return Normalize-Url $json.url }
-  } catch {}
-  return $null
+    $uri = [Uri]$Url
+    $addresses = [System.Net.Dns]::GetHostAddresses($uri.Host)
+    return ($addresses | Measure-Object).Count -gt 0
+  } catch {
+    return $false
+  }
 }
 
-function Start-BackendIfNeeded() {
-  if (Test-BackendHealth 'http://localhost:4317' 3) {
-    Write-Host '[1/4] Backend already running on localhost:4317.' -ForegroundColor Green
-    return
+function Normalize-Url([string]$Url) {
+  if ([string]::IsNullOrWhiteSpace($Url)) { return '' }
+  $cleaned = $Url.Trim().TrimEnd('/')
+  if (-not $cleaned) { return '' }
+  if (-not $cleaned.StartsWith('http://') -and -not $cleaned.StartsWith('https://')) {
+    $cleaned = "https://$cleaned"
   }
+  return $cleaned
+}
 
-  Write-Host '[1/4] Starting backend: npm run dev' -ForegroundColor Yellow
-  Start-Process cmd -ArgumentList '/k', 'npm run dev' -WorkingDirectory $proj
+function Get-LocalUrl() {
+  return "http://localhost:$script:port"
+}
 
-  for ($i = 0; $i -lt 20; $i++) {
-    Start-Sleep -Seconds 2
-    if (Test-BackendHealth 'http://localhost:4317' 3) {
-      Write-Host '    Backend is ready.' -ForegroundColor Green
-      return
+function Get-LanUrls() {
+  $addresses = [System.Net.Dns]::GetHostAddresses([System.Net.Dns]::GetHostName()) |
+    Where-Object {
+      $_.AddressFamily -eq [System.Net.Sockets.AddressFamily]::InterNetwork -and
+      -not $_.IPAddressToString.StartsWith('127.') -and
+      -not $_.IPAddressToString.StartsWith('169.254.')
+    } |
+    Select-Object -ExpandProperty IPAddressToString -Unique
+
+  return @($addresses | ForEach-Object { "http://${_}:$($script:port)" })
+}
+
+function Save-PreferredLink([string]$Url) {
+  if ([string]::IsNullOrWhiteSpace($Url)) { return }
+  Set-Content -Path $lastLinkFile -Value $Url -Encoding ASCII
+  Set-Content -Path $workerLinkFile -Value $Url -Encoding ASCII
+  if (Get-Command Set-Clipboard -ErrorAction SilentlyContinue) {
+    try {
+      Set-Clipboard -Value $Url
+      Write-Host "Copied to clipboard: $Url" -ForegroundColor Green
+    } catch {}
+  }
+}
+
+function Write-PublicTunnelConfig([string]$Url) {
+  $cleaned = Normalize-Url $Url
+  if (-not $cleaned) { return }
+
+  $payload = @{
+    api = $cleaned
+    url = $cleaned
+  } | ConvertTo-Json -Compress
+
+  Set-Content -Path $publicTunnelFile -Value $payload -Encoding UTF8
+}
+
+function Get-CloudflaredToken() {
+  foreach ($name in @(
+    'CLOUDFLARE_TUNNEL_TOKEN',
+    'CLOUDFLARED_TUNNEL_TOKEN',
+    'TUNNEL_TOKEN'
+  )) {
+    $value = Get-ConfigValue $name
+    if (-not [string]::IsNullOrWhiteSpace($value)) {
+      return $value.Trim()
     }
   }
 
-  Write-Host 'ERROR: backend did not become healthy on localhost:4317 within 40 seconds.' -ForegroundColor Red
-  exit 1
-}
-
-function Start-CloudflaredQuickTunnel() {
-  if (-not (Get-Command cloudflared -ErrorAction SilentlyContinue)) {
-    return $null
-  }
-
-  Write-Host '[2/4] Starting cloudflared quick tunnel...' -ForegroundColor Yellow
-  Get-Process cloudflared -ErrorAction SilentlyContinue | Stop-Process -Force
-  Start-Sleep -Seconds 2
-
-  $logPath = Join-Path $proj 'tunnel.log'
-  Remove-Item $logPath -ErrorAction SilentlyContinue
-
-  Start-Process cloudflared -ArgumentList @('--config', 'NUL', 'tunnel', '--url', 'http://localhost:4317') -WindowStyle Hidden -RedirectStandardError $logPath
-
-  for ($i = 0; $i -lt 30; $i++) {
-    Start-Sleep -Seconds 2
-    $match = Select-String -Path $logPath -Pattern 'https://[a-z0-9-]+\.trycloudflare\.com' -ErrorAction SilentlyContinue | Select-Object -First 1
-    if (-not $match) { continue }
-    $url = $match.Matches[0].Value
-    if (Test-BackendHealth $url 10) {
-      Write-Host "    cloudflared OK: $url" -ForegroundColor Green
-      return $url
-    }
-  }
-
-  Write-Host '    cloudflared tunnel did not become healthy.' -ForegroundColor Yellow
-  return $null
-}
-
-function Start-NgrokTunnel([string]$preferredUrl) {
-  if (-not (Get-Command ngrok -ErrorAction SilentlyContinue)) {
-    return $null
-  }
-
-  $preferredUrl = Normalize-Url $preferredUrl
-  if ($preferredUrl) {
-    Write-Host "[2/4] Starting ngrok tunnel for $preferredUrl..." -ForegroundColor Yellow
-  } else {
-    Write-Host '[2/4] Starting ngrok tunnel...' -ForegroundColor Yellow
-  }
-
-  Get-Process ngrok -ErrorAction SilentlyContinue | Stop-Process -Force
-  Start-Sleep -Seconds 2
-
-  $logPath = Join-Path $proj 'ngrok.log'
-  $errPath = Join-Path $proj 'ngrok.err.log'
-  Remove-Item $logPath, $errPath -ErrorAction SilentlyContinue
-
-  $args = @('http', 'http://localhost:4317', '--log', 'stdout')
-  if ($preferredUrl) {
-    $args += @('--url', $preferredUrl)
-  }
-  Start-Process ngrok -ArgumentList $args -WindowStyle Hidden -RedirectStandardOutput $logPath -RedirectStandardError $errPath
-
-  if ($preferredUrl) {
-    for ($i = 0; $i -lt 20; $i++) {
-      Start-Sleep -Seconds 2
-      if (Test-BackendHealth $preferredUrl 10) {
-        Write-Host "    ngrok OK: $preferredUrl" -ForegroundColor Green
-        return $preferredUrl
+  foreach ($name in @(
+    'CLOUDFLARE_TUNNEL_TOKEN_FILE',
+    'CLOUDFLARED_TUNNEL_TOKEN_FILE',
+    'TUNNEL_TOKEN_FILE'
+  )) {
+    $tokenFile = Get-ConfigValue $name
+    if (-not [string]::IsNullOrWhiteSpace($tokenFile) -and (Test-Path $tokenFile)) {
+      $token = (Get-Content $tokenFile -Raw -ErrorAction SilentlyContinue).Trim()
+      if (-not [string]::IsNullOrWhiteSpace($token)) {
+        return $token
       }
     }
   }
 
-  for ($i = 0; $i -lt 20; $i++) {
-    Start-Sleep -Seconds 2
-    $match = Select-String -Path $logPath -Pattern 'https://[a-z0-9-]+\.ngrok(?:-[a-z]+)?\.(?:dev|app)' -ErrorAction SilentlyContinue | Select-Object -First 1
-    if (-not $match) { continue }
-    $url = $match.Matches[0].Value
-    if (Test-BackendHealth $url 10) {
-      Write-Host "    ngrok OK: $url" -ForegroundColor Green
-      return $url
+  return ''
+}
+
+function Get-ConfiguredPublicUrl() {
+  foreach ($name in @(
+    'PARSER_PUBLIC_URL',
+    'CLOUDFLARE_TUNNEL_HOSTNAME',
+    'TUNNEL_PUBLIC_URL',
+    'PUBLIC_URL'
+  )) {
+    $value = Normalize-Url (Get-ConfigValue $name)
+    if (-not [string]::IsNullOrWhiteSpace($value)) {
+      return $value
     }
   }
 
-  if ($preferredUrl -and (Test-BackendHealth $preferredUrl 10)) {
-    Write-Host "    Reusing already live ngrok endpoint: $preferredUrl" -ForegroundColor Green
-    return $preferredUrl
+  if (Test-Path $publicTunnelFile) {
+    try {
+      $json = Get-Content $publicTunnelFile -Raw -ErrorAction SilentlyContinue | ConvertFrom-Json
+      $candidate = ''
+      if ($json.api) {
+        $candidate = $json.api
+      } elseif ($json.url) {
+        $candidate = $json.url
+      }
+      $value = Normalize-Url $candidate
+      if (-not [string]::IsNullOrWhiteSpace($value)) {
+        return $value
+      }
+    } catch {}
   }
 
-  Write-Host '    ngrok tunnel did not become healthy.' -ForegroundColor Yellow
+  return ''
+}
+
+function Ensure-NodeEnvironment() {
+  $script:nodeCommand = Get-Command node -ErrorAction SilentlyContinue
+  if (-not $script:nodeCommand) {
+    throw 'Node.js not found. Install Node.js 20+ and run start-parser.bat again.'
+  }
+
+  if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
+    throw 'npm not found. Install Node.js with npm and run start-parser.bat again.'
+  }
+
+  if (-not (Test-Path (Join-Path $proj 'node_modules'))) {
+    Write-Host '[1/5] Installing dependencies: npm install' -ForegroundColor Yellow
+    npm install
+    if ($LASTEXITCODE -ne 0) {
+      throw 'npm install failed.'
+    }
+  } else {
+    Write-Host '[1/5] Dependencies already installed.' -ForegroundColor Green
+  }
+}
+
+function Stop-ProcessFromPidFile([string]$Path, [string]$Label) {
+  if (-not (Test-Path $Path)) { return }
+
+  $pidText = (Get-Content $Path -ErrorAction SilentlyContinue | Select-Object -First 1)
+  $existingPid = 0
+  if (-not [int]::TryParse(($pidText | Out-String).Trim(), [ref]$existingPid)) {
+    Remove-Item $Path -ErrorAction SilentlyContinue
+    return
+  }
+
+  $proc = Get-Process -Id $existingPid -ErrorAction SilentlyContinue
+  if (-not $proc) {
+    Remove-Item $Path -ErrorAction SilentlyContinue
+    return
+  }
+
+  Write-Host ('Stopping previous {0} process PID {1}...' -f $Label, $existingPid) -ForegroundColor Yellow
+  Stop-Process -Id $existingPid -Force
+  Start-Sleep -Seconds 2
+  Remove-Item $Path -ErrorAction SilentlyContinue
+}
+
+function Remove-StalePid() {
+  if (-not (Test-Path $pidFile)) { return }
+
+  $pidText = (Get-Content $pidFile -ErrorAction SilentlyContinue | Select-Object -First 1)
+  $existingPid = 0
+  if (-not [int]::TryParse(($pidText | Out-String).Trim(), [ref]$existingPid)) {
+    Remove-Item $pidFile -ErrorAction SilentlyContinue
+    return
+  }
+
+  $proc = Get-Process -Id $existingPid -ErrorAction SilentlyContinue
+  if (-not $proc) {
+    Remove-Item $pidFile -ErrorAction SilentlyContinue
+  }
+}
+
+function Stop-BackendIfOwned() {
+  Stop-ProcessFromPidFile $pidFile 'parser'
+}
+
+function Stop-CloudflaredIfOwned() {
+  Stop-ProcessFromPidFile $cloudflaredPidFile 'cloudflared'
+}
+
+function Ensure-FirewallRule() {
+  if (-not (Get-Command Get-NetFirewallRule -ErrorAction SilentlyContinue) -or -not (Get-Command New-NetFirewallRule -ErrorAction SilentlyContinue)) {
+    Write-Host "[3/5] Firewall cmdlets are unavailable on this Windows install. Open TCP port $script:port manually if other devices must connect." -ForegroundColor Yellow
+    return
+  }
+
+  $ruleName = "Warsaw Site Parser $script:port"
+  $existing = Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue
+  if ($existing) {
+    Write-Host "[3/5] Firewall rule already exists: $ruleName" -ForegroundColor Green
+    return
+  }
+
+  if (-not (Test-IsAdmin)) {
+    Write-Host "[3/5] Firewall rule not created. Run start-parser.bat once as Administrator to open TCP port $script:port for other devices." -ForegroundColor Yellow
+    return
+  }
+
+  New-NetFirewallRule -DisplayName $ruleName -Direction Inbound -Action Allow -Protocol TCP -LocalPort $script:port | Out-Null
+  Write-Host "[3/5] Firewall rule created for TCP port $script:port." -ForegroundColor Green
+}
+
+function Start-Backend() {
+  if (-not $Restart -and (Test-BackendHealth (Get-LocalUrl) 3)) {
+    Write-Host "[2/5] Backend already running on $(Get-LocalUrl)" -ForegroundColor Green
+    return
+  }
+
+  if ($Restart) {
+    Stop-BackendIfOwned
+  }
+
+  if (Test-BackendHealth (Get-LocalUrl) 3) {
+    Write-Host "[2/5] Existing parser process responded after restart check." -ForegroundColor Green
+    return
+  }
+
+  Remove-StalePid
+  Remove-Item $outLog, $errLog -ErrorAction SilentlyContinue
+
+  Write-Host '[2/5] Starting parser backend in background...' -ForegroundColor Yellow
+  $process = Start-Process $script:nodeCommand.Source -ArgumentList 'server.js' -WorkingDirectory $proj -WindowStyle Hidden -RedirectStandardOutput $outLog -RedirectStandardError $errLog -PassThru
+  Set-Content -Path $pidFile -Value $process.Id -Encoding ASCII
+
+  for ($i = 0; $i -lt 30; $i++) {
+    Start-Sleep -Seconds 1
+    if (Test-BackendHealth (Get-LocalUrl) 3) {
+      Write-Host "    Parser is ready on $(Get-LocalUrl)" -ForegroundColor Green
+      return
+    }
+  }
+
+  $tail = ''
+  if (Test-Path $errLog) {
+    $tail = (Get-Content $errLog -Tail 20 -ErrorAction SilentlyContinue | Out-String).Trim()
+  }
+  throw ("Parser did not start within 30 seconds. Check {0}`n{1}" -f $errLog, $tail)
+}
+
+function Start-CloudflaredTunnel() {
+  if (-not $Tunnel) { return $null }
+  if (-not (Get-Command cloudflared -ErrorAction SilentlyContinue)) {
+    Write-Host '[5/5] cloudflared not found. Skipping tunnel.' -ForegroundColor Yellow
+    return $null
+  }
+
+  $logPath = Join-Path $runtimeDir 'cloudflared.log'
+  $namedTunnelUrl = Get-ConfiguredPublicUrl
+  $namedTunnelToken = Get-CloudflaredToken
+
+  if ($namedTunnelUrl -and $namedTunnelToken) {
+    Stop-CloudflaredIfOwned
+    Remove-Item $logPath -ErrorAction SilentlyContinue
+
+    Write-Host "[5/5] Starting named Cloudflare tunnel for $namedTunnelUrl..." -ForegroundColor Yellow
+    $previousToken = [Environment]::GetEnvironmentVariable('TUNNEL_TOKEN')
+    [Environment]::SetEnvironmentVariable('TUNNEL_TOKEN', $namedTunnelToken, 'Process')
+    try {
+      $process = Start-Process cloudflared -ArgumentList @('tunnel', 'run') -WorkingDirectory $proj -WindowStyle Hidden -RedirectStandardError $logPath -PassThru
+      Set-Content -Path $cloudflaredPidFile -Value $process.Id -Encoding ASCII
+
+      for ($i = 0; $i -lt 45; $i++) {
+        Start-Sleep -Seconds 2
+        if (Test-BackendHealth $namedTunnelUrl 10) {
+          Write-PublicTunnelConfig $namedTunnelUrl
+          return $namedTunnelUrl
+        }
+      }
+    } finally {
+      [Environment]::SetEnvironmentVariable('TUNNEL_TOKEN', $previousToken, 'Process')
+    }
+
+    Write-Host "    Named tunnel did not become reachable: $namedTunnelUrl" -ForegroundColor Yellow
+  }
+
+  for ($attempt = 1; $attempt -le 3; $attempt++) {
+    Remove-Item $logPath -ErrorAction SilentlyContinue
+    Stop-CloudflaredIfOwned
+    Write-Host "[5/5] Starting optional cloudflared tunnel (attempt $attempt/3)..." -ForegroundColor Yellow
+    $process = Start-Process cloudflared -ArgumentList @('--config', 'NUL', 'tunnel', '--url', (Get-LocalUrl)) -WindowStyle Hidden -RedirectStandardError $logPath -PassThru
+    Set-Content -Path $cloudflaredPidFile -Value $process.Id -Encoding ASCII
+
+    $publicUrl = $null
+    for ($i = 0; $i -lt 45; $i++) {
+      Start-Sleep -Seconds 2
+      $match = Select-String -Path $logPath -Pattern 'https://[a-z0-9-]+\.trycloudflare\.com' -ErrorAction SilentlyContinue | Select-Object -First 1
+      if (-not $match) { continue }
+      $publicUrl = $match.Matches[0].Value
+      if (-not (Test-HostResolves $publicUrl)) { continue }
+      if (Test-BackendHealth $publicUrl 10) {
+        return $publicUrl
+      }
+    }
+
+    if ($publicUrl) {
+      Write-Host "    Tunnel URL was created but never became reachable: $publicUrl" -ForegroundColor Yellow
+    } else {
+      Write-Host '    Tunnel URL was not created in time.' -ForegroundColor Yellow
+    }
+  }
+
+  Write-Host '    Tunnel did not become healthy after 3 attempts. Continue with local/LAN links.' -ForegroundColor Yellow
   return $null
 }
 
-function Publish-TunnelUrl([string]$url) {
-  $tunnelJson = Join-Path $proj 'public\tunnel.json'
-  $payload = '{"api":"' + $url + '","updated":"' + (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ') + '"}'
-  Set-Content -Path $tunnelJson -Value $payload -Encoding ASCII
+$script:port = [int](Get-ConfigValue 'PORT' '4317')
+$script:listenHost = Get-ConfigValue 'HOST' '0.0.0.0'
+[Environment]::SetEnvironmentVariable('PORT', [string]$script:port, 'Process')
+[Environment]::SetEnvironmentVariable('HOST', $script:listenHost, 'Process')
 
-  git add public/tunnel.json | Out-Null
-  git diff --cached --quiet
-  if ($LASTEXITCODE -ne 0) {
-    git commit -m "update tunnel url" | Out-Null
-    git push | Out-Null
-    if ($LASTEXITCODE -eq 0) {
-      Write-Host '    tunnel.json pushed to GitHub Pages.' -ForegroundColor Green
-    } else {
-      Write-Host '    Warning: git push failed. Push the latest commit manually.' -ForegroundColor Yellow
-    }
-  } else {
-    Write-Host '    tunnel.json is unchanged; nothing to push.' -ForegroundColor Green
-  }
+Write-Host '=== Warsaw Site Parser ===' -ForegroundColor Cyan
+Write-Host "Project: $proj" -ForegroundColor DarkGray
+
+Ensure-NodeEnvironment
+Start-Backend
+Ensure-FirewallRule
+
+$localUrl = Get-LocalUrl
+$lanUrls = Get-LanUrls
+
+Write-Host "[4/5] Parser links" -ForegroundColor Cyan
+Write-Host "Local: $localUrl" -ForegroundColor Green
+foreach ($url in $lanUrls) {
+  Write-Host "LAN:   $url" -ForegroundColor Green
 }
 
-Write-Host '=== Warsaw Site Parser: start ===' -ForegroundColor Cyan
+$preferredUrl = if ($lanUrls.Count -gt 0) { $lanUrls[0] } else { $localUrl }
 
-Start-BackendIfNeeded
-
-$tunnelUrl = $null
-$preferredTunnelUrl = Read-CurrentTunnelUrl
-
-if ($preferredTunnelUrl -and (Test-BackendHealth $preferredTunnelUrl 5)) {
-  Write-Host "[2/4] Reusing live tunnel from public/tunnel.json: $preferredTunnelUrl" -ForegroundColor Green
-  $tunnelUrl = $preferredTunnelUrl
+$tunnelUrl = Start-CloudflaredTunnel
+if ($tunnelUrl) {
+  $preferredUrl = $tunnelUrl
 }
 
-if (-not $tunnelUrl -and $preferredTunnelUrl -and $preferredTunnelUrl -match 'ngrok') {
-  $tunnelUrl = Start-NgrokTunnel $preferredTunnelUrl
+Save-PreferredLink $preferredUrl
+
+Write-Host "USE THIS URL (phone / other PC): $preferredUrl" -ForegroundColor Cyan
+if ($tunnelUrl) {
+  Write-Host "Public tunnel: $tunnelUrl" -ForegroundColor Green
 }
-
-if (-not $tunnelUrl) {
-  $tunnelUrl = Start-CloudflaredQuickTunnel
-}
-
-if (-not $tunnelUrl) {
-  $tunnelUrl = Start-NgrokTunnel $null
-}
-
-if (-not $tunnelUrl) {
-  Write-Host 'ERROR: no healthy public tunnel is available. Check tunnel.log / ngrok.log.' -ForegroundColor Red
-  exit 1
-}
-
-Write-Host "[3/4] Tunnel ready: $tunnelUrl" -ForegroundColor Green
-
-Write-Host '[4/4] Publishing public tunnel URL...' -ForegroundColor Yellow
-Publish-TunnelUrl $tunnelUrl
 
 Write-Host ''
-Write-Host '=== READY ===' -ForegroundColor Cyan
-Write-Host 'Worker link:' -ForegroundColor White
-Write-Host '  https://averysultan3-creator.github.io/parser/public/index.html' -ForegroundColor Green
+Write-Host 'Logs:' -ForegroundColor White
+  Write-Host "  $outLog" -ForegroundColor DarkGray
+  Write-Host "  $errLog" -ForegroundColor DarkGray
+  Write-Host "  $lastLinkFile" -ForegroundColor DarkGray
+  Write-Host "  $workerLinkFile" -ForegroundColor DarkGray
 Write-Host ''
-Write-Host 'Immediate fallback link:' -ForegroundColor White
-Write-Host "  https://averysultan3-creator.github.io/parser/public/index.html?api=$tunnelUrl" -ForegroundColor Green
+Write-Host 'Stop command:' -ForegroundColor White
+Write-Host '  stop-parser.bat' -ForegroundColor DarkGray
 Write-Host ''
-Write-Host 'Keep the backend window and this computer online while the worker uses the parser.' -ForegroundColor Yellow
+Write-Host 'Do not open the old GitHub Pages link in local mode. Use the Local/LAN URL above.' -ForegroundColor Yellow
+
+if (-not $NoBrowser) {
+  Start-Process $preferredUrl
+}

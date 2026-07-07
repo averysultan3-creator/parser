@@ -13,6 +13,7 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = Number(process.env.PORT || 4317);
+const HOST = String(process.env.HOST || '0.0.0.0');
 const DEFAULT_MODEL = process.env.OPENAI_MODEL || 'gpt-5.4-mini';
 const SEARCH_MODEL = process.env.OPENAI_SEARCH_MODEL || 'gpt-5.5';
 const USER_AGENT =
@@ -628,8 +629,12 @@ app.get('/api/registry/krs/:krs', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Warsaw Site Parser running at http://localhost:${PORT}`);
+app.listen(PORT, HOST, () => {
+  const displayHost = HOST === '0.0.0.0' ? 'localhost' : HOST;
+  console.log(`Warsaw Site Parser running at http://${displayHost}:${PORT}`);
+  if (HOST === '0.0.0.0') {
+    console.log(`LAN access enabled on port ${PORT}`);
+  }
 });
 
 function normalizeItems(items) {

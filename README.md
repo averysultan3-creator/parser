@@ -45,6 +45,18 @@
 
 ## Запуск
 
+Windows quick start:
+
+```text
+start-parser.bat
+```
+
+Stop:
+
+```text
+stop-parser.bat
+```
+
 ```powershell
 cd C:\Users\user\Documents\Codex\2026-06-26\new-chat\outputs\warsaw-site-parser
 npm install
