@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Aura Sales Academy</title>
+    <link rel="stylesheet" href="./styles.css?v=20260707-1" />
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js" defer></script>
+    <script src="./app.js?v=20260707-1" defer></script>
+  </head>
+  <body>
+    <div class="academy-shell">
+      <aside class="academy-sidebar">
+        <a class="brand" href="../">
+          <span class="brand-mark">A</span>
+          <span>
+            <strong>Aura Sales OS</strong>
+            <small>Akademia dzwoniącego</small>
+          </span>
+        </a>
+
+        <label class="worker-card">
+          <span>Twoje imię lub ID</span>
+          <input id="workerName" autocomplete="name" />
+        </label>
+
+        <nav id="moduleNav" class="module-nav" aria-label="Moduły szkolenia"></nav>
+
+        <div class="side-actions">
+          <a href="../" class="ghost-link"><i data-lucide="radar"></i> Parser</a>
+          <a href="../admin/" class="ghost-link"><i data-lucide="shield-check"></i> Admin</a>
+        </div>
+      </aside>
+
+      <main class="academy-main">
+        <section class="hero-card">
+          <div>
+            <p class="eyebrow">Aura Global Merchants</p>
+            <h1>Interaktywne wdrożenie dla nowych callerów</h1>
+            <p class="hero-copy">
+              Nie uczysz się sprzedaży z tekstu. Przechodzisz realny proces: rozumiesz usługę,
+              wybierasz dobry lead, prowadzisz rozmowę i umawiasz spotkanie.
+            </p>
+          </div>
+          <div class="progress-orb">
+            <strong id="overallProgress">0%</strong>
+            <span>ukończone</span>
+          </div>
+        </section>
+
+        <section class="stats-grid">
+          <div class="stat-card">
+            <span>Moduły</span>
+            <strong id="completedModules">0 / 10</strong>
+          </div>
+          <div class="stat-card">
+            <span>Najbliższy krok</span>
+            <strong id="nextLesson">Start</strong>
+          </div>
+          <div class="stat-card">
+            <span>Wynik testów</span>
+            <strong id="avgScore">0%</strong>
+          </div>
+        </section>
+
+        <section id="lessonHost" class="lesson-host"></section>
+      </main>
+    </div>
+  </body>
+</html>

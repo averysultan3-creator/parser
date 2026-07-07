@@ -23,14 +23,18 @@ try {
 
   const results = [];
   results.push(`health ok (${health.timestamp})`);
+  const smokeWorkerA = `smoke-a-${Date.now()}`;
+  const smokeWorkerB = `smoke-b-${Date.now()}`;
 
   if (config.registry?.googlePlacesConfigured) {
+    await resetLeadSample('Klimatyzacja', 150);
     const mapsStart = await postJson('/api/discover', {
       niche: 'Klimatyzacja',
       niches: ['Klimatyzacja'],
       city: 'Warszawa',
       limit: 3,
-      sourceFocus: 'maps_api'
+      sourceFocus: 'maps_api',
+      workerId: smokeWorkerA
     });
     const mapsRun = await waitForDiscoveryJob(mapsStart.jobId);
     assert((mapsRun?.companies || []).length > 0, 'maps_api discovery must return at least one company');
@@ -38,6 +42,19 @@ try {
     const mapsHistoryRun = await getJson(`/api/history/runs/${mapsRun.runId}`);
     assert(Array.isArray(mapsHistoryRun?.companies), 'history run payload must include companies');
     assert((mapsHistoryRun?.companies || []).length > 0, 'history run must contain saved companies');
+
+    const duplicateStart = await postJson('/api/discover', {
+      niche: 'Klimatyzacja',
+      niches: ['Klimatyzacja'],
+      city: 'Warszawa',
+      limit: 3,
+      sourceFocus: 'maps_api',
+      workerId: smokeWorkerB
+    });
+    const duplicateRun = await waitForDiscoveryJob(duplicateStart.jobId);
+    const firstIds = new Set((mapsRun?.companies || []).map((company) => company._companyId).filter(Boolean));
+    const duplicateOverlap = (duplicateRun?.companies || []).filter((company) => firstIds.has(company._companyId));
+    assert(duplicateOverlap.length === 0, 'global lead pool must not return the same company ids to another worker');
     results.push(`maps_api ok (${mapsRun.companies.length})`);
   } else {
     results.push('maps_api skipped (GOOGLE_PLACES_API_KEY missing)');
@@ -49,12 +66,14 @@ try {
     config.registry?.ceidgConfigured ||
     config.internetSearchConfigured
   ) {
+    await resetLeadSample('Klimatyzacja', 150);
     const allSourcesStart = await postJson('/api/discover', {
       niche: 'Klimatyzacja',
       niches: ['Klimatyzacja'],
       city: 'Warszawa',
       limit: 3,
-      sourceFocus: 'all_sources'
+      sourceFocus: 'all_sources',
+      workerId: smokeWorkerA
     });
     const allSourcesRun = await waitForDiscoveryJob(allSourcesStart.jobId);
     assert(allSourcesRun?.meta?.sourceFocus === 'all_sources', 'all_sources meta.sourceFocus must stay all_sources');
@@ -64,9 +83,7 @@ try {
     const allSourcesHistoryRun = await getJson(`/api/history/runs/${allSourcesRun.runId}`);
     assert(allSourcesHistoryRun?.run?.sourceFocus === 'all_sources', 'history run sourceFocus must stay all_sources');
     assert(Array.isArray(allSourcesHistoryRun?.companies), 'all_sources history payload must include companies');
-    if (config.registry?.googlePlacesConfigured) {
-      assert((allSourcesRun?.companies || []).length > 0, 'all_sources must return companies when Google Places is configured');
-    }
+    if (config.registry?.googlePlacesConfigured) assert((allSourcesRun?.companies || []).length > 0, 'all_sources must return companies after admin reset');
     results.push(`all_sources ok (${allSourcesRun.companies.length})`);
   } else {
     results.push('all_sources skipped (no discovery sources configured)');
@@ -130,6 +147,25 @@ async function postJson(path, body) {
     throw new Error(`${path} failed: ${data.error || response.status}`);
   }
   return data;
+}
+
+async function deleteJson(path, body) {
+  const response = await fetch(`${BASE_URL}${path}`, {
+    method: 'DELETE',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(`${path} failed: ${data.error || response.status}`);
+  }
+  return data;
+}
+
+async function resetLeadSample(query, limit) {
+  const data = await getJson(`/api/admin/leads?q=${encodeURIComponent(query)}&limit=${limit}`);
+  const ids = (data.leads || []).map((lead) => lead.id).filter(Boolean);
+  if (ids.length) await postJson('/api/admin/leads/reset', { ids });
 }
 
 async function waitForDiscoveryJob(jobId) {

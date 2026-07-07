@@ -147,7 +147,8 @@ function createDiscoveryJob(meta) {
       district: meta.district || '',
       radiusKm: meta.radiusKm || 0,
       sourceFocus: meta.sourceFocus || 'internet',
-      limit: meta.limit || 0
+      limit: meta.limit || 0,
+      workerId: meta.workerId || 'worker-default'
     },
     progress: {
       message: 'Ожидание запуска...',
@@ -318,8 +319,8 @@ app.use((req, res, next) => {
   }
 
   res.setHeader('Vary', 'Origin');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'content-type, ngrok-skip-browser-warning');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,DELETE,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'content-type, ngrok-skip-browser-warning, x-worker-id');
   // Chrome's Private Network Access policy requires this header on the
   // preflight response whenever a page loaded from a public address (like
   // https://averysultan3-creator.github.io) tries to fetch a private/local
@@ -454,6 +455,7 @@ app.post('/api/discover', async (req, res) => {
     const sourceFocus = normalizeDiscoverySource(req.body?.sourceFocus);
     const requestedLimit = Number.parseInt(req.body?.limit, 10);
     const limit = clamp(Number.isFinite(requestedLimit) ? requestedLimit : 40, 1, MAX_DISCOVERY_ITEMS);
+    const workerId = cleanText(req.body?.workerId || req.body?.userId || req.headers['x-worker-id'] || 'worker-default');
 
     if (!niches.length) {
       return res.status(400).json({ error: 'Укажите категорию или нишу для поиска.' });
@@ -469,7 +471,8 @@ app.post('/api/discover', async (req, res) => {
       district,
       radiusKm,
       sourceFocus,
-      limit
+      limit,
+      workerId
     });
 
     void runDiscoveryJob(job.id, {
@@ -479,7 +482,8 @@ app.post('/api/discover', async (req, res) => {
       district,
       radiusKm,
       sourceFocus,
-      limit
+      limit,
+      workerId
     });
 
     res.json({
@@ -532,6 +536,61 @@ app.get('/api/companies/:id', (req, res) => {
   const company = store.getCompany(String(req.params.id));
   if (!company) return res.status(404).json({ error: 'Company not found.' });
   res.json({ company });
+});
+
+app.get('/api/admin/leads', (req, res) => {
+  const leads = store.listLeadPool({
+    q: req.query.q || '',
+    status: req.query.status || '',
+    workerId: req.query.workerId || '',
+    limit: Number.parseInt(req.query.limit, 10) || 500
+  });
+  res.json({ leads, stats: store.getStoreStats() });
+});
+
+app.post('/api/admin/leads/reset', (req, res) => {
+  const ids = Array.isArray(req.body?.ids) ? req.body.ids : [];
+  const resetIds = store.resetCompanies(ids);
+  res.json({ ok: true, resetIds, stats: store.getStoreStats() });
+});
+
+app.delete('/api/admin/leads', (req, res) => {
+  const ids = Array.isArray(req.body?.ids) ? req.body.ids : [];
+  const deletedIds = store.deleteCompanies(ids);
+  res.json({ ok: true, deletedIds, stats: store.getStoreStats() });
+});
+
+app.post('/api/leads/:id/status', (req, res) => {
+  const company = store.updateCompanyStatus(req.params.id, {
+    status: cleanText(req.body?.status || ''),
+    workerId: cleanText(req.body?.workerId || req.headers['x-worker-id'] || ''),
+    note: req.body?.note
+  });
+  if (!company) return res.status(404).json({ error: 'Lead not found.' });
+  res.json({ ok: true, company });
+});
+
+app.get('/api/academy/progress', (req, res) => {
+  const userId = cleanText(req.query.userId || req.headers['x-worker-id'] || 'worker-default');
+  res.json({ progress: store.getAcademyProgress(userId) });
+});
+
+app.post('/api/academy/progress', (req, res) => {
+  const userId = cleanText(req.body?.userId || req.headers['x-worker-id'] || 'worker-default');
+  const progress = store.saveAcademyProgress(userId, req.body || {});
+  res.json({ ok: true, progress });
+});
+
+app.get('/api/admin/academy', (_req, res) => {
+  res.json({ users: store.listAcademyProgress() });
+});
+
+app.get('/api/admin/summary', (_req, res) => {
+  res.json({
+    stats: store.getStoreStats(),
+    runs: store.listRuns({ limit: 25 }),
+    academyUsers: store.listAcademyProgress()
+  });
 });
 
 app.post('/api/ai/site-analysis', async (req, res) => {
@@ -718,6 +777,7 @@ async function runDiscoveryJob(jobId, params) {
       niches: params.niches,
       city: params.city,
       district: params.district,
+      workerId: params.workerId,
       sourceFocus: params.sourceFocus,
       requestedLimit: params.limit
     });
@@ -730,8 +790,13 @@ async function runDiscoveryJob(jobId, params) {
       limit: params.limit,
       sourceFocus: params.sourceFocus,
       onProgress(event) {
+        const claimedPreview = store.claimCompaniesForRun(normalizeItems(event.companies || []), {
+          runId: run.id,
+          workerId: params.workerId,
+          limit: params.limit
+        });
         updateDiscoveryJob(jobId, {
-          appendCompanies: event.companies || [],
+          appendCompanies: claimedPreview.companies,
           appendQueries: event.queries || [],
           appendWarnings: event.warnings || [],
           progress: {
@@ -740,24 +805,23 @@ async function runDiscoveryJob(jobId, params) {
             currentSource: event.source || '',
             processedNiches: event.processedNiches ?? 0,
             totalNiches: params.niches.length,
-            foundCount: event.foundSoFar ?? event.count ?? 0
+            foundCount: claimedPreview.companies.length || event.foundSoFar || event.count || 0
           }
         });
       }
     });
 
-    const companies = normalizeItems(discovery.companies || []).slice(0, params.limit);
+    const rawCompanies = normalizeItems(discovery.companies || []).slice(0, params.limit);
+    const claimedFinal = store.claimCompaniesForRun(rawCompanies, {
+      runId: run.id,
+      workerId: params.workerId,
+      limit: params.limit
+    });
+    const companies = claimedFinal.companies;
     const foundCount = companies.length;
-    let newCount = 0;
-    let duplicateCount = 0;
-    const companyIds = [];
-
-    for (const company of companies) {
-      const { id, isNew } = store.upsertCompany(company, { runId: run.id, stage: 'discovered' });
-      companyIds.push(id);
-      if (isNew) newCount += 1;
-      else duplicateCount += 1;
-    }
+    const newCount = claimedFinal.newCount;
+    const duplicateCount = Math.max(rawCompanies.length - foundCount, claimedFinal.duplicateCount);
+    const companyIds = claimedFinal.companyIds;
 
     store.addCompanyIdsToRun(run.id, companyIds);
     store.updateRun(run.id, {
@@ -771,7 +835,7 @@ async function runDiscoveryJob(jobId, params) {
 
     updateDiscoveryJob(jobId, {
       status: 'completed',
-      partialCompanies: companies.map((company, index) => ({ ...company, _companyId: companyIds[index] })),
+      partialCompanies: companies.map((company, index) => ({ ...company, _companyId: company._companyId || companyIds[index] })),
       appendQueries: discovery.queries || [],
       appendWarnings: discovery.warnings || [],
       result: {
@@ -785,6 +849,7 @@ async function runDiscoveryJob(jobId, params) {
           usedAi: false,
           source: discovery.source,
           sourceFocus: params.sourceFocus,
+          workerId: params.workerId,
           categories: params.niches,
           city: params.city,
           country: params.country,

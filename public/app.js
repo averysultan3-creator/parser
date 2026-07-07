@@ -21,12 +21,22 @@ const state = {
 
 const API_BASE_STORAGE_KEY = 'parserApiBase';
 const LANGUAGE_STORAGE_KEY = 'parserLanguage';
+const WORKER_ID_STORAGE_KEY = 'auraWorkerId';
 const TUNNEL_BOOTSTRAP_RETRIES = 4;
 const TUNNEL_BOOTSTRAP_DELAY_MS = 1200;
 const CONFIG_BOOTSTRAP_RETRIES = 6;
 const CONFIG_BOOTSTRAP_DELAY_MS = 1500;
 let configBootstrapTimer = null;
 let configBootstrapAttempts = 0;
+
+function getWorkerId() {
+  let workerId = localStorage.getItem(WORKER_ID_STORAGE_KEY);
+  if (!workerId) {
+    workerId = `worker-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    localStorage.setItem(WORKER_ID_STORAGE_KEY, workerId);
+  }
+  return workerId;
+}
 
 const copy = {
   ru: {
@@ -1415,7 +1425,8 @@ async function runDiscovery() {
         district: els.discoverDistrict.value.trim(),
         radiusKm: Number(els.discoverRadius.value || 0) || undefined,
         limit: Math.min(Number(els.discoverLimit.value || 8), state.config?.maxItems || 100),
-        sourceFocus: els.discoverSource.value
+        sourceFocus: els.discoverSource.value,
+        workerId: getWorkerId()
       })
     });
 
