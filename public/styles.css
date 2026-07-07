@@ -1158,8 +1158,56 @@ tbody tr.selected {
     grid-template-columns: 1fr;
   }
 
+  .workspace {
+    gap: 12px;
+  }
+
+  .control-panel,
+  .results-panel,
+  .detail-panel {
+    padding: 14px;
+  }
+
+  .control-panel,
+  .results-panel {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
   .topbar {
     gap: 12px;
+  }
+
+  .sidebar-actions,
+  .csv-drawer,
+  .ai-note,
+  .settings-grid {
+    display: none !important;
+  }
+
+  .discover-panel,
+  .main-header,
+  .history-header,
+  .results-filters,
+  .metric-row {
+    gap: 10px;
+  }
+
+  .discover-button,
+  #analyzeButton {
+    position: sticky;
+    bottom: 12px;
+    z-index: 2;
+    box-shadow: 0 10px 24px rgba(37, 99, 235, 0.22);
+  }
+
+  .main-actions {
+    flex-wrap: wrap;
+  }
+
+  .main-actions .secondary-button,
+  .main-actions .icon-button {
+    flex: 1 1 140px;
   }
 
   .discover-grid,
@@ -1180,5 +1228,10 @@ tbody tr.selected {
 
   .export-actions {
     justify-content: flex-start;
+  }
+
+  .history-header {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }
