@@ -318,21 +318,15 @@ function Start-CloudflaredTunnel() {
     Remove-Item $logPath -ErrorAction SilentlyContinue
 
     Write-Host "[5/5] Starting named Cloudflare tunnel for $namedTunnelUrl..." -ForegroundColor Yellow
-    $previousToken = [Environment]::GetEnvironmentVariable('TUNNEL_TOKEN')
-    [Environment]::SetEnvironmentVariable('TUNNEL_TOKEN', $namedTunnelToken, 'Process')
-    try {
-      $process = Start-Process cloudflared -ArgumentList @('tunnel', 'run') -WorkingDirectory $proj -WindowStyle Hidden -RedirectStandardError $logPath -PassThru
-      Set-Content -Path $cloudflaredPidFile -Value $process.Id -Encoding ASCII
+    $process = Start-Process cloudflared -ArgumentList @('tunnel', 'run', '--token', $namedTunnelToken) -WorkingDirectory $proj -WindowStyle Hidden -RedirectStandardError $logPath -PassThru
+    Set-Content -Path $cloudflaredPidFile -Value $process.Id -Encoding ASCII
 
-      for ($i = 0; $i -lt 45; $i++) {
-        Start-Sleep -Seconds 2
-        if (Test-BackendHealth $namedTunnelUrl 10) {
-          Write-PublicTunnelConfig $namedTunnelUrl
-          return $namedTunnelUrl
-        }
+    for ($i = 0; $i -lt 45; $i++) {
+      Start-Sleep -Seconds 2
+      if (Test-BackendHealth $namedTunnelUrl 10) {
+        Write-PublicTunnelConfig $namedTunnelUrl
+        return $namedTunnelUrl
       }
-    } finally {
-      [Environment]::SetEnvironmentVariable('TUNNEL_TOKEN', $previousToken, 'Process')
     }
 
     Write-Host "    Named tunnel did not become reachable: $namedTunnelUrl" -ForegroundColor Yellow

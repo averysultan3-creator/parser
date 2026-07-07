@@ -37,3 +37,4 @@ The launcher will:
 - publish the stable URL into `public/tunnel.json`
 - keep `worker-link.txt` in sync for the Pages frontend
 
+No Windows service install is required for this mode. The `service install` command is only needed if you want Cloudflared to run as a Windows service.
