@@ -15,15 +15,19 @@ const app = express();
 const PORT = Number(process.env.PORT || 4317);
 const HOST = String(process.env.HOST || '0.0.0.0');
 const DEFAULT_MODEL = process.env.OPENAI_MODEL || 'gpt-5.4-mini';
+const AI_TRAINING_MODEL = process.env.OPENAI_TRAINING_MODEL || 'gpt-5.4-mini';
 const SEARCH_MODEL = process.env.OPENAI_SEARCH_MODEL || 'gpt-5.5';
 const USER_AGENT =
-  process.env.PARSER_USER_AGENT || 'WarsawSiteParser/1.0 local lead audit tool';
+  process.env.PARSER_USER_AGENT || 'AuraParser/1.0 local lead audit tool';
+const ADMIN_LOGIN = String(process.env.ADMIN_LOGIN || 'admin');
+const ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || 'Parol159');
 const RESPECT_ROBOTS = String(process.env.RESPECT_ROBOTS_TXT || 'true') !== 'false';
 const MAX_ITEMS = Number(process.env.MAX_ITEMS_PER_RUN || 100);
 const MAX_DISCOVERY_ITEMS = Number(process.env.MAX_DISCOVERY_ITEMS || 150);
 const MAX_HTML_BYTES = 900_000;
 const FETCH_TIMEOUT_MS = 12_000;
 const GOOGLE_PLACES_TIMEOUT_MS = 8_000;
+const CROSS_VERIFY_TIMEOUT_MS = Number(process.env.CROSS_VERIFY_TIMEOUT_MS || 25_000);
 const MAX_EXTRA_PAGES = 5;
 
 // DuckDuckGo HTML search starts returning an "anomaly detected" interstitial
@@ -96,6 +100,92 @@ const COUNTRY_PRESETS = {
   'україна': { regionCode: 'UA', languageCode: 'uk', label: 'Ukraine' }
 };
 
+const LOCATION_SUGGESTIONS = [
+  { cityName: 'Warszawa', countryName: 'Polska', countryCode: 'PL', region: 'Mazowieckie', latitude: 52.2297, longitude: 21.0122 },
+  { cityName: 'Kraków', countryName: 'Polska', countryCode: 'PL', region: 'Małopolskie', latitude: 50.0647, longitude: 19.945 },
+  { cityName: 'Łódź', countryName: 'Polska', countryCode: 'PL', region: 'Łódzkie', latitude: 51.7592, longitude: 19.456 },
+  { cityName: 'Wrocław', countryName: 'Polska', countryCode: 'PL', region: 'Dolnośląskie', latitude: 51.1079, longitude: 17.0385 },
+  { cityName: 'Poznań', countryName: 'Polska', countryCode: 'PL', region: 'Wielkopolskie', latitude: 52.4064, longitude: 16.9252 },
+  { cityName: 'Gdańsk', countryName: 'Polska', countryCode: 'PL', region: 'Pomorskie', latitude: 54.352, longitude: 18.6466 },
+  { cityName: 'Gdynia', countryName: 'Polska', countryCode: 'PL', region: 'Pomorskie', latitude: 54.5189, longitude: 18.5305 },
+  { cityName: 'Sopot', countryName: 'Polska', countryCode: 'PL', region: 'Pomorskie', latitude: 54.4416, longitude: 18.5601 },
+  { cityName: 'Szczecin', countryName: 'Polska', countryCode: 'PL', region: 'Zachodniopomorskie', latitude: 53.4285, longitude: 14.5528 },
+  { cityName: 'Bydgoszcz', countryName: 'Polska', countryCode: 'PL', region: 'Kujawsko-pomorskie', latitude: 53.1235, longitude: 18.0084 },
+  { cityName: 'Lublin', countryName: 'Polska', countryCode: 'PL', region: 'Lubelskie', latitude: 51.2465, longitude: 22.5684 },
+  { cityName: 'Katowice', countryName: 'Polska', countryCode: 'PL', region: 'Śląskie', latitude: 50.2649, longitude: 19.0238 },
+  { cityName: 'Białystok', countryName: 'Polska', countryCode: 'PL', region: 'Podlaskie', latitude: 53.1325, longitude: 23.1688 },
+  { cityName: 'Rzeszów', countryName: 'Polska', countryCode: 'PL', region: 'Podkarpackie', latitude: 50.0412, longitude: 21.9991 },
+  { cityName: 'Toruń', countryName: 'Polska', countryCode: 'PL', region: 'Kujawsko-pomorskie', latitude: 53.0138, longitude: 18.5984 },
+  { cityName: 'Kielce', countryName: 'Polska', countryCode: 'PL', region: 'Świętokrzyskie', latitude: 50.8661, longitude: 20.6286 },
+  { cityName: 'Gliwice', countryName: 'Polska', countryCode: 'PL', region: 'Śląskie', latitude: 50.2945, longitude: 18.6714 },
+  { cityName: 'Zabrze', countryName: 'Polska', countryCode: 'PL', region: 'Śląskie', latitude: 50.3249, longitude: 18.7857 },
+  { cityName: 'Olsztyn', countryName: 'Polska', countryCode: 'PL', region: 'Warmińsko-mazurskie', latitude: 53.7784, longitude: 20.4801 },
+  { cityName: 'Opole', countryName: 'Polska', countryCode: 'PL', region: 'Opolskie', latitude: 50.6751, longitude: 17.9213 },
+  { cityName: 'Zielona Góra', countryName: 'Polska', countryCode: 'PL', region: 'Lubuskie', latitude: 51.9356, longitude: 15.5062 },
+  { cityName: 'Radom', countryName: 'Polska', countryCode: 'PL', region: 'Mazowieckie', latitude: 51.4027, longitude: 21.1471 },
+  { cityName: 'Częstochowa', countryName: 'Polska', countryCode: 'PL', region: 'Śląskie', latitude: 50.8118, longitude: 19.1203 },
+  { cityName: 'Bielsko-Biała', countryName: 'Polska', countryCode: 'PL', region: 'Śląskie', latitude: 49.8224, longitude: 19.0469 },
+  { cityName: 'Tychy', countryName: 'Polska', countryCode: 'PL', region: 'Śląskie', latitude: 50.1218, longitude: 19.0200 }
+];
+
+const CATEGORY_CATALOG = [
+  {
+    categoryId: 'hvac',
+    labels: { pl: 'Klimatyzacja', ru: 'Кондиционеры', en: 'Air conditioning' },
+    aliases: ['klimatyzacja', 'hvac', 'air conditioning', 'кондиционеры', 'кондиционирование'],
+    positiveKeywords: {
+      pl: [
+        'montaż klimatyzacji',
+        'serwis klimatyzacji',
+        'klimatyzacja domowa',
+        'klimatyzacja biurowa',
+        'wentylacja',
+        'rekuperacja',
+        'pompy ciepła',
+        'hvac',
+        'instalacje klimatyzacyjne',
+        'klimatyzator'
+      ],
+      ru: ['монтаж кондиционеров', 'сервис кондиционеров', 'вентиляция', 'тепловые насосы'],
+      en: ['air conditioning installation', 'air conditioning service', 'ventilation', 'heat pumps', 'hvac']
+    },
+    negativeKeywords: {
+      pl: [
+        'klimatyzacja samochodowa',
+        'mechanik samochodowy',
+        'warsztat samochodowy',
+        'wulkanizacja',
+        'opony',
+        'geometria kół',
+        'układ hamulcowy',
+        'naprawa samochodów',
+        'auto serwis',
+        'sprzedaż samochodów',
+        'części samochodowe',
+        'lakiernik',
+        'blacharz',
+        'hamulcowy',
+        'wymiana oleju',
+        'sprzęgła',
+        'rozrząd'
+      ],
+      ru: ['автосервис', 'шиномонтаж', 'автокондиционер', 'ремонт авто'],
+      en: ['car air conditioning', 'auto service', 'car mechanic', 'tires', 'brakes']
+    },
+    excludedBusinessTypes: ['car_repair', 'tire_service', 'auto_parts', 'car_dealer'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads lokalne', 'formularz wyceny'],
+    searchTemplates: [
+      'montaż klimatyzacji',
+      'serwis klimatyzacji',
+      'klimatyzacja do domu',
+      'klimatyzacja biurowa',
+      'wentylacja i klimatyzacja',
+      'pompy ciepła klimatyzacja',
+      'instalacje klimatyzacyjne'
+    ]
+  }
+];
+
 function normalizePresetKey(value) {
   return String(value || '')
     .toLowerCase()
@@ -112,9 +202,261 @@ function getCountryPreset(country) {
   return COUNTRY_PRESETS[normalizePresetKey(country)] || null;
 }
 
+function findCategoryDefinition(value) {
+  const normalized = normalizeSearchText(value);
+  if (!normalized) return null;
+  return (
+    CATEGORY_CATALOG.find((category) => {
+      if (normalizeSearchText(category.categoryId) === normalized) return true;
+      const labels = Object.values(category.labels || {}).map(normalizeSearchText);
+      const aliases = (category.aliases || []).map(normalizeSearchText);
+      return [...labels, ...aliases].some((item) => item && (item === normalized || normalized.includes(item) || item.includes(normalized)));
+    }) || null
+  );
+}
+
+function categoryLabel(category, language = 'pl') {
+  return category?.labels?.[language] || category?.labels?.pl || category?.categoryId || '';
+}
+
+function categoryKeywordList(category, key) {
+  if (!category?.[key]) return [];
+  return [...new Set(Object.values(category[key]).flat().map(cleanText).filter(Boolean))];
+}
+
+function buildSearchPhrasesForNiche(niche) {
+  const category = findCategoryDefinition(niche);
+  if (category?.searchTemplates?.length) return unique(category.searchTemplates).slice(0, 8);
+  return unique([niche, `${niche} firma`, `${niche} usługi`, `montaż ${niche}`, `serwis ${niche}`]).slice(0, 5);
+}
+
+function buildGeneratedSearchQueries(niches, city) {
+  return unique(
+    (niches || []).flatMap((niche) => buildSearchPhrasesForNiche(niche).map((phrase) => [phrase, city].filter(Boolean).join(' ')))
+  ).slice(0, 60);
+}
+
+function matchTerms(text, terms) {
+  const normalized = normalizeSearchText(text);
+  return terms.filter((term) => {
+    const normalizedTerm = normalizeSearchText(term);
+    return normalizedTerm && normalized.includes(normalizedTerm);
+  });
+}
+
+function evaluateCategoryRelevance(company, selectedNiche) {
+  const category = findCategoryDefinition(selectedNiche || company?.niche || '');
+  if (!category) {
+    return {
+      categoryId: '',
+      categoryMatch: 'match',
+      categoryRelevanceScore: 75,
+      positiveCategorySignals: [],
+      negativeCategorySignals: [],
+      categoryRelevanceReason: 'No strict category catalog rule; accepted by source.'
+    };
+  }
+
+  const text = [
+    company.company,
+    company.legal_name,
+    company.niche,
+    company.category,
+    company.address,
+    company.source,
+    company.source_profile,
+    company.website_url,
+    Array.isArray(company.services) ? company.services.join(' ') : company.services,
+    company.notes
+  ]
+    .filter(Boolean)
+    .join(' ');
+  const positives = matchTerms(text, categoryKeywordList(category, 'positiveKeywords'));
+  const negatives = matchTerms(text, categoryKeywordList(category, 'negativeKeywords'));
+
+  let score = 45;
+  score += Math.min(42, positives.length * 14);
+  if (positives.some((term) => /montaż|serwis|instalacje|wentylacja|pompy/i.test(term))) score += 8;
+  score -= Math.min(70, negatives.length * 26);
+  if (negatives.some((term) => /samochod|warsztat|mechanik|opony|wulkanizacja|hamulc|rozrząd|sprzęg/i.test(normalizeSearchText(term)))) {
+    score -= 20;
+  }
+  if (!positives.length && category.categoryId === 'hvac') score -= 18;
+  score = clamp(Math.round(score), 0, 100);
+
+  const categoryMatch = score >= 70 ? 'match' : score >= 40 ? 'partial' : 'mismatch';
+  return {
+    categoryId: category.categoryId,
+    selectedCategoryLabel: categoryLabel(category, 'pl'),
+    categoryMatch,
+    categoryRelevanceScore: score,
+    positiveCategorySignals: positives.slice(0, 8),
+    negativeCategorySignals: negatives.slice(0, 8),
+    categoryRelevanceReason:
+      categoryMatch === 'mismatch'
+        ? `Rejected by category rules: ${negatives.slice(0, 4).join(', ') || 'missing positive category signals'}`
+        : categoryMatch === 'partial'
+          ? `Needs manual check: positives=${positives.length}, negatives=${negatives.length}`
+          : `Accepted: ${positives.slice(0, 4).join(', ') || categoryLabel(category, 'pl')}`
+  };
+}
+
+function applyCategoryRelevance(companies, selectedNiches) {
+  const strictNiche = selectedNiches?.length === 1 ? selectedNiches[0] : '';
+  let skippedWrongCategory = 0;
+  const normalized = [];
+
+  for (const company of companies || []) {
+    const relevance = evaluateCategoryRelevance(company, strictNiche || company.niche);
+    const next = {
+      ...company,
+      category_id: relevance.categoryId || company.category_id || '',
+      category_match: relevance.categoryMatch,
+      category_relevance_score: relevance.categoryRelevanceScore,
+      positive_category_signals: relevance.positiveCategorySignals,
+      negative_category_signals: relevance.negativeCategorySignals,
+      actual_business_type:
+        relevance.categoryMatch === 'mismatch'
+          ? `Probably not ${relevance.selectedCategoryLabel || strictNiche || company.niche}`
+          : company.actual_business_type || '',
+      should_call: relevance.categoryMatch !== 'mismatch',
+      category_relevance_reason: relevance.categoryRelevanceReason
+    };
+    if (strictNiche && relevance.categoryMatch === 'mismatch' && relevance.categoryRelevanceScore < 40) {
+      skippedWrongCategory += 1;
+      continue;
+    }
+    normalized.push(next);
+  }
+
+  return { companies: normalized, skippedWrongCategory };
+}
+
 function isWarsawCity(city) {
   const key = normalizePresetKey(city);
   return key === 'warszawa' || key === 'warsaw' || !city;
+}
+
+function parseBasicAuth(header = '') {
+  const value = String(header || '');
+  if (!value.toLowerCase().startsWith('basic ')) return null;
+  try {
+    const decoded = Buffer.from(value.slice(6).trim(), 'base64').toString('utf8');
+    const separator = decoded.indexOf(':');
+    if (separator < 0) return null;
+    return {
+      login: decoded.slice(0, separator),
+      password: decoded.slice(separator + 1)
+    };
+  } catch {
+    return null;
+  }
+}
+
+const SESSION_COOKIE = 'aura_session';
+const SESSION_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
+
+function parseCookies(req) {
+  const header = req.headers.cookie;
+  const cookies = {};
+  if (!header) return cookies;
+  for (const part of String(header).split(';')) {
+    const separator = part.indexOf('=');
+    if (separator < 0) continue;
+    const key = part.slice(0, separator).trim();
+    const value = part.slice(separator + 1).trim();
+    if (key) {
+      try {
+        cookies[key] = decodeURIComponent(value);
+      } catch {
+        cookies[key] = value;
+      }
+    }
+  }
+  return cookies;
+}
+
+function bearerToken(req) {
+  const header = String(req.headers.authorization || '');
+  return header.toLowerCase().startsWith('bearer ') ? header.slice(7).trim() : '';
+}
+
+function sessionToken(req) {
+  return bearerToken(req) || parseCookies(req)[SESSION_COOKIE] || '';
+}
+
+function currentSession(req) {
+  const token = sessionToken(req);
+  return token ? store.getSession(token) : null;
+}
+
+function setSessionCookie(req, res, token) {
+  const secure = req.secure || req.headers['x-forwarded-proto'] === 'https';
+  const attributes = [
+    `${SESSION_COOKIE}=${encodeURIComponent(token)}`,
+    'Path=/',
+    'HttpOnly',
+    'SameSite=Lax',
+    `Max-Age=${SESSION_MAX_AGE_SECONDS}`
+  ];
+  if (secure) attributes.push('Secure');
+  res.setHeader('Set-Cookie', attributes.join('; '));
+}
+
+function clearSessionCookie(res) {
+  res.setHeader('Set-Cookie', `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`);
+}
+
+function isAdminAuthorized(req) {
+  const credentials = parseBasicAuth(req.headers.authorization || '');
+  if (credentials && credentials.login === ADMIN_LOGIN && credentials.password === ADMIN_PASSWORD) return true;
+  const session = currentSession(req);
+  return Boolean(session && session.role === 'admin');
+}
+
+function requireAdmin(req, res, next) {
+  if (isAdminAuthorized(req)) {
+    req.adminId = ADMIN_LOGIN;
+    return next();
+  }
+  res.setHeader('WWW-Authenticate', 'Basic realm="Aura Admin"');
+  return res.status(401).json({ error: 'Admin authorization required.' });
+}
+
+// Resolves the acting workerId strictly from a verified session (or, for an
+// authenticated admin, an explicit override supplied in the request) instead
+// of trusting a client-supplied workerId/x-worker-id at face value.
+function requestWorkerId(req) {
+  const session = currentSession(req);
+  if (session && session.role === 'worker') return session.workerId;
+  if (isAdminAuthorized(req)) {
+    const raw = req.body?.workerId || req.query.workerId || req.headers['x-worker-id'] || '';
+    return raw ? store.normalizeWorkerId(raw) : '';
+  }
+  return '';
+}
+
+function assignedWorkerId(company) {
+  return store.normalizeWorkerId(company?.assigned_worker_id || company?.first_assigned_worker_id || '');
+}
+
+function requireWorkerLeadAccess(req, res, company) {
+  if (isAdminAuthorized(req)) return true;
+  if (!company || company.status === 'deleted' || company.pool_state === 'deleted') {
+    res.status(404).json({ error: 'Lead not found.' });
+    return false;
+  }
+  const workerId = requestWorkerId(req);
+  const ownerId = assignedWorkerId(company);
+  if (!workerId) {
+    res.status(401).json({ error: 'Worker identity is required.' });
+    return false;
+  }
+  if (!ownerId || ownerId !== workerId) {
+    res.status(403).json({ error: 'This lead belongs to another worker.' });
+    return false;
+  }
+  return true;
 }
 
 // Mutable per-request discovery context read by the Google Places helpers.
@@ -240,6 +582,54 @@ const openai = process.env.OPENAI_API_KEY
   ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
   : null;
 
+// AI roleplay training personas. Behavior prompt stays Polish-only (matches the
+// rest of the Academy deep content); label is what the worker sees in the picker.
+const AI_TRAINING_PERSONAS = [
+  { id: 'busy_owner', label: 'Zajęty właściciel', prompt: 'Jesteś zapracowanym właścicielem małej firmy. Masz mało czasu, mówisz krótko, chcesz szybko zakończyć rozmowę, ale nie jesteś wrogi.' },
+  { id: 'angry_owner', label: 'Zły właściciel', prompt: 'Jesteś rozdrażnionym właścicielem firmy, dostajesz dużo telefonów sprzedażowych i jesteś poirytowany. Mówisz szorstko, ale worker może cię udobruchać dobrym podejściem.' },
+  { id: 'skeptic', label: 'Sceptyk', prompt: 'Jesteś nieufny wobec telefonicznych ofert, wątpisz w wartość usługi, zadajesz dużo pytań kontrolnych zanim uwierzysz w cokolwiek.' },
+  { id: 'no_website', label: 'Klient bez strony', prompt: 'Prowadzisz firmę, nie masz własnej strony internetowej, korzystasz tylko z Facebooka. Jesteś otwarty na rozmowę o stronie, jeśli worker dobrze wyjaśni korzyść.' },
+  { id: 'old_website', label: 'Klient ze starą stroną', prompt: 'Masz stronę internetową sprzed kilku lat, uważasz że działa wystarczająco dobrze, trzeba cię przekonać, że warto ją odświeżyć.' },
+  { id: 'good_website', label: 'Klient z dobrą stroną', prompt: 'Masz nowoczesną, dobrze działającą stronę internetową i jesteś z niej zadowolony. Trudno cię zainteresować, chyba że worker zaproponuje coś poza samą stroną (reklama, automatyzacje, CRM).' },
+  { id: 'send_offer', label: 'Klient mówi "wyślij ofertę"', prompt: 'Od razu, na początku rozmowy, prosisz aby przesłać ofertę mailem i się rozłączyć. Worker musi cię zatrzymać na rozmowie zanim się zgodzisz.' },
+  { id: 'asks_price', label: 'Klient od razu pyta o cenę', prompt: 'Zanim worker cokolwiek wyjaśni, pytasz "ile to kosztuje?". Naciskasz na konkretną kwotę, worker powinien podać widełki i przejść do umówienia spotkania zamiast obiecywać dokładną cenę.' },
+  { id: 'no_marketing', label: 'Klient nie rozumie marketingu', prompt: 'Nie rozumiesz pojęć typu SEO, kampanie, lejki sprzedażowe. Worker musi tłumaczyć bardzo prostymi słowami, bez żargonu.' },
+  { id: 'has_agency', label: 'Klient ma już agencję', prompt: 'Współpracujesz już z inną agencją marketingową i jesteś względnie zadowolony. Trzeba dobrego argumentu, żeby w ogóle zgodzić się na rozmowę.' },
+  { id: 'interested_website', label: 'Klient zainteresowany stroną', prompt: 'Jesteś realnie zainteresowany nową stroną internetową, zadajesz konkretne pytania o proces i cenę, łatwo cię przekonać do spotkania.' },
+  { id: 'interested_ads', label: 'Klient zainteresowany reklamą', prompt: 'Interesuje cię głównie reklama (Google Ads / Meta Ads), pytasz o efekty i koszt kliknięcia, worker powinien skierować rozmowę do spotkania z ekspertem.' },
+  { id: 'wants_callback', label: 'Klient chce, żeby oddzwonić', prompt: 'Jesteś teraz zajęty i prosisz o oddzwonienie później. Worker powinien ustalić konkretny dzień i godzinę, a nie zostawić to open-ended.' },
+  { id: 'distrustful', label: 'Klient nie ufa', prompt: 'Podejrzewasz, że to oszustwo albo spam, pytasz skąd masz numer, jesteś podejrzliwy przez całą rozmowę, worker musi budować zaufanie krok po kroku.' },
+  { id: 'ready_to_meet', label: 'Klient gotowy na spotkanie', prompt: 'Jesteś pozytywnie nastawiony i szybko zgadzasz się na umówienie spotkania/konsultacji, jeśli worker tylko poprawnie poprowadzi rozmowę.' }
+];
+
+// Rough per-1K-token USD rates used only for internal cost estimates in the admin
+// AI-usage panel — not billing-accurate, just enough to compare relative spend.
+const AI_MODEL_RATES = {
+  'gpt-5.4-mini': { input: 0.00025, output: 0.001 },
+  'gpt-5.5': { input: 0.0025, output: 0.01 }
+};
+AI_MODEL_RATES[AI_TRAINING_MODEL] = AI_MODEL_RATES[AI_TRAINING_MODEL] || AI_MODEL_RATES['gpt-5.4-mini'];
+
+const AI_TRAINING_ROLEPLAY_RULES = [
+  'To jest trening rozmowy telefonicznej dla callera Aura Global Merchants.',
+  'Grasz tylko klienta, nigdy trenera ani sprzedawcy.',
+  'Odpowiadasz po polsku, naturalnie, jak przez telefon: 1-3 krotkie zdania.',
+  'Nie pomagaj workerowi wprost. Reaguj na jakosc jego pytan i argumentow.',
+  'Jesli worker recytuje oferte, jest nachalny albo obiecuje dokladna cene, badz bardziej sceptyczny.',
+  'Jesli worker pyta o realny problem, mowi konkretnie i proponuje krotka konsultacje, stopniowo sie otwieraj.',
+  'Celem worker-a nie jest sprzedaz przez telefon, tylko umowienie konkretnej konsultacji/spotkania.',
+  'Nie akceptuj spotkania za latwo, chyba ze persona mowi inaczej.'
+].join('\n');
+
+function estimateAiCost(model, promptTokens, completionTokens) {
+  const rate = AI_MODEL_RATES[model] || AI_MODEL_RATES[DEFAULT_MODEL];
+  return Number(((promptTokens / 1000) * rate.input + (completionTokens / 1000) * rate.output).toFixed(6));
+}
+
+function findAiTrainingPersona(clientType) {
+  return AI_TRAINING_PERSONAS.find((persona) => persona.id === String(clientType || '')) || null;
+}
+
 const freeEmailDomains = new Set([
   'gmail.com',
   'googlemail.com',
@@ -319,8 +709,8 @@ app.use((req, res, next) => {
   }
 
   res.setHeader('Vary', 'Origin');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,DELETE,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'content-type, ngrok-skip-browser-warning, x-worker-id');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PATCH,DELETE,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'authorization, content-type, ngrok-skip-browser-warning, x-worker-id');
   // Chrome's Private Network Access policy requires this header on the
   // preflight response whenever a page loaded from a public address (like
   // https://averysultan3-creator.github.io) tries to fetch a private/local
@@ -339,6 +729,51 @@ app.use((req, res, next) => {
   next();
 });
 app.use(express.json({ limit: '4mb' }));
+
+const ACCESS_DENIED_HTML = `<!doctype html>
+<html><head><meta charset="utf-8" /><title>Access denied</title>
+<style>body{font:15px system-ui,sans-serif;background:#0f1115;color:#f3f4f6;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
+.card{max-width:420px;text-align:center;padding:32px}
+a{color:#8ab4ff}</style></head>
+<body><div class="card"><h1>Access denied</h1>
+<p>This account does not have permission to view the admin panel.</p>
+<p><a href="/">Parser</a> &middot; <a href="/academy/">Academy</a></p>
+</div></body></html>`;
+
+// Defense-in-depth for the self-hosted deployment mode (server.js serves both
+// the API and these static files from the same origin, so a session cookie set
+// at login is sent automatically on a plain browser navigation to /admin).
+// When served instead as a static export (e.g. GitHub Pages), this middleware
+// never runs - the client-side role check in public/admin/app.js is what
+// covers that case. We only ever block here when we can positively confirm a
+// *non-admin* session; an absent cookie still lets the shell load so the
+// admin login form itself remains reachable.
+app.use('/admin', (req, res, next) => {
+  const token = parseCookies(req)[SESSION_COOKIE];
+  if (token) {
+    const session = store.getSession(token);
+    if (session && session.role !== 'admin') {
+      res.status(403).type('html').send(ACCESS_DENIED_HTML);
+      return;
+    }
+  }
+  next();
+});
+
+app.get([/^\/admin$/, /^\/academy$/, /^\/site$/], (req, res) => {
+  const targetPath = `${req.path}/`;
+  const query = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
+  res.redirect(302, `${targetPath}${query}`);
+});
+app.get(/^\/site\/(pl|en|ru)\/?$/i, (req, res) => {
+  const query = new URLSearchParams(req.query || {});
+  query.set('lang', String(req.params[0] || '').toLowerCase());
+  res.redirect(302, `/site/?${query.toString()}`);
+});
+app.get(/^\/parser\/?$/, (req, res) => {
+  const query = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
+  res.redirect(302, `/${query}`);
+});
 app.use(
   express.static(path.join(__dirname, 'public'), {
     setHeaders(res) {
@@ -370,7 +805,7 @@ app.get('/api/config', (_req, res) => {
 app.get('/api/health', (_req, res) => {
   res.json({
     ok: true,
-    service: 'warsaw-site-parser',
+    service: 'aura-parser',
     port: PORT,
     hasOpenAiKey: Boolean(openai),
     discovery: {
@@ -381,6 +816,140 @@ app.get('/api/health', (_req, res) => {
     },
     timestamp: new Date().toISOString()
   });
+});
+
+app.get('/api/categories', (_req, res) => {
+  res.json({ categories: CATEGORY_CATALOG });
+});
+
+app.get('/api/location/suggestions', (req, res) => {
+  const q = normalizeSearchText(req.query.q || '');
+  const country = normalizeSearchText(req.query.country || '');
+  const suggestions = LOCATION_SUGGESTIONS.filter((item) => {
+    if (country && !normalizeSearchText(`${item.countryName} ${item.countryCode}`).includes(country)) return false;
+    if (!q) return true;
+    return normalizeSearchText(`${item.cityName} ${item.region} ${item.countryName}`).includes(q);
+  })
+    .slice(0, 12)
+    .map((item) => ({
+      ...item,
+      radiusKm: Number(req.query.radiusKm || 15) || 15,
+      displayName: [item.cityName, item.region, item.countryName].filter(Boolean).join(', '),
+      language: 'pl'
+    }));
+  res.json({ suggestions });
+});
+
+app.get('/health', (_req, res) => {
+  res.redirect(302, '/api/health');
+});
+
+app.get('/api/status', (_req, res) => {
+  res.json({
+    ok: true,
+    service: 'aura-parser',
+    uptimeSeconds: Math.round(process.uptime()),
+    timestamp: new Date().toISOString()
+  });
+});
+
+app.post('/api/site-leads', (req, res) => {
+  try {
+    const name = cleanText(req.body?.name || req.body?.contactName || '');
+    const phone = cleanText(req.body?.phone || '');
+    const email = cleanText(req.body?.email || '');
+
+    if (!name) {
+      return res.status(400).json({ error: 'Podaj imie osoby kontaktowej.' });
+    }
+    if (!phone && !email) {
+      return res.status(400).json({ error: 'Podaj telefon lub email.' });
+    }
+
+    const record = store.createSiteLead({
+      ...req.body,
+      name,
+      phone,
+      email
+    });
+
+    res.status(201).json({
+      ok: true,
+      leadId: record.id,
+      status: record.status,
+      stage: record.stage
+    });
+  } catch (error) {
+    console.error('[site-leads] failed:', error);
+    res.status(500).json({ error: error.message || 'Nie udalo sie zapisac zapytania.' });
+  }
+});
+
+function buildSessionResponse(req, res, { role, workerId = '', displayName = '', language = 'ru' } = {}) {
+  const session = store.createSession({ role, workerId, displayName, language });
+  setSessionCookie(req, res, session.token);
+  return {
+    ok: true,
+    token: session.token,
+    role: session.role,
+    workerId: session.workerId,
+    displayName: session.displayName,
+    language: session.language
+  };
+}
+
+app.post('/api/auth/login', (req, res) => {
+  const login = String(req.body?.login || '').trim();
+  const password = String(req.body?.password || '');
+  if (!login || !password) {
+    return res.status(400).json({ error: 'Login and password are required.' });
+  }
+
+  if (login === ADMIN_LOGIN && password === ADMIN_PASSWORD) {
+    return res.json(buildSessionResponse(req, res, { role: 'admin', displayName: 'Admin', language: 'ru' }));
+  }
+
+  const worker = store.authenticateWorker(login, password);
+  if (!worker) return res.status(401).json({ error: 'Invalid login or password.' });
+  return res.json(
+    buildSessionResponse(req, res, {
+      role: 'worker',
+      workerId: worker.workerId,
+      displayName: worker.displayName,
+      language: worker.language
+    })
+  );
+});
+
+app.get('/api/auth/me', (req, res) => {
+  const session = currentSession(req);
+  if (!session) return res.status(401).json({ error: 'Not authenticated.' });
+  res.json({
+    role: session.role,
+    workerId: session.workerId,
+    displayName: session.displayName,
+    language: session.language
+  });
+});
+
+app.post('/api/auth/logout', (req, res) => {
+  const token = sessionToken(req);
+  if (token) store.destroySession(token);
+  clearSessionCookie(res);
+  res.json({ ok: true });
+});
+
+app.post('/api/workers/login', (req, res) => {
+  const worker = store.authenticateWorker(req.body?.login || '', req.body?.password || '');
+  if (!worker) return res.status(401).json({ error: 'Invalid login/password or inactive worker.' });
+  res.json(
+    buildSessionResponse(req, res, {
+      role: 'worker',
+      workerId: worker.workerId,
+      displayName: worker.displayName,
+      language: worker.language
+    })
+  );
 });
 
 app.post('/api/analyze', async (req, res) => {
@@ -455,7 +1024,8 @@ app.post('/api/discover', async (req, res) => {
     const sourceFocus = normalizeDiscoverySource(req.body?.sourceFocus);
     const requestedLimit = Number.parseInt(req.body?.limit, 10);
     const limit = clamp(Number.isFinite(requestedLimit) ? requestedLimit : 40, 1, MAX_DISCOVERY_ITEMS);
-    const workerId = cleanText(req.body?.workerId || req.body?.userId || req.headers['x-worker-id'] || 'worker-default');
+    const sessionWorkerId = requestWorkerId(req);
+    const workerId = sessionWorkerId || cleanText(req.body?.workerId || req.body?.userId || req.headers['x-worker-id'] || 'worker-default');
 
     if (!niches.length) {
       return res.status(400).json({ error: 'Укажите категорию или нишу для поиска.' });
@@ -513,39 +1083,67 @@ app.post('/api/discover', async (req, res) => {
 });
 
 app.get('/api/discover/jobs/:id', (req, res) => {
-  const job = serializeDiscoveryJob(getDiscoveryJob(req.params.id));
+  const job = getDiscoveryJob(req.params.id);
   if (!job) return res.status(404).json({ error: 'Discovery job not found.' });
-  res.json(job);
+  if (!isAdminAuthorized(req)) {
+    const workerId = requestWorkerId(req);
+    const ownerId = store.normalizeWorkerId(job.meta?.workerId || '');
+    if (!workerId || workerId !== ownerId) {
+      return res.status(403).json({ error: 'This discovery job belongs to another worker.' });
+    }
+  }
+  res.json(serializeDiscoveryJob(job));
 });
 
-app.get('/api/history/runs', (_req, res) => {
-  res.json({ runs: store.listRuns({ limit: 100 }) });
+app.get('/api/history/runs', (req, res) => {
+  const admin = isAdminAuthorized(req);
+  const workerId = admin ? '' : requestWorkerId(req);
+  res.json({ runs: store.listRuns({ limit: 100, workerId }) });
 });
 
 app.get('/api/history/runs/:id', (req, res) => {
   const run = store.getRun(String(req.params.id));
   if (!run) return res.status(404).json({ error: 'Run not found.' });
+  if (!isAdminAuthorized(req)) {
+    const workerId = requestWorkerId(req);
+    if (!workerId || store.normalizeWorkerId(run.worker_id || '') !== workerId) {
+      return res.status(403).json({ error: 'This parser query belongs to another worker.' });
+    }
+  }
   res.json({ run, companies: store.getCompaniesByIds(run.company_ids) });
 });
 
-app.get('/api/companies', (_req, res) => {
+app.get('/api/companies', requireAdmin, (_req, res) => {
   res.json({ companies: store.getAllCompanies(), stats: store.getStoreStats() });
 });
 
-app.get('/api/companies/:id', (req, res) => {
+app.get('/api/companies/:id', requireAdmin, (req, res) => {
   const company = store.getCompany(String(req.params.id));
   if (!company) return res.status(404).json({ error: 'Company not found.' });
   res.json({ company });
 });
 
+app.use('/api/admin', requireAdmin);
+
 app.get('/api/admin/leads', (req, res) => {
   const leads = store.listLeadPool({
     q: req.query.q || '',
     status: req.query.status || '',
+    poolState: req.query.poolState || '',
     workerId: req.query.workerId || '',
+    city: req.query.city || '',
+    category: req.query.category || '',
+    includeDeleted: req.query.includeDeleted === 'true',
     limit: Number.parseInt(req.query.limit, 10) || 500
   });
   res.json({ leads, stats: store.getStoreStats() });
+});
+
+app.get('/api/admin/leads/:id', (req, res) => {
+  const company = store.getCompany(String(req.params.id));
+  if (!company) return res.status(404).json({ error: 'Lead not found.' });
+  const runs = store.listRuns({ limit: 1000 }).filter((run) => (run.company_ids || []).map(String).includes(String(req.params.id)));
+  res.json({ company, runs });
 });
 
 app.get('/api/admin/workers', (_req, res) => {
@@ -555,8 +1153,92 @@ app.get('/api/admin/workers', (_req, res) => {
   });
 });
 
+app.post('/api/admin/workers', (req, res) => {
+  try {
+    const worker = store.createWorkerAccount({
+      displayName: cleanText(req.body?.displayName || req.body?.name || ''),
+      login: cleanText(req.body?.login || ''),
+      password: String(req.body?.password || ''),
+      language: cleanText(req.body?.language || 'ru'),
+      active: req.body?.active !== false
+    });
+    store.logAdminAction({
+      adminId: cleanText(req.body?.adminId || 'admin'),
+      action: 'create_worker',
+      targetType: 'worker',
+      targetId: worker.workerId,
+      details: { displayName: worker.displayName, language: worker.language, active: worker.active }
+    });
+    res.status(201).json({ ok: true, worker });
+  } catch (error) {
+    res.status(400).json({ error: error.message || 'Worker create failed.' });
+  }
+});
+
 app.get('/api/admin/workers/:workerId', (req, res) => {
   res.json(store.getWorkerDetail(req.params.workerId));
+});
+
+app.patch('/api/admin/workers/:workerId', (req, res) => {
+  const worker = store.updateWorkerAccount(req.params.workerId, req.body || {});
+  if (!worker) return res.status(404).json({ error: 'Worker not found.' });
+  store.logAdminAction({
+    adminId: cleanText(req.body?.adminId || 'admin'),
+    action: req.body?.password ? 'change_worker_password' : req.body?.active === false ? 'deactivate_worker' : 'update_worker',
+    targetType: 'worker',
+    targetId: req.params.workerId,
+    details: { active: worker.active, language: worker.language, displayName: worker.displayName }
+  });
+  res.json({ ok: true, worker });
+});
+
+app.post('/api/admin/workers/:workerId/reset-leads', (req, res) => {
+  const resetIds = store.resetWorkerCompanies(req.params.workerId);
+  store.logAdminAction({
+    adminId: cleanText(req.body?.adminId || 'admin'),
+    action: 'reset_worker_leads_to_pool',
+    targetType: 'worker',
+    targetId: req.params.workerId,
+    details: { count: resetIds.length }
+  });
+  res.json({ ok: true, resetIds, stats: store.getStoreStats() });
+});
+
+app.delete('/api/admin/workers/:workerId', (req, res) => {
+  if (req.body?.confirm !== 'DELETE') {
+    return res.status(400).json({ error: 'Type DELETE to confirm worker deletion.' });
+  }
+  const result = store.deleteWorkerAccount(req.params.workerId);
+  if (!result) return res.status(404).json({ error: 'Worker not found.' });
+  store.logAdminAction({
+    adminId: cleanText(req.body?.adminId || 'admin'),
+    action: 'delete_worker',
+    targetType: 'worker',
+    targetId: req.params.workerId,
+    details: {
+      deletedRunCount: result.deletedRunIds.length,
+      resetLeadCount: result.resetLeadIds.length,
+      deletedTrainingSessionCount: result.deletedTrainingSessionIds.length,
+      deletedSessionCount: result.deletedSessionCount,
+      deletedAiUsageCount: result.deletedAiUsageCount
+    }
+  });
+  res.json({ ok: true, result, stats: store.getStoreStats() });
+});
+
+app.delete('/api/admin/workers/:workerId/history', (req, res) => {
+  if (req.body?.confirm !== 'DELETE') {
+    return res.status(400).json({ error: 'Type DELETE to confirm worker history cleanup.' });
+  }
+  const deletedRunIds = store.clearWorkerHistory(req.params.workerId);
+  store.logAdminAction({
+    adminId: cleanText(req.body?.adminId || 'admin'),
+    action: 'clear_worker_history',
+    targetType: 'worker',
+    targetId: req.params.workerId,
+    details: { runIds: deletedRunIds, count: deletedRunIds.length }
+  });
+  res.json({ ok: true, deletedRunIds, stats: store.getStoreStats() });
 });
 
 app.get('/api/admin/runs/:id', (req, res) => {
@@ -568,68 +1250,330 @@ app.get('/api/admin/runs/:id', (req, res) => {
 app.post('/api/admin/runs/:id/reset', (req, res) => {
   const resetIds = store.resetRunCompanies(req.params.id);
   if (!resetIds.length && !store.getRun(req.params.id)) return res.status(404).json({ error: 'Run not found.' });
+  store.logAdminAction({
+    adminId: cleanText(req.body?.adminId || 'admin'),
+    action: 'reset_query_to_pool',
+    targetType: 'run',
+    targetId: req.params.id,
+    details: { count: resetIds.length, leadIds: resetIds }
+  });
   res.json({ ok: true, resetIds, stats: store.getStoreStats() });
 });
 
 app.delete('/api/admin/runs/:id', (req, res) => {
+  if (req.body?.confirm !== 'DELETE') {
+    return res.status(400).json({ error: 'Type DELETE to confirm permanent query deletion.' });
+  }
+  const deletedLeadIds = req.body?.deleteLeads === false ? [] : store.deleteRunCompanies(req.params.id);
   const deletedRun = store.deleteRun(req.params.id);
   if (!deletedRun) return res.status(404).json({ error: 'Run not found.' });
-  res.json({ ok: true, deletedRun, stats: store.getStoreStats() });
+  store.logAdminAction({
+    adminId: cleanText(req.body?.adminId || 'admin'),
+    action: 'delete_query_permanently',
+    targetType: 'run',
+    targetId: req.params.id,
+    details: { deletedLeadIds, deletedLeadCount: deletedLeadIds.length }
+  });
+  res.json({ ok: true, deletedRun, deletedLeadIds, stats: store.getStoreStats() });
 });
 
 app.post('/api/admin/runs/:runId/leads/:leadId/reset', (req, res) => {
   const resetIds = store.resetCompanies([req.params.leadId]);
   if (!resetIds.length) return res.status(404).json({ error: 'Lead not found.' });
+  store.logAdminAction({
+    adminId: cleanText(req.body?.adminId || 'admin'),
+    action: 'reset_lead_to_pool',
+    targetType: 'lead',
+    targetId: req.params.leadId,
+    details: { runId: req.params.runId }
+  });
   res.json({ ok: true, resetIds, stats: store.getStoreStats() });
 });
 
 app.delete('/api/admin/runs/:runId/leads/:leadId', (req, res) => {
-  const result = store.removeCompanyFromRun(req.params.runId, req.params.leadId);
-  if (!result) return res.status(404).json({ error: 'Run or lead not found.' });
-  res.json({ ok: true, stats: store.getStoreStats() });
+  if (req.body?.confirm !== 'DELETE') {
+    return res.status(400).json({ error: 'Type DELETE to confirm permanent lead deletion.' });
+  }
+  const deletedIds = store.deleteCompanies([req.params.leadId]);
+  if (!deletedIds.length) return res.status(404).json({ error: 'Lead not found.' });
+  store.logAdminAction({
+    adminId: cleanText(req.body?.adminId || 'admin'),
+    action: 'delete_lead_permanently',
+    targetType: 'lead',
+    targetId: req.params.leadId,
+    details: { runId: req.params.runId }
+  });
+  res.json({ ok: true, deletedIds, stats: store.getStoreStats() });
 });
 
 app.post('/api/admin/leads/reset', (req, res) => {
   const ids = Array.isArray(req.body?.ids) ? req.body.ids : [];
   const resetIds = store.resetCompanies(ids);
+  store.logAdminAction({
+    adminId: cleanText(req.body?.adminId || 'admin'),
+    action: resetIds.length > 1 ? 'reset_selected_leads_to_pool' : 'reset_lead_to_pool',
+    targetType: 'lead',
+    targetId: resetIds.length === 1 ? resetIds[0] : 'bulk',
+    details: { count: resetIds.length, leadIds: resetIds }
+  });
   res.json({ ok: true, resetIds, stats: store.getStoreStats() });
 });
 
 app.delete('/api/admin/leads', (req, res) => {
   const ids = Array.isArray(req.body?.ids) ? req.body.ids : [];
+  if (ids.length && req.body?.confirm !== 'DELETE') {
+    return res.status(400).json({ error: 'Type DELETE to confirm permanent lead deletion.' });
+  }
   const deletedIds = store.deleteCompanies(ids);
+  store.logAdminAction({
+    adminId: cleanText(req.body?.adminId || 'admin'),
+    action: deletedIds.length > 1 ? 'delete_selected_leads_permanently' : 'delete_lead_permanently',
+    targetType: 'lead',
+    targetId: deletedIds.length === 1 ? deletedIds[0] : 'bulk',
+    details: { count: deletedIds.length, leadIds: deletedIds }
+  });
   res.json({ ok: true, deletedIds, stats: store.getStoreStats() });
 });
 
 app.post('/api/leads/:id/status', (req, res) => {
+  const existing = store.getCompany(String(req.params.id));
+  if (!existing) return res.status(404).json({ error: 'Lead not found.' });
+  if (!requireWorkerLeadAccess(req, res, existing)) return;
+  const workerId = isAdminAuthorized(req) ? cleanText(req.body?.workerId || '') : requestWorkerId(req);
   const company = store.updateCompanyStatus(req.params.id, {
     status: cleanText(req.body?.status || ''),
-    workerId: cleanText(req.body?.workerId || req.headers['x-worker-id'] || ''),
+    workerId,
     note: req.body?.note
   });
   if (!company) return res.status(404).json({ error: 'Lead not found.' });
+  store.logAdminAction({
+    adminId: cleanText(req.body?.adminId || req.headers['x-worker-id'] || 'worker'),
+    action: 'update_lead_status',
+    targetType: 'lead',
+    targetId: req.params.id,
+    details: { status: company.status, workerId: company.assigned_worker_id || '' }
+  });
   res.json({ ok: true, company });
 });
 
 app.get('/api/academy/progress', (req, res) => {
-  const userId = cleanText(req.query.userId || req.headers['x-worker-id'] || 'worker-default');
-  res.json({ progress: store.getAcademyProgress(userId) });
+  const sessionWorkerId = requestWorkerId(req);
+  if (!sessionWorkerId) return res.status(401).json({ error: 'Sign in required.' });
+  res.json({ progress: store.getAcademyProgress(sessionWorkerId) });
 });
 
 app.post('/api/academy/progress', (req, res) => {
-  const userId = cleanText(req.body?.userId || req.headers['x-worker-id'] || 'worker-default');
-  const progress = store.saveAcademyProgress(userId, req.body || {});
+  const sessionWorkerId = requestWorkerId(req);
+  if (!sessionWorkerId) return res.status(401).json({ error: 'Sign in required.' });
+  const progress = store.saveAcademyProgress(sessionWorkerId, req.body || {});
   res.json({ ok: true, progress });
+});
+
+app.get('/api/academy/ai-training/personas', (_req, res) => {
+  res.json({ personas: AI_TRAINING_PERSONAS.map(({ id, label }) => ({ id, label })) });
+});
+
+app.get('/api/academy/ai-training/sessions', (req, res) => {
+  const workerId = requestWorkerId(req);
+  if (!workerId) return res.status(401).json({ error: 'Sign in required.' });
+  res.json({ sessions: store.listAiTrainingSessions({ workerId }) });
+});
+
+function requireAiTrainingSession(req, res) {
+  const session = store.getAiTrainingSession(req.params.sessionId);
+  if (!session) {
+    res.status(404).json({ error: 'Training session not found.' });
+    return null;
+  }
+  if (isAdminAuthorized(req)) return session;
+  const workerId = requestWorkerId(req);
+  if (!workerId || workerId !== session.workerId) {
+    res.status(403).json({ error: 'This training session belongs to another worker.' });
+    return null;
+  }
+  return session;
+}
+
+app.post('/api/academy/ai-training/start', async (req, res) => {
+  try {
+    if (!openai) return res.status(400).json({ error: 'OPENAI_API_KEY не указан в .env.' });
+    const workerId = requestWorkerId(req);
+    if (!workerId) return res.status(401).json({ error: 'Sign in required.' });
+    const persona = findAiTrainingPersona(req.body?.clientType);
+    if (!persona) return res.status(400).json({ error: 'Nieznany typ klienta.' });
+
+    const session = store.createAiTrainingSession(workerId, persona.id);
+    const response = await openai.responses.create({
+      model: AI_TRAINING_MODEL,
+      input: [
+        {
+          role: 'system',
+          content: `${AI_TRAINING_ROLEPLAY_RULES}\n\nPersona klienta:\n${persona.prompt}\n\nTo worker dzwoni pierwszy. Zacznij od krotkiej reakcji klienta, np. "Slucham?" albo "Kto mowi?", zgodnie z persona.`
+        }
+      ],
+      max_output_tokens: 200
+    });
+    const openingLine = response.output_text?.trim() || 'Słucham?';
+    store.appendAiTrainingMessage(session.sessionId, 'client', openingLine);
+
+    const usage = response.usage || {};
+    store.logAiUsage({
+      workerId,
+      feature: 'ai_training',
+      model: AI_TRAINING_MODEL,
+      promptTokens: usage.input_tokens || 0,
+      completionTokens: usage.output_tokens || 0,
+      totalTokens: usage.total_tokens || 0,
+      estimatedCost: estimateAiCost(AI_TRAINING_MODEL, usage.input_tokens || 0, usage.output_tokens || 0)
+    });
+
+    res.json({ sessionId: session.sessionId, clientType: persona.id, personaLabel: persona.label, openingLine });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message || 'Błąd startu treningu AI.' });
+  }
+});
+
+app.post('/api/academy/ai-training/:sessionId/message', async (req, res) => {
+  try {
+    if (!openai) return res.status(400).json({ error: 'OPENAI_API_KEY не указан в .env.' });
+    const session = requireAiTrainingSession(req, res);
+    if (!session) return;
+    if (session.status !== 'active') return res.status(400).json({ error: 'Trening jest już zakończony.' });
+    const text = cleanText(req.body?.text || '');
+    if (!text) return res.status(400).json({ error: 'Wiadomość nie może być pusta.' });
+
+    const persona = findAiTrainingPersona(session.clientType);
+    store.appendAiTrainingMessage(session.sessionId, 'worker', text);
+    const updated = store.getAiTrainingSession(session.sessionId);
+
+    const response = await openai.responses.create({
+      model: AI_TRAINING_MODEL,
+      input: [
+        {
+          role: 'system',
+          content: `${AI_TRAINING_ROLEPLAY_RULES}\n\nPersona klienta:\n${persona?.prompt || ''}\n\nKontynuuj rozmowe. Odpowiadaj tylko jako klient.`
+        },
+        ...updated.messages.map((message) => ({
+          role: message.role === 'worker' ? 'user' : 'assistant',
+          content: message.text
+        }))
+      ],
+      max_output_tokens: 220
+    });
+    const reply = response.output_text?.trim() || '...';
+    store.appendAiTrainingMessage(session.sessionId, 'client', reply);
+
+    const usage = response.usage || {};
+    store.logAiUsage({
+      workerId: session.workerId,
+      feature: 'ai_training',
+      model: AI_TRAINING_MODEL,
+      promptTokens: usage.input_tokens || 0,
+      completionTokens: usage.output_tokens || 0,
+      totalTokens: usage.total_tokens || 0,
+      estimatedCost: estimateAiCost(AI_TRAINING_MODEL, usage.input_tokens || 0, usage.output_tokens || 0)
+    });
+
+    res.json({ reply, messages: store.getAiTrainingSession(session.sessionId).messages });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message || 'Błąd rozmowy AI.' });
+  }
+});
+
+app.post('/api/academy/ai-training/:sessionId/finish', async (req, res) => {
+  try {
+    if (!openai) return res.status(400).json({ error: 'OPENAI_API_KEY не указан в .env.' });
+    const session = requireAiTrainingSession(req, res);
+    if (!session) return;
+    const persona = findAiTrainingPersona(session.clientType);
+
+    const schema = {
+      type: 'object',
+      additionalProperties: false,
+      required: ['score', 'meetingBooked', 'good', 'bad', 'improvements'],
+      properties: {
+        score: { type: 'number', minimum: 0, maximum: 100 },
+        meetingBooked: { type: 'boolean' },
+        good: { type: 'array', items: { type: 'string' } },
+        bad: { type: 'array', items: { type: 'string' } },
+        improvements: { type: 'array', items: { type: 'string' } }
+      }
+    };
+
+    const transcriptText = session.messages
+      .map((message) => `${message.role === 'worker' ? 'Sprzedawca' : 'Klient'}: ${message.text}`)
+      .join('\n');
+
+    const response = await openai.responses.create({
+      model: AI_TRAINING_MODEL,
+      input: [
+        {
+          role: 'system',
+          content: `Jestes trenerem sprzedazy telefonicznej Aura Global Merchants. Ocen rozmowe worker-a z klientem: "${persona?.label || session.clientType}". Kryteria: konkretna obserwacja o firmie, pytania o problem, krotkie wyjasnienie wartosci, brak nachalnej sprzedazy, nieobiecywanie dokladnej ceny przez telefon, proba umowienia konkretnej konsultacji. Ocen 0-100, meetingBooked, good, bad, improvements. Pisz po polsku, konkretnie i krotko.`
+        },
+        { role: 'user', content: transcriptText || '(brak wiadomości)' }
+      ],
+      max_output_tokens: 700,
+      text: {
+        format: {
+          type: 'json_schema',
+          name: 'ai_training_feedback',
+          strict: true,
+          schema
+        }
+      }
+    });
+
+    const feedback = JSON.parse(response.output_text);
+    const finished = store.finishAiTrainingSession(session.sessionId, { score: feedback.score, feedback });
+
+    const usage = response.usage || {};
+    store.logAiUsage({
+      workerId: session.workerId,
+      feature: 'ai_training',
+      model: AI_TRAINING_MODEL,
+      promptTokens: usage.input_tokens || 0,
+      completionTokens: usage.output_tokens || 0,
+      totalTokens: usage.total_tokens || 0,
+      estimatedCost: estimateAiCost(AI_TRAINING_MODEL, usage.input_tokens || 0, usage.output_tokens || 0)
+    });
+
+    res.json({ session: finished });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message || 'Błąd podsumowania treningu AI.' });
+  }
 });
 
 app.get('/api/admin/academy', (_req, res) => {
   res.json({ users: store.listAcademyProgress() });
 });
 
-app.get('/api/admin/summary', (_req, res) => {
+app.get('/api/admin/workers/:workerId/ai-training', (req, res) => {
+  res.json({ sessions: store.listAiTrainingSessions({ workerId: req.params.workerId }) });
+});
+
+app.get('/api/admin/ai-training/:sessionId', (req, res) => {
+  const session = store.getAiTrainingSession(req.params.sessionId);
+  if (!session) return res.status(404).json({ error: 'Training session not found.' });
+  res.json({ session });
+});
+
+app.get('/api/admin/ai-usage', (req, res) => {
+  res.json(store.summarizeAiUsage({ period: req.query.period || 'all' }));
+});
+
+app.get('/api/admin/audit', (req, res) => {
+  res.json({ actions: store.listAuditLog({ limit: Number.parseInt(req.query.limit, 10) || 200 }) });
+});
+
+app.get('/api/admin/summary', (req, res) => {
   res.json({
-    stats: store.getStoreStats(),
-    runs: store.listRuns({ limit: 25 }),
+    stats: store.getAdminSummary({ period: req.query.period || 'all' }),
+    rawStats: store.getStoreStats(),
+    runs: store.listRuns({ limit: 100 }),
     academyUsers: store.listAcademyProgress()
   });
 });
@@ -653,16 +1597,24 @@ app.post('/api/ai/site-analysis', async (req, res) => {
       return res.status(400).json({ error: 'Для AI-анализа нужна готовая карточка компании.' });
     }
 
+    const companyId = result._companyId || store.findExistingCompanyId(input);
+    if (companyId) {
+      const existing = store.getCompany(companyId);
+      if (!existing) return res.status(404).json({ error: 'Lead not found.' });
+      if (!requireWorkerLeadAccess(req, res, existing)) return;
+    }
+
     const startedAt = performance.now();
     const aiAnalysis = await analyzeSiteCardWithOpenAI({
       item: input,
       parsed: parsed || { ok: false, error: '', signals: emptySignals() },
       websiteResolution,
       heuristic,
-      model
+      model,
+      language: cleanText(req.body?.language || req.body?.uiLanguage || 'ru'),
+      workerId: requestWorkerId(req)
     });
 
-    const companyId = result._companyId || store.findExistingCompanyId(input);
     if (companyId) {
       store.updateCompanyAiAnalysis(companyId, {
         status: 'COMPLETED',
@@ -731,7 +1683,7 @@ app.get('/api/registry/krs/:krs', async (req, res) => {
 
 app.listen(PORT, HOST, () => {
   const displayHost = HOST === '0.0.0.0' ? 'localhost' : HOST;
-  console.log(`Warsaw Site Parser running at http://${displayHost}:${PORT}`);
+  console.log(`Aura Parser running at http://${displayHost}:${PORT}`);
   if (HOST === '0.0.0.0') {
     console.log(`LAN access enabled on port ${PORT}`);
   }
@@ -786,6 +1738,18 @@ function normalizeItems(items) {
         high_ticket: parseBool(item.high_ticket || item.expensive_services),
         paid_platform: parseBool(item.paid_platform || item.marketplace_paid),
         notes: cleanText(item.notes || item.note || item.uwagi || ''),
+        category_id: cleanText(item.category_id || item.categoryId || ''),
+        category_match: cleanText(item.category_match || item.categoryMatch || ''),
+        category_relevance_score: parseNumber(item.category_relevance_score || item.categoryRelevanceScore),
+        category_relevance_reason: cleanText(item.category_relevance_reason || item.categoryRelevanceReason || ''),
+        positive_category_signals: Array.isArray(item.positive_category_signals || item.positiveCategorySignals)
+          ? item.positive_category_signals || item.positiveCategorySignals
+          : parseList(item.positive_category_signals || item.positiveCategorySignals),
+        negative_category_signals: Array.isArray(item.negative_category_signals || item.negativeCategorySignals)
+          ? item.negative_category_signals || item.negativeCategorySignals
+          : parseList(item.negative_category_signals || item.negativeCategorySignals),
+        actual_business_type: cleanText(item.actual_business_type || item.actualBusinessType || ''),
+        should_call: item.should_call === undefined && item.shouldCall === undefined ? true : parseBool(item.should_call ?? item.shouldCall),
         _companyId: item._companyId || ''
       };
     })
@@ -798,6 +1762,15 @@ function normalizeDiscoverySource(value) {
     return raw === 'maps_check' ? 'maps_api' : raw;
   }
   return 'internet';
+}
+
+function computeDiscoveryCandidateLimit(requestedLimit, sourceFocus = 'internet') {
+  const base = clamp(Number(requestedLimit || 0) || 40, 1, MAX_DISCOVERY_ITEMS);
+  const multiplier =
+    sourceFocus === 'all_sources' ? 5
+      : ['maps_api', 'amazon_location', 'internet'].includes(sourceFocus) ? 4
+        : 3;
+  return clamp(Math.max(base + 20, base * multiplier), base, MAX_DISCOVERY_ITEMS);
 }
 
 async function runDiscoveryJob(jobId, params) {
@@ -817,13 +1790,17 @@ async function runDiscoveryJob(jobId, params) {
     });
 
     discoveryContext = { country: params.country, radiusKm: params.radiusKm, city: params.city };
+    const candidateLimit = computeDiscoveryCandidateLimit(params.limit, params.sourceFocus);
     run = store.createRun({
       niches: params.niches,
       city: params.city,
+      country: params.country,
       district: params.district,
+      radiusKm: params.radiusKm,
       workerId: params.workerId,
       sourceFocus: params.sourceFocus,
-      requestedLimit: params.limit
+      requestedLimit: params.limit,
+      generatedSearchQueries: buildGeneratedSearchQueries(params.niches, params.city)
     });
     updateDiscoveryJob(jobId, { runId: run.id });
 
@@ -831,10 +1808,11 @@ async function runDiscoveryJob(jobId, params) {
       niches: params.niches,
       city: params.city,
       district: params.district,
-      limit: params.limit,
+      limit: candidateLimit,
       sourceFocus: params.sourceFocus,
       onProgress(event) {
-        const claimedPreview = store.claimCompaniesForRun(normalizeItems(event.companies || []), {
+        const progressRelevance = applyCategoryRelevance(normalizeItems(event.companies || []), params.niches);
+        const claimedPreview = store.claimCompaniesForRun(progressRelevance.companies, {
           runId: run.id,
           workerId: params.workerId,
           limit: params.limit
@@ -855,7 +1833,8 @@ async function runDiscoveryJob(jobId, params) {
       }
     });
 
-    const rawCompanies = normalizeItems(discovery.companies || []).slice(0, params.limit);
+    const relevance = applyCategoryRelevance(normalizeItems(discovery.companies || []), params.niches);
+    const rawCompanies = relevance.companies.slice(0, candidateLimit);
     const claimedFinal = store.claimCompaniesForRun(rawCompanies, {
       runId: run.id,
       workerId: params.workerId,
@@ -863,17 +1842,27 @@ async function runDiscoveryJob(jobId, params) {
     });
     const companies = claimedFinal.companies;
     const foundCount = companies.length;
+    const rawFoundCount = rawCompanies.length;
     const newCount = claimedFinal.newCount;
-    const duplicateCount = Math.max(rawCompanies.length - foundCount, claimedFinal.duplicateCount);
+    const duplicateCount = claimedFinal.duplicateCount;
     const companyIds = claimedFinal.companyIds;
+    const finalStatus = foundCount >= params.limit ? 'completed' : 'exhausted';
+    const progressMessage =
+      finalStatus === 'completed'
+        ? `Найдено ${foundCount} новых компаний. Поиск завершен.`
+        : `Поиск исчерпан: найдено ${foundCount} новых компаний из ${params.limit}, дублей пропущено ${duplicateCount}.`;
 
     store.addCompanyIdsToRun(run.id, companyIds);
     store.updateRun(run.id, {
-      status: 'completed',
+      status: finalStatus,
       finished_at: new Date().toISOString(),
-      found_count: foundCount,
+      found_count: rawFoundCount,
       new_count: newCount,
       duplicate_count: duplicateCount,
+      raw_found_count: rawFoundCount,
+      search_status: finalStatus,
+      skipped_wrong_category: relevance.skippedWrongCategory,
+      generated_search_queries: buildGeneratedSearchQueries(params.niches, params.city),
       warnings: Array.isArray(discovery.warnings) ? discovery.warnings.slice(0, 20) : []
     });
 
@@ -888,11 +1877,15 @@ async function runDiscoveryJob(jobId, params) {
         warnings: Array.isArray(discovery.warnings) ? discovery.warnings.slice(0, 10) : [],
         meta: {
           count: companies.length,
+          requestedNewCount: params.limit,
+          rawFoundCount,
           newCount,
           duplicateCount,
+          skippedWrongCategory: relevance.skippedWrongCategory,
           usedAi: false,
           source: discovery.source,
           sourceFocus: params.sourceFocus,
+          searchStatus: finalStatus,
           workerId: params.workerId,
           categories: params.niches,
           city: params.city,
@@ -902,7 +1895,7 @@ async function runDiscoveryJob(jobId, params) {
         }
       },
       progress: {
-        message: `Найдено ${companies.length} компаний. Поиск завершен.`,
+        message: progressMessage,
         currentNiche: '',
         currentSource: discovery.source || params.sourceFocus,
         processedNiches: params.niches.length,
@@ -1235,15 +2228,7 @@ function uniqueCompanies(companies) {
 async function discoverCompaniesFromAmazonLocationExpanded({ niche, city, district, limit, sourceFocus, onProgress }) {
   const cityIsWarsaw = isWarsawCity(city);
   const districts = district ? [district] : cityIsWarsaw ? ['', ...DEFAULT_WARSAW_DISTRICTS.slice(0, 8)] : [''];
-  const queryNiches = district
-    ? [niche]
-    : unique([
-        niche,
-        `${niche} firma`,
-        `${niche} usługi`,
-        `montaż ${niche}`,
-        `serwis ${niche}`
-      ]).slice(0, 5);
+  const queryNiches = district ? [niche] : buildSearchPhrasesForNiche(niche);
   const queryPlans = district
     ? queryNiches.map((queryNiche) => ({ queryNiche, districtName: district }))
     : [
@@ -1300,6 +2285,9 @@ async function discoverCompaniesFromAmazonLocation({ niche, city, district, limi
     throw new Error('AWS_LOCATION_API_KEY is not configured.');
   }
 
+  const cityPreset = getCityPreset(city);
+  const countryPreset = getCountryPreset(discoveryContext.country) || (cityPreset ? getCountryPreset(cityPreset.country) : null);
+  const includeCountry = countryPreset?.regionCode === 'UA' ? 'UKR' : 'POL';
   const queryText = [niche, district, city].filter(Boolean).join(' ').slice(0, 200);
   const url = `https://places.geo.${AWS_LOCATION_REGION}.amazonaws.com/v2/search-text?${new URLSearchParams({
     key: AWS_LOCATION_API_KEY
@@ -1322,9 +2310,9 @@ async function discoverCompaniesFromAmazonLocation({ niche, city, district, limi
         Language: 'pl',
         IntendedUse: 'SingleUse',
         AdditionalFeatures: ['Contact'],
-        BiasPosition: [21.0122, 52.2297],
+        BiasPosition: cityPreset ? [cityPreset.lng, cityPreset.lat] : [21.0122, 52.2297],
         Filter: {
-          IncludeCountries: ['POL']
+          IncludeCountries: [includeCountry]
         }
       })
     });
@@ -1430,18 +2418,20 @@ function amazonLocationItemToCompany(item, { niche, city, district, sourceFocus 
 async function discoverCompaniesFromGooglePlacesExpanded({ niche, city, district, limit, sourceFocus, onProgress }) {
   const cityIsWarsaw = isWarsawCity(city);
   const districts = district ? [district] : cityIsWarsaw ? ['', ...DEFAULT_WARSAW_DISTRICTS] : [''];
-  const perQueryLimit = Math.min(20, Math.max(5, Math.ceil(limit / Math.min(districts.length, 6))));
+  const queryNiches = district ? [niche] : buildSearchPhrasesForNiche(niche);
+  const queryPlans = queryNiches.flatMap((queryNiche) => districts.map((districtName) => ({ queryNiche, districtName })));
+  const perQueryLimit = Math.min(20, Math.max(5, Math.ceil(limit / Math.min(queryPlans.length, 8))));
   const discoveries = [];
   const warnings = [];
 
-  for (const districtName of districts) {
+  for (const { queryNiche, districtName } of queryPlans) {
     const collectedCount = uniqueCompanies(discoveries.flatMap((item) => item.companies || [])).length;
     if (collectedCount >= limit) break;
 
     try {
       discoveries.push(
         await discoverCompaniesFromGooglePlaces({
-          niche,
+          niche: queryNiche,
           city,
           district: districtName,
           limit: perQueryLimit,
@@ -1627,18 +2617,20 @@ async function discoverCompaniesFromPublicSearchExpanded({ niche, city, district
   }
 
   const districtQueries = isWarsawCity(city) ? ['', ...DEFAULT_WARSAW_DISTRICTS.slice(0, 8)] : [''];
+  const queryNiches = buildSearchPhrasesForNiche(niche);
+  const queryPlans = queryNiches.flatMap((queryNiche) => districtQueries.map((districtName) => ({ queryNiche, districtName })));
   const discoveries = [];
   const warnings = [];
-  const perDistrictLimit = Math.min(24, Math.max(10, Math.ceil(limit / Math.min(districtQueries.length, 4))));
+  const perDistrictLimit = Math.min(24, Math.max(8, Math.ceil(limit / Math.min(queryPlans.length, 8))));
 
-  for (const districtName of districtQueries) {
+  for (const { queryNiche, districtName } of queryPlans) {
     const collectedCount = uniqueCompanies(discoveries.flatMap((item) => item.companies || [])).length;
     if (collectedCount >= limit) break;
 
     try {
       discoveries.push(
         await discoverCompaniesFromPublicSearch({
-          niche,
+          niche: queryNiche,
           city,
           district: districtName,
           limit: perDistrictLimit,
@@ -1894,7 +2886,11 @@ async function enrichPrimaryCompaniesSmart(primaryCompanies, { warnings = [] } =
 
   return mapLimit(baseCompanies, 3, async (company) => {
     try {
-      return await crossVerifyPrimaryCompany(company, warnings);
+      return await withTimeout(
+        crossVerifyPrimaryCompany(company, warnings),
+        CROSS_VERIFY_TIMEOUT_MS,
+        `Cross-check timeout after ${Math.round(CROSS_VERIFY_TIMEOUT_MS / 1000)}s`
+      );
     } catch (error) {
       warnings.push(`Cross-check skipped ${company.company || company.source_profile || 'company'}: ${error.message || 'unknown error'}`);
       return company;
@@ -2184,7 +3180,7 @@ async function fetchText(url, timeoutMs) {
     const response = await fetch(url, {
       signal: controller.signal,
       headers: {
-        'user-agent': 'Mozilla/5.0 WarsawSiteParser/1.0',
+        'user-agent': 'Mozilla/5.0 AuraParser/1.0',
         accept: 'text/html,application/xhtml+xml'
       }
     });
@@ -2374,7 +3370,7 @@ async function discoverCompaniesFromOpenAIInternet({ niche, city, district, limi
   }
 
   const maxCompanies = Math.min(limit, 10);
-  const query = [niche, district, city, 'firmy kontakt strona instagram Warszawa'].filter(Boolean).join(' ');
+  const query = [niche, district, city, 'firmy kontakt strona instagram'].filter(Boolean).join(' ');
   const focusHints = {
     internet: 'Use public websites, company pages, directories, booking pages and social profiles as discovery sources.',
     directories: 'Prioritize public directories and company catalog pages.',
@@ -2387,7 +3383,7 @@ async function discoverCompaniesFromOpenAIInternet({ niche, city, district, limi
     {
       role: 'system',
       content:
-        'Find real, active local companies in Warsaw from public internet sources. Return only valid JSON. Do not invent companies. Each company must have at least one source URL, official website, public profile, phone, email or address.'
+        'Find real, active local companies in the requested city and category from public internet sources. Return only valid JSON. Do not invent companies. Each company must have at least one source URL, official website, public profile, phone, email or address.'
     },
     {
       role: 'user',
@@ -2405,7 +3401,7 @@ async function discoverCompaniesFromOpenAIInternet({ niche, city, district, limi
               {
                 company: 'name',
                 niche: 'category',
-                city: 'Warszawa',
+                city: city || 'city',
                 district: 'district if known',
                 address: 'address if known',
                 phone: 'phone if public',
@@ -2902,7 +3898,7 @@ async function discoverWebsiteWithOpenAI(item, model) {
     {
       role: 'system',
       content:
-        'Find whether a Warsaw local business has its own official website. Use web search. Exclude directories, maps, social networks, marketplaces and booking platforms unless they are the only presence. Return only JSON.'
+        'Find whether this local business has its own official website. Use the declared city, address, phone and identifiers. Exclude directories, maps, social networks, marketplaces and booking platforms unless they are the only presence. Return only JSON.'
     },
     {
       role: 'user',
@@ -3356,10 +4352,13 @@ async function analyzeWithOpenAI(item, parsed, heuristic, resolution, model) {
   }
 }
 
-async function analyzeSiteCardWithOpenAI({ item, parsed, websiteResolution, heuristic, model }) {
+async function analyzeSiteCardWithOpenAI({ item, parsed, websiteResolution, heuristic, model, language = 'ru', workerId = '' }) {
   if (!openai) return null;
+  const outputLanguage = ['ru', 'pl', 'en'].includes(String(language || '').toLowerCase()) ? String(language).toLowerCase() : 'ru';
+  const outputLanguageName = { ru: 'Russian', pl: 'Polish', en: 'English' }[outputLanguage];
 
   const payload = {
+    output_language: outputLanguage,
     company: {
       name: item.company || 'UNKNOWN',
       legal_name: item.legal_name || 'UNKNOWN',
@@ -3409,7 +4408,8 @@ async function analyzeSiteCardWithOpenAI({ item, parsed, websiteResolution, heur
       'Every personalized claim must be supported by company name, category, city, website status, reviews/rating, services, address, contacts or parsed website evidence from this payload.',
       'If the official website is found but weak, frame the offer as redesign/improvement, not as no-website.',
       'If company/category/site match is uncertain, mention manual verification in risks_or_skip_reasons.',
-      'Offer only website creation or website redesign. Do not offer ads, CRM, automation, SEO packages or marketing under key.'
+      'Offer only website creation or website redesign. Do not offer ads, CRM, automation, SEO packages or marketing under key.',
+      `Write all user-facing analysis fields in ${outputLanguageName}. Keep first_message_ru in Russian and first_message_pl in Polish for compatibility.`
     ]
   };
 
@@ -3417,7 +4417,7 @@ async function analyzeSiteCardWithOpenAI({ item, parsed, websiteResolution, heur
     {
       role: 'system',
       content:
-        'You create a fact-checked, personalized website-opportunity analysis for one local company card. Use only the provided parser facts; do not invent missing facts, services, owners, prices, years, team size, locations, awards or problems. If evidence is weak, say UNKNOWN and lower confidence. Base personalization on exact evidence: company name, category, city/district, address, phone/email, reviews/rating, services, source profile, website status, selected URL, parsed pages and domain verification. If website_status is WEBSITE_FOUND, FREE_SUBDOMAIN, ONE_PAGE_PLACEHOLDER or UNCERTAIN, explain the exact status and recommend redesign/improvement only when justified. If there is category/company/site mismatch risk, put it in risks_or_skip_reasons and evidence_used. first_message_pl must sound natural in Polish and mention at least two verified facts; first_message_ru must do the same in Russian. Write ALL other text field values (company_summary, main_problem, why_website_needed, problems_solved_by_site, recommended_structure, required_features, existing_materials, missing_materials, personal_argument, recommended_offer, risks_or_skip_reasons, evidence_used) in Russian. Return only JSON matching the schema.'
+        `You create a fact-checked, personalized website-opportunity analysis for one local company card. Use only the provided parser facts; do not invent missing facts, services, owners, prices, years, team size, locations, awards or problems. If evidence is weak, say UNKNOWN and lower confidence. Base personalization on exact evidence: company name, category, city/district, address, phone/email, reviews/rating, services, source profile, website status, selected URL, parsed pages and domain verification. If website_status is WEBSITE_FOUND, FREE_SUBDOMAIN, ONE_PAGE_PLACEHOLDER or UNCERTAIN, explain the exact status and recommend redesign/improvement only when justified. If there is category/company/site mismatch risk, put it in risks_or_skip_reasons and evidence_used. Write user-facing analysis fields in ${outputLanguageName}. first_message_pl must sound natural in Polish and mention at least two verified facts; first_message_ru must do the same in Russian. Return only JSON matching the schema.`
     },
     {
       role: 'user',
@@ -3539,6 +4539,16 @@ async function analyzeSiteCardWithOpenAI({ item, parsed, websiteResolution, heur
   });
 
   const result = JSON.parse(response.output_text);
+  const usage = response.usage || {};
+  store.logAiUsage({
+    workerId,
+    feature: 'lead_analysis',
+    model,
+    promptTokens: usage.input_tokens || 0,
+    completionTokens: usage.output_tokens || 0,
+    totalTokens: usage.total_tokens || 0,
+    estimatedCost: estimateAiCost(model, usage.input_tokens || 0, usage.output_tokens || 0)
+  });
   return {
     ...result,
     ai_analysis_status: 'COMPLETED',
@@ -4023,6 +5033,20 @@ async function mapLimit(items, limit, mapper) {
 
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
   return results;
+}
+
+async function withTimeout(promise, timeoutMs, message) {
+  let timer = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(message || 'Timeout')), timeoutMs);
+      })
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 function collectSocialLinks(item) {

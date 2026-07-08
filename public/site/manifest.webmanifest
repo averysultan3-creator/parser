@@ -1,0 +1,21 @@
+{
+  "name": "Aura Global",
+  "short_name": "Aura Global",
+  "description": "Premium digital agency website for Aura Global.",
+  "start_url": "/site/?lang=pl",
+  "display": "standalone",
+  "background_color": "#050807",
+  "theme_color": "#050807",
+  "icons": [
+    {
+      "src": "/site/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/site/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

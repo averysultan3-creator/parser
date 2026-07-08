@@ -1,15 +1,18 @@
 {
-  "name": "warsaw-site-parser",
+  "name": "aura-parser",
   "version": "1.0.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "node server.js",
     "start": "node server.js",
+    "build": "node scripts/build-check.mjs",
     "smoke": "node scripts/smoke-test.mjs",
     "smoke:boot": "node scripts/smoke-test.mjs --boot",
     "smoke:pages": "node scripts/pages-smoke.mjs",
-    "smoke:pages:mobile": "node scripts/pages-mobile-smoke.mjs"
+    "smoke:pages:mobile": "node scripts/pages-mobile-smoke.mjs",
+    "usability": "node scripts/usability-test.mjs",
+    "usability:public": "node scripts/usability-test.mjs https://parser.auraglobal-merchants.com"
   },
   "dependencies": {
     "cheerio": "^1.0.0",

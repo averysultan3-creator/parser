@@ -6,14 +6,15 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
-    <title>Warsaw Site Parser</title>
-    <link rel="stylesheet" href="./styles.css?v=20260707-8" />
+    <title>Aura Parser</title>
+    <link rel="stylesheet" href="./styles.css?v=20260707-9" />
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js" defer></script>
-    <script src="./patch.js?v=20260707-3" defer></script>
-    <script src="./app.js?v=20260707-8" defer></script>
+    <script src="./patch.js?v=20260707-4" defer></script>
+    <script src="./app.js?v=20260708-3" defer></script>
   </head>
   <body>
-    <div class="app-shell">
+    <div id="authOverlay" class="auth-overlay hidden-field"></div>
+    <div class="app-shell hidden-field" id="appShell">
       <main class="workspace">
         <section class="control-panel" aria-label="Controls">
           <div class="sidebar-title">
@@ -46,16 +47,18 @@
 
               <label class="model-field">
                 <span>Город</span>
-                <select id="discoverCity">
-                  <option value="Warszawa">Warszawa</option>
-                  <option value="Krakow">Kraków</option>
-                  <option value="Wroclaw">Wrocław</option>
-                  <option value="Gdansk">Gdańsk</option>
-                  <option value="Poznan">Poznań</option>
-                  <option value="Kyiv">Kyiv</option>
-                  <option value="Dnipro">Dnipro</option>
-                  <option value="">Своя / без города (по стране)</option>
-                </select>
+                <input id="discoverCity" list="citySuggestions" type="text" value="Warszawa" autocomplete="off" placeholder="Wpisz miasto..." />
+                <datalist id="citySuggestions">
+                  <option value="Warszawa">Warszawa, Mazowieckie, Polska</option>
+                  <option value="Kraków">Kraków, Małopolskie, Polska</option>
+                  <option value="Wrocław">Wrocław, Dolnośląskie, Polska</option>
+                  <option value="Poznań">Poznań, Wielkopolskie, Polska</option>
+                  <option value="Gdańsk">Gdańsk, Pomorskie, Polska</option>
+                  <option value="Łódź">Łódź, Łódzkie, Polska</option>
+                  <option value="Katowice">Katowice, Śląskie, Polska</option>
+                  <option value="Lublin">Lublin, Lubelskie, Polska</option>
+                  <option value="Rzeszów">Rzeszów, Podkarpackie, Polska</option>
+                </datalist>
               </label>
 
               <input id="discoverDistrict" type="hidden" value="" />
@@ -194,10 +197,18 @@
         <section class="results-panel" aria-label="Results">
           <div class="main-header">
             <div>
-              <h1>Warsaw Site Parser</h1>
-              <p>Поиск компаний в Варшаве и проверка наличия сайтов</p>
+              <h1>Aura Parser</h1>
+              <p>Поиск компаний в разных городах и проверка наличия сайтов</p>
             </div>
             <div class="main-actions">
+              <a id="parserAcademyLink" class="secondary-button" href="./academy/">
+                <i data-lucide="graduation-cap"></i>
+                Akademia
+              </a>
+              <button id="parserLogoutButton" class="secondary-button" type="button">
+                <i data-lucide="log-out"></i>
+                Wyloguj
+              </button>
               <button id="languageToggle" class="language-toggle" type="button" title="Zmien jezyk / Сменить язык">
                 <span class="language-toggle-option active" data-lang-code="ru">RU</span>
                 <span class="language-toggle-option" data-lang-code="pl">PL</span>
@@ -233,7 +244,7 @@
               </button>
             </div>
             <div class="table-wrap">
-              <table>
+              <table id="historyTable">
                 <thead>
                   <tr>
                     <th>Дата</th>
@@ -354,7 +365,7 @@
             </div>
 
             <div class="table-wrap">
-              <table>
+              <table id="resultsTable">
                 <thead>
                   <tr>
                     <th>Lead</th>

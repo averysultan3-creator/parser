@@ -21,9 +21,14 @@ const state = {
 
 const leadStatusOptions = [
   { value: 'new', ru: 'Новый / сброшен', pl: 'Nowy / reset' },
+  { value: 'seen', ru: 'Уже видели', pl: 'Juz widziany' },
   { value: 'reserved', ru: 'В работе', pl: 'W pracy' },
   { value: 'analyzed', ru: 'Проверен', pl: 'Sprawdzony' },
   { value: 'called', ru: 'Позвонили', pl: 'Dzwonione' },
+  { value: 'contacted', ru: 'Контакт был', pl: 'Skontaktowano' },
+  { value: 'exported', ru: 'Экспортирован', pl: 'Wyeksportowany' },
+  { value: 'skipped', ru: 'Пропущен', pl: 'Pominiety' },
+  { value: 'rejected', ru: 'Отклонен', pl: 'Odrzucony' },
   { value: 'meeting_booked', ru: 'Встреча назначена', pl: 'Spotkanie' },
   { value: 'not_interested', ru: 'Не интересно', pl: 'Nie zainteresowany' },
   { value: 'bad_fit', ru: 'Слабый лид', pl: 'Slaby lead' },
@@ -35,6 +40,7 @@ const leadStatusOptions = [
 const API_BASE_STORAGE_KEY = 'parserApiBase';
 const LANGUAGE_STORAGE_KEY = 'parserLanguage';
 const WORKER_ID_STORAGE_KEY = 'auraWorkerId';
+const SESSION_TOKEN_STORAGE_KEY = 'auraSessionToken';
 const TUNNEL_BOOTSTRAP_RETRIES = 4;
 const TUNNEL_BOOTSTRAP_DELAY_MS = 1200;
 const CONFIG_BOOTSTRAP_RETRIES = 6;
@@ -42,14 +48,127 @@ const CONFIG_BOOTSTRAP_DELAY_MS = 1500;
 let configBootstrapTimer = null;
 let configBootstrapAttempts = 0;
 
-function getWorkerId() {
-  let workerId = localStorage.getItem(WORKER_ID_STORAGE_KEY);
-  if (!workerId) {
-    workerId = `worker-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-    localStorage.setItem(WORKER_ID_STORAGE_KEY, workerId);
-  }
-  return workerId;
+let session = null; // { role, workerId, displayName, language } once logged in
+
+function getAuthToken() {
+  return localStorage.getItem(SESSION_TOKEN_STORAGE_KEY) || '';
 }
+
+function setAuthToken(token) {
+  if (token) localStorage.setItem(SESSION_TOKEN_STORAGE_KEY, token);
+}
+
+function clearAuthToken() {
+  localStorage.removeItem(SESSION_TOKEN_STORAGE_KEY);
+}
+
+function authHeaders() {
+  const token = getAuthToken();
+  return token ? { authorization: `Bearer ${token}` } : {};
+}
+
+function getWorkerId() {
+  return session?.workerId || '';
+}
+
+async function fetchSessionProfile() {
+  const token = getAuthToken();
+  if (!token) return null;
+  try {
+    const response = await fetch(apiUrl('/api/auth/me'), { headers: { ...authHeaders() } });
+    if (!response.ok) return null;
+    return await response.json();
+  } catch {
+    return null;
+  }
+}
+
+function renderLoginScreen(message = '') {
+  const overlay = document.querySelector('#authOverlay');
+  if (!overlay) return;
+  overlay.classList.remove('hidden-field');
+  document.querySelector('#appShell')?.classList.add('hidden-field');
+  overlay.innerHTML = `
+    <form class="auth-card" id="loginForm">
+      <div>
+        <p class="eyebrow">Aura Parser</p>
+        <h2>${currentLanguage === 'pl' ? 'Logowanie' : 'Вход'}</h2>
+        <p class="muted">${
+          currentLanguage === 'pl'
+            ? 'Wpisz login i haslo otrzymane od administratora.'
+            : 'Введите логин и пароль, которые выдал администратор.'
+        }</p>
+      </div>
+      ${message ? `<div class="feedback bad">${escapeHtml(message)}</div>` : ''}
+      <label>Login<input name="login" autocomplete="username" required /></label>
+      <label>Password<input name="password" type="password" autocomplete="current-password" required /></label>
+      <button class="primary-button" type="submit">${currentLanguage === 'pl' ? 'Zaloguj' : 'Войти'}</button>
+    </form>
+  `;
+}
+
+function hideLoginScreen() {
+  document.querySelector('#authOverlay')?.classList.add('hidden-field');
+  document.querySelector('#appShell')?.classList.remove('hidden-field');
+}
+
+async function handleLoginSubmit(event) {
+  event.preventDefault();
+  const form = event.target;
+  const submitButton = form.querySelector('button[type="submit"]');
+  const login = form.login.value.trim();
+  const password = form.password.value;
+  submitButton.disabled = true;
+  submitButton.textContent = currentLanguage === 'pl' ? 'Loguje...' : 'Вхожу...';
+  try {
+    const response = await fetch(apiUrl('/api/auth/login'), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ login, password })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      renderLoginScreen(data.error || (currentLanguage === 'pl' ? 'Bledny login lub haslo.' : 'Неверный логин или пароль.'));
+      wireLoginForm();
+      return;
+    }
+    setAuthToken(data.token);
+    session = { role: data.role, workerId: data.workerId, displayName: data.displayName, language: data.language };
+    hideLoginScreen();
+    await init();
+  } catch {
+    renderLoginScreen(currentLanguage === 'pl' ? 'Serwer nie odpowiada.' : 'Сервер не отвечает.');
+    wireLoginForm();
+  }
+}
+
+function wireLoginForm() {
+  document.querySelector('#loginForm')?.addEventListener('submit', handleLoginSubmit);
+}
+
+async function handleLogout() {
+  fetch(apiUrl('/api/auth/logout'), { method: 'POST', headers: { ...authHeaders() } }).catch(() => {});
+  clearAuthToken();
+  session = null;
+  window.location.reload();
+}
+
+async function bootstrapSession() {
+  const profile = await fetchSessionProfile();
+  if (!profile) {
+    clearAuthToken();
+    renderLoginScreen();
+    wireLoginForm();
+    return false;
+  }
+  session = profile;
+  hideLoginScreen();
+  return true;
+}
+
+bootstrapSession().then((ok) => {
+  if (ok) init();
+});
 
 const copy = {
   ru: {
@@ -73,7 +192,7 @@ const copy = {
     importCsv: 'Импорт CSV',
     sampleData: 'Пример данных',
     csvData: 'CSV данные',
-    titleSubtitle: 'Поиск компаний в Варшаве и проверка наличия сайтов',
+    titleSubtitle: 'Поиск компаний в разных городах и проверка наличия сайтов',
     exportCsv: 'Экспорт CSV',
     results: 'Результаты',
     history: 'История парсов',
@@ -159,7 +278,7 @@ const copy = {
     importCsv: 'Import CSV',
     sampleData: 'Przykładowe dane',
     csvData: 'Dane CSV',
-    titleSubtitle: 'Wyszukiwanie firm w Warszawie i sprawdzanie stron',
+    titleSubtitle: 'Wyszukiwanie firm w różnych miastach i sprawdzanie stron',
     exportCsv: 'Eksport CSV',
     results: 'Wyniki',
     history: 'Historia parsowań',
@@ -267,8 +386,57 @@ function sleep(ms) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
+function isPrivateHostname(hostname) {
+  const host = String(hostname || '').trim().toLowerCase();
+  if (!host) return false;
+  if (host === 'localhost' || host === '127.0.0.1' || host === '::1') return true;
+  if (/^10\./.test(host)) return true;
+  if (/^192\.168\./.test(host)) return true;
+  if (/^172\.(1[6-9]|2\d|3[0-1])\./.test(host)) return true;
+  if (/^\[::1\]$/.test(host)) return true;
+  return false;
+}
+
+function isLocalDevelopmentHost() {
+  return window.location.protocol === 'file:' || isPrivateHostname(window.location.hostname);
+}
+
+function isPrivateApiBase(value) {
+  const cleaned = normalizeApiBase(value);
+  if (!cleaned) return false;
+  try {
+    return isPrivateHostname(new URL(cleaned).hostname);
+  } catch {
+    return false;
+  }
+}
+
+function getSearchingResultsText() {
+  return currentLanguage === 'pl'
+    ? 'Wyszukiwanie trwa. Pierwsze wyniki pojawią się tutaj automatycznie.'
+    : 'Поиск идет. Первые результаты появятся здесь автоматически.';
+}
+
+function getEmptyDiscoveryMessage(payload) {
+  const duplicateCount = Number(payload?.result?.meta?.duplicateCount || payload?.meta?.duplicateCount || 0);
+  const requestedNewCount = Number(payload?.result?.meta?.requestedNewCount || payload?.meta?.requestedNewLeads || 0);
+  const searchStatus = String(payload?.result?.meta?.searchStatus || payload?.meta?.searchStatus || '').toLowerCase();
+  if (searchStatus === 'exhausted' && duplicateCount > 0) {
+    return currentLanguage === 'pl'
+      ? `Sprawdziliśmy wszystkie dostępne warianty. Nowych firm dla limitu ${requestedNewCount || '-'} nie znaleziono, duplikatów pominięto ${duplicateCount}.`
+      : `Проверили все доступные варианты. Новых компаний под лимит ${requestedNewCount || '-'} не найдено, дублей пропущено ${duplicateCount}.`;
+  }
+  if (duplicateCount > 0) {
+    return currentLanguage === 'pl'
+      ? `Znaleziono firmy, ale wszystkie (${duplicateCount}) już są w bazie jako duplikaty. Otwórz historię albo zmień kategorię, miasto lub źródło.`
+      : `Компании найдены, но все (${duplicateCount}) уже есть в базе как дубли. Откройте историю или измените категорию, город либо источник.`;
+  }
+  return currentLanguage === 'pl'
+    ? 'Firmy nie zostały znalezione. Spróbuj innej kategorii albo źródła.'
+    : 'Компании не найдены. Попробуйте другую категорию или источник.';
+}
+
 function resolveApiBase() {
-  // 1) URL-параметр ?api=https://my-backend.example — сохраняется и используется дальше.
   try {
     const fromQuery = new URLSearchParams(window.location.search).get('api');
     if (fromQuery !== null) {
@@ -280,22 +448,34 @@ function resolveApiBase() {
       if (cleaned) return cleaned;
     }
   } catch {}
+
   const onPages = window.location.hostname.endsWith('github.io');
+  const localDev = isLocalDevelopmentHost();
   if (window.location.protocol === 'file:') {
     return 'http://localhost:4317';
   }
   if (onPages) return '';
-  // 2) Локально разрешаем сохранённый адрес backend.
+  if (!localDev) {
+    try {
+      localStorage.removeItem(API_BASE_STORAGE_KEY);
+    } catch {}
+    return '';
+  }
+
   try {
     const saved = normalizeApiBase(localStorage.getItem(API_BASE_STORAGE_KEY));
     if (saved) {
       try {
         if (new URL(saved).origin === window.location.origin) return '';
       } catch {}
+      if (!localDev && isPrivateApiBase(saved)) {
+        localStorage.removeItem(API_BASE_STORAGE_KEY);
+        return '';
+      }
       return saved;
     }
   } catch {}
-  // 3) По умолчанию локально пробуем localhost.
+
   return '';
 }
 
@@ -429,6 +609,11 @@ async function bootstrapApiBase() {
   }
 
   const onPagesOrFile = window.location.protocol === 'file:' || window.location.hostname.endsWith('github.io');
+  const localDev = isLocalDevelopmentHost();
+  if (!onPagesOrFile && !localDev) {
+    setApiBase('', { persist: true });
+    return '';
+  }
   if (onPagesOrFile) {
     const tunneled = await syncApiBaseFromTunnelConfig();
     if (tunneled) return getApiBase();
@@ -440,6 +625,10 @@ async function bootstrapApiBase() {
       try {
         if (new URL(saved).origin === window.location.origin) return getApiBase();
       } catch {}
+      if (!localDev && isPrivateApiBase(saved)) {
+        setApiBase('', { persist: true });
+        return getApiBase();
+      }
       if (await isApiBaseReachable(saved)) {
         setApiBase(saved, { persist: true });
         return saved;
@@ -447,7 +636,7 @@ async function bootstrapApiBase() {
     }
   } catch {}
 
-  if (!onPagesOrFile && window.location.protocol !== 'file:') {
+  if (!onPagesOrFile && localDev) {
     const localBase = 'http://localhost:4317';
     if (await isApiBaseReachable(localBase)) {
       setApiBase(localBase);
@@ -473,6 +662,7 @@ const els = {
   discoverNiche: document.querySelector('#discoverNiche'),
   discoverCountry: document.querySelector('#discoverCountry'),
   discoverCity: document.querySelector('#discoverCity'),
+  citySuggestions: document.querySelector('#citySuggestions'),
   discoverDistrict: document.querySelector('#discoverDistrict'),
   discoverRadius: document.querySelector('#discoverRadius'),
   discoverLimit: document.querySelector('#discoverLimit'),
@@ -506,6 +696,9 @@ const els = {
   sidebarHasEmail: document.querySelector('#sidebarHasEmail'),
   exportCsvButton: document.querySelector('#exportCsvButton'),
   headerExportCsvButton: document.querySelector('#headerExportCsvButton'),
+  parserAcademyLink: document.querySelector('#parserAcademyLink'),
+  parserAdminLink: document.querySelector('#parserAdminLink'),
+  parserLogoutButton: document.querySelector('#parserLogoutButton'),
   exportJsonButton: document.querySelector('#exportJsonButton'),
   languageToggle: document.querySelector('#languageToggle'),
   resultsBody: document.querySelector('#resultsBody'),
@@ -594,6 +787,34 @@ for (const option of categoryOptions) {
     if (lookupKey) categoryByLookup.set(lookupKey, option);
   });
 }
+
+const localCitySuggestions = [
+  ['Warszawa', 'Warszawa, Mazowieckie, Polska'],
+  ['Kraków', 'Kraków, Małopolskie, Polska'],
+  ['Łódź', 'Łódź, Łódzkie, Polska'],
+  ['Wrocław', 'Wrocław, Dolnośląskie, Polska'],
+  ['Poznań', 'Poznań, Wielkopolskie, Polska'],
+  ['Gdańsk', 'Gdańsk, Pomorskie, Polska'],
+  ['Gdynia', 'Gdynia, Pomorskie, Polska'],
+  ['Sopot', 'Sopot, Pomorskie, Polska'],
+  ['Szczecin', 'Szczecin, Zachodniopomorskie, Polska'],
+  ['Bydgoszcz', 'Bydgoszcz, Kujawsko-pomorskie, Polska'],
+  ['Lublin', 'Lublin, Lubelskie, Polska'],
+  ['Katowice', 'Katowice, Śląskie, Polska'],
+  ['Białystok', 'Białystok, Podlaskie, Polska'],
+  ['Rzeszów', 'Rzeszów, Podkarpackie, Polska'],
+  ['Toruń', 'Toruń, Kujawsko-pomorskie, Polska'],
+  ['Kielce', 'Kielce, Świętokrzyskie, Polska'],
+  ['Gliwice', 'Gliwice, Śląskie, Polska'],
+  ['Zabrze', 'Zabrze, Śląskie, Polska'],
+  ['Olsztyn', 'Olsztyn, Warmińsko-mazurskie, Polska'],
+  ['Opole', 'Opole, Opolskie, Polska'],
+  ['Zielona Góra', 'Zielona Góra, Lubuskie, Polska'],
+  ['Radom', 'Radom, Mazowieckie, Polska'],
+  ['Częstochowa', 'Częstochowa, Śląskie, Polska'],
+  ['Bielsko-Biała', 'Bielsko-Biała, Śląskie, Polska'],
+  ['Tychy', 'Tychy, Śląskie, Polska']
+];
 
 const inputCsvHeaders = [
   '_companyId',
@@ -707,11 +928,30 @@ function setOptionText(select, value, label) {
   if (option) option.textContent = label;
 }
 
+function updateCrossAppLinks() {
+  const apiBase = getApiBase();
+  const targets = [
+    [els.parserAcademyLink, './academy/'],
+    [els.parserAdminLink, './admin/']
+  ];
+
+  targets.forEach(([element, href]) => {
+    if (!element) return;
+    const url = new URL(href, window.location.href);
+    if (apiBase) url.searchParams.set('api', apiBase);
+    element.setAttribute('href', url.toString());
+  });
+
+  els.parserAdminLink?.classList.toggle('hidden-field', session?.role !== 'admin');
+}
+
 function applyLanguage(lang = currentLanguage, { persist = true } = {}) {
   currentLanguage = lang === 'pl' ? 'pl' : 'ru';
   if (persist) {
     try {
       localStorage.setItem(LANGUAGE_STORAGE_KEY, currentLanguage);
+      // Shared with Academy/Admin so switching language here carries over on navigation.
+      localStorage.setItem('auraLanguage', currentLanguage);
     } catch {}
   }
 
@@ -811,6 +1051,7 @@ function applyLanguage(lang = currentLanguage, { persist = true } = {}) {
   if (state.historyRuns.length || state.historyLoaded) renderHistory(state.historyRuns);
   renderResultsContext();
   renderIcons();
+  updateCrossAppLinks();
 }
 
 function applyStaticCopy() {
@@ -900,12 +1141,11 @@ function renderResultsContext() {
   `;
 }
 
-init();
-
 async function init() {
   setDiscoverStatus(currentLanguage === 'pl' ? 'Łączę backend i czytam tunnel.json...' : 'Подключаю backend и читаю tunnel.json...', 'work');
   await bootstrapApiBase();
   ensureResultsContext();
+  populateCitySuggestions(localCitySuggestions);
   populateCategoryPreset();
   els.discoverCategoryPreset.value = 'cat:hvac';
   els.sidebarHasSocial.checked = false;
@@ -915,10 +1155,32 @@ async function init() {
   els.resultFilterSite.value = 'no_site';
   applyLanguage(currentLanguage, { persist: false });
   await loadConfig();
+  loadCitySuggestions().catch(() => {});
   bindEvents();
   els.csvInput.value = sampleCsv;
   renderResultsContext();
   renderIcons();
+}
+
+function populateCitySuggestions(items) {
+  if (!els.citySuggestions) return;
+  els.citySuggestions.innerHTML = (items || [])
+    .map((item) => {
+      const value = Array.isArray(item) ? item[0] : item.cityName || item.value || '';
+      const label = Array.isArray(item) ? item[1] : item.displayName || [item.cityName, item.region, item.countryName].filter(Boolean).join(', ');
+      return `<option value="${escapeAttribute(value)}">${escapeHtml(label || value)}</option>`;
+    })
+    .join('');
+}
+
+async function loadCitySuggestions(query = '') {
+  const params = new URLSearchParams();
+  if (query) params.set('q', query);
+  if (els.discoverCountry?.value) params.set('country', els.discoverCountry.value);
+  const response = await fetch(apiUrl(`/api/location/suggestions?${params.toString()}`));
+  if (!response.ok) return;
+  const data = await response.json().catch(() => ({}));
+  if (Array.isArray(data.suggestions) && data.suggestions.length) populateCitySuggestions(data.suggestions);
 }
 
 function populateCategoryPreset() {
@@ -1105,6 +1367,11 @@ function bindEvents() {
     els.csvInput.value = sampleCsv;
   });
   els.discoverCategoryPreset.addEventListener('change', handleCategoryPresetChange);
+  els.discoverCity?.addEventListener('input', () => {
+    clearTimeout(els.discoverCity._suggestTimer);
+    els.discoverCity._suggestTimer = setTimeout(() => loadCitySuggestions(els.discoverCity.value.trim()).catch(() => {}), 250);
+  });
+  els.discoverCountry?.addEventListener('change', () => loadCitySuggestions(els.discoverCity.value.trim()).catch(() => {}));
   els.discoverButton.addEventListener('click', handlePrimaryAction);
   els.analyzeButton.addEventListener('click', runAnalysis);
   els.quickFindSitesButton.addEventListener('click', runAnalysis);
@@ -1128,6 +1395,12 @@ function bindEvents() {
   els.languageToggle?.addEventListener('click', () => {
     applyLanguage(currentLanguage === 'pl' ? 'ru' : 'pl');
   });
+  [els.parserAcademyLink, els.parserAdminLink].forEach((link) => {
+    link?.addEventListener('click', () => {
+      updateCrossAppLinks();
+    });
+  });
+  els.parserLogoutButton?.addEventListener('click', handleLogout);
 }
 
 function switchView(view) {
@@ -1143,7 +1416,9 @@ async function loadHistory() {
   state.historyLoadingRunId = null;
   els.historyBody.innerHTML = `<tr class="empty-row"><td colspan="8">${escapeHtml(tr('historyLoading'))}</td></tr>`;
   try {
-    const response = await fetch(apiUrl('/api/history/runs'));
+    const response = await fetch(apiUrl('/api/history/runs'), {
+      headers: { 'x-worker-id': getWorkerId(), ...authHeaders() }
+    });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Не удалось загрузить историю.');
     state.historyRuns = Array.isArray(data.runs) ? data.runs : [];
@@ -1198,7 +1473,9 @@ async function openHistoryRun(runId) {
   try {
     state.historyLoadingRunId = runId;
     renderHistory(state.historyRuns);
-    const response = await fetch(apiUrl(`/api/history/runs/${runId}`));
+    const response = await fetch(apiUrl(`/api/history/runs/${runId}`), {
+      headers: { 'x-worker-id': getWorkerId(), ...authHeaders() }
+    });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Не удалось открыть запуск.');
 
@@ -1331,7 +1608,9 @@ function applyDiscoveryPreview(companies) {
 }
 
 async function fetchDiscoveryJob(jobId) {
-  const response = await fetch(apiUrl(`/api/discover/jobs/${jobId}`));
+  const response = await fetch(apiUrl(`/api/discover/jobs/${jobId}`), {
+    headers: { 'x-worker-id': getWorkerId(), ...authHeaders() }
+  });
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || 'Ошибка чтения статуса поиска.');
   return data;
@@ -1441,7 +1720,7 @@ async function runDiscovery() {
   try {
     const response = await fetch(apiUrl('/api/discover'), {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', ...authHeaders() },
       body: JSON.stringify({
         niche: niches[0],
         niches,
@@ -1460,12 +1739,13 @@ async function runDiscovery() {
 
     if (data.jobId) {
       state.discoveryJobId = data.jobId;
+      await loadHistory().catch(() => {});
       const job = await waitForDiscoveryCompletion(data.jobId);
       const companies = Array.isArray(job.companies) ? job.companies : [];
       if (!companies.length) {
         await loadHistory();
-        setDiscoverStatus('Компании не найдены. Попробуйте другую категорию или источник.', 'warn');
-        setStatus('Поиск завершился без результатов.', 'warn');
+        setDiscoverStatus(getEmptyDiscoveryMessage(job), 'warn');
+        setStatus(getEmptyDiscoveryMessage(job), 'warn');
         return;
       }
 
@@ -1491,7 +1771,7 @@ async function runDiscovery() {
     const companies = data.companies || [];
     if (!companies.length) {
       await loadHistory();
-      setDiscoverStatus('Компании не найдены. Попробуйте другую категорию или источник.', 'warn');
+      setDiscoverStatus(getEmptyDiscoveryMessage(data), 'warn');
       return;
     }
 
@@ -1684,6 +1964,8 @@ function buildPreviewResult(company, index, idPrefix = 'discovery') {
   const hasSocial = hasAnySocial(input);
   const sourceProfile = input.source_profile || input.website_url || '';
   const websiteStatus = hasWebsite ? 'UNCERTAIN' : hasSocial ? 'SOCIAL_ONLY' : 'DIRECTORY_ONLY';
+  const categoryRelevanceScore = Number(input.category_relevance_score || 0);
+  const categoryMatch = input.category_match || (categoryRelevanceScore >= 70 ? 'match' : categoryRelevanceScore >= 40 ? 'partial' : '');
   const score = Math.min(
     88,
     42 +
@@ -1692,7 +1974,8 @@ function buildPreviewResult(company, index, idPrefix = 'discovery') {
       (input.phone ? 12 : 0) +
       (input.email ? 8 : 0) +
       (input.review_count ? 8 : 0) +
-      (input.rating ? 4 : 0)
+      (input.rating ? 4 : 0) +
+      (categoryRelevanceScore ? Math.round((categoryRelevanceScore - 50) / 5) : 0)
   );
 
   return {
@@ -1718,9 +2001,19 @@ function buildPreviewResult(company, index, idPrefix = 'discovery') {
       website_quality_score: 0,
       lead_score: score,
       lead_category: score >= 75 ? 'A' : score >= 55 ? 'B' : 'C',
+      category_match: categoryMatch,
+      category_relevance_score: categoryRelevanceScore || null,
+      category_relevance_reason: input.category_relevance_reason || '',
+      positive_category_signals: input.positive_category_signals || [],
+      negative_category_signals: input.negative_category_signals || [],
+      should_call: input.should_call !== false,
+      actual_business_type: input.actual_business_type || '',
       priority: score >= 75 ? 'A' : score >= 55 ? 'B' : 'C',
       requires_manual_review: true,
-      main_problem: 'Компания найдена. Нажмите "Найти сайты", чтобы проверить сайт, контакты и качество страницы.',
+      main_problem:
+        categoryMatch === 'partial'
+          ? 'Компания найдена, но категория требует ручной проверки перед звонком.'
+          : 'Компания найдена. Нажмите "Найти сайты", чтобы проверить сайт, контакты и качество страницы.',
       recommended_website: 'Лендинг / Визитка',
       recommended_package: 'Проверить сайт, контакты, услуги, доверие и форму заявки.',
       business_activity: 'FOUND_BY_DISCOVERY',
@@ -2088,7 +2381,8 @@ function normalizeHeader(value) {
 
 function renderResults() {
   if (!state.results.length) {
-    els.resultsBody.innerHTML = `<tr class="empty-row"><td colspan="8">${escapeHtml(tr('resultsEmpty'))}</td></tr>`;
+    const emptyText = state.discoveryRunning ? getSearchingResultsText() : tr('resultsEmpty');
+    els.resultsBody.innerHTML = `<tr class="empty-row"><td colspan="8">${escapeHtml(emptyText)}</td></tr>`;
     els.filterSummary.textContent = tr('filtersNone');
     return;
   }
@@ -2322,6 +2616,7 @@ function leadCompanyId(result) {
 }
 
 function currentLeadStatus(result) {
+  if (result?._duplicate) return 'duplicate';
   return result?.input?.lead_status || result?.lead_status || (result?.analysis ? 'analyzed' : 'reserved');
 }
 
@@ -2371,9 +2666,26 @@ function renderOverviewTab(result) {
   const size = companySize(result);
   const social = input.social_profiles || {};
   const services = Array.isArray(input.services) ? input.services : [];
+  const positiveSignals = Array.isArray(a.positive_category_signals) ? a.positive_category_signals : parseList(a.positive_category_signals || '');
+  const negativeSignals = Array.isArray(a.negative_category_signals) ? a.negative_category_signals : parseList(a.negative_category_signals || '');
+  const categoryMatchLabel =
+    a.category_match === 'mismatch'
+      ? currentLanguage === 'pl' ? 'Nie pasuje' : 'Не подходит'
+      : a.category_match === 'partial'
+        ? currentLanguage === 'pl' ? 'Sprawdzić ręcznie' : 'Проверить вручную'
+        : currentLanguage === 'pl' ? 'Pasuje' : 'Подходит';
   return `
     <div class="detail-card-grid">
       ${renderLeadWorkflowCard(result)}
+
+      <section class="detail-card">
+        <h3>Category match</h3>
+        <p><strong>${escapeHtml(categoryMatchLabel)}</strong> · ${escapeHtml(String(a.category_relevance_score ?? '-'))}/100</p>
+        <p class="muted-text">${escapeHtml(a.category_relevance_reason || 'Category checked by keywords and source signals.')}</p>
+        ${negativeSignals.length ? `<p><strong>Negative:</strong> ${escapeHtml(negativeSignals.join(', '))}</p>` : ''}
+        ${positiveSignals.length ? `<p><strong>Positive:</strong> ${escapeHtml(positiveSignals.join(', '))}</p>` : ''}
+        <p><strong>Should call:</strong> ${a.should_call === false ? 'Nie / Нет' : 'Tak / Да'}</p>
+      </section>
 
       <section class="detail-card">
         <h3>Краткая информация</h3>
@@ -2613,7 +2925,8 @@ async function updateLeadWorkflowStatus(result, status) {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      'x-worker-id': getWorkerId()
+      'x-worker-id': getWorkerId(),
+      ...authHeaders()
     },
     body: JSON.stringify({ status, workerId: getWorkerId() })
   });
@@ -2649,10 +2962,15 @@ async function runSiteAiAnalysis(resultId) {
   try {
     const response = await fetch(apiUrl('/api/ai/site-analysis'), {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: {
+        'content-type': 'application/json',
+        'x-worker-id': getWorkerId(),
+        ...authHeaders()
+      },
       body: JSON.stringify({
         result: compactResultForAiRequest(result),
-        model: els.modelInput.value.trim()
+        model: els.modelInput.value.trim(),
+        language: currentLanguage
       })
     });
     const data = await response.json();
@@ -2724,6 +3042,9 @@ function exportCsv() {
       'domain_verification_score',
       'lead_score',
       'lead_category',
+      'category_relevance_score',
+      'category_match',
+      'should_call',
       'priority',
       'recommended_package',
       'main_problem',
@@ -2744,6 +3065,9 @@ function exportCsv() {
       result.websiteResolution?.domainVerification?.score || 0,
       result.analysis.lead_score,
       result.analysis.lead_category,
+      result.analysis.category_relevance_score || '',
+      result.analysis.category_match || '',
+      result.analysis.should_call === false ? 'false' : 'true',
       result.analysis.priority,
       result.analysis.recommended_package,
       result.analysis.main_problem,
@@ -2754,11 +3078,11 @@ function exportCsv() {
     ])
   ];
 
-  downloadText('warsaw-site-parser-results.csv', rows.map(csvLine).join('\n'), 'text/csv');
+  downloadText('aura-parser-results.csv', rows.map(csvLine).join('\n'), 'text/csv');
 }
 
 function exportJson() {
-  downloadText('warsaw-site-parser-results.json', JSON.stringify(getFilteredResults(), null, 2), 'application/json');
+  downloadText('aura-parser-results.json', JSON.stringify(getFilteredResults(), null, 2), 'application/json');
 }
 
 function csvLine(row) {

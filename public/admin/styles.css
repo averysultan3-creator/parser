@@ -16,6 +16,10 @@
   box-sizing: border-box;
 }
 
+.hidden-field {
+  display: none !important;
+}
+
 body {
   margin: 0;
   background:
@@ -24,6 +28,12 @@ body {
     var(--bg);
   color: var(--ink);
   font-family: "Aptos", "Segoe UI", Verdana, sans-serif;
+}
+
+body.auth-locked .admin-shell {
+  opacity: 0;
+  pointer-events: none;
+  user-select: none;
 }
 
 button,
@@ -329,6 +339,149 @@ tr.selected-row td {
   padding-top: 16px;
 }
 
+.small-button {
+  border-radius: 10px;
+  font-size: 12px;
+  min-height: 34px;
+  padding: 7px 10px;
+}
+
+.period-select {
+  width: auto;
+}
+
+.ok-chip {
+  background: #edf7f1;
+  color: var(--green);
+}
+
+.danger-chip {
+  background: #fff0ed;
+  color: var(--red);
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.modal-backdrop {
+  align-items: center;
+  background: rgba(16, 35, 28, 0.38);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  overflow: auto;
+  padding: 20px;
+  position: fixed;
+  z-index: 1000;
+}
+
+.modal-card {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  box-shadow: var(--shadow);
+  max-width: 900px;
+  padding: 20px;
+  width: min(900px, 100%);
+}
+
+.lead-modal-card {
+  max-width: 1180px;
+}
+
+.modal-head {
+  align-items: flex-start;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.lead-modal-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.worker-form {
+  display: grid;
+  gap: 12px;
+  max-width: 520px;
+}
+
+.auth-card {
+  display: grid;
+  gap: 14px;
+  max-width: 460px;
+}
+
+.worker-form label {
+  display: grid;
+  font-weight: 800;
+  gap: 6px;
+}
+
+.auth-card label {
+  display: grid;
+  font-weight: 800;
+  gap: 6px;
+}
+
+.feedback {
+  border-radius: 14px;
+  font-weight: 800;
+  padding: 11px 12px;
+}
+
+.feedback.bad {
+  background: #fff0ed;
+  color: var(--red);
+}
+
+.worker-form .checkbox-row {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+}
+
+.worker-form .checkbox-row input {
+  min-height: auto;
+}
+
+.toast-host {
+  bottom: 18px;
+  display: grid;
+  gap: 10px;
+  position: fixed;
+  right: 18px;
+  z-index: 1100;
+}
+
+.toast {
+  background: var(--dark);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  color: #fff;
+  font-weight: 800;
+  max-width: 360px;
+  padding: 12px 14px;
+}
+
+.toast.ok {
+  background: var(--green);
+}
+
+.toast.warn {
+  background: var(--red);
+}
+
+.audit-item {
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
 @media (max-width: 980px) {
   .admin-header,
   .panel-top,
@@ -340,7 +493,8 @@ tr.selected-row td {
   }
 
   .stats-grid,
-  .two-columns {
+  .two-columns,
+  .lead-modal-grid {
     grid-template-columns: 1fr;
   }
 

@@ -1,5 +1,47 @@
 const WORKER_ID_STORAGE_KEY = 'auraWorkerId';
+const SESSION_TOKEN_STORAGE_KEY = 'auraSessionToken';
 const ACADEMY_PROGRESS_KEY = 'auraAcademyProgress';
+const API_BASE_STORAGE_KEY = 'parserApiBase';
+const TUNNEL_BOOTSTRAP_RETRIES = 4;
+const TUNNEL_BOOTSTRAP_DELAY_MS = 1200;
+const SITE_PAGE_URL = 'https://parser.auraglobal-merchants.com/site/#top';
+
+let session = null; // { role, workerId, displayName, language } once logged in
+
+function getAuthToken() {
+  return localStorage.getItem(SESSION_TOKEN_STORAGE_KEY) || '';
+}
+
+function setAuthToken(token) {
+  if (token) localStorage.setItem(SESSION_TOKEN_STORAGE_KEY, token);
+}
+
+function clearAuthToken() {
+  localStorage.removeItem(SESSION_TOKEN_STORAGE_KEY);
+}
+
+function authHeaders() {
+  const token = getAuthToken();
+  return token ? { authorization: `Bearer ${token}` } : {};
+}
+
+function normalizeWorkerIdValue(value) {
+  return String(value || '').trim().slice(0, 80);
+}
+
+function getWorkerIdOverride() {
+  if (session?.role !== 'admin') return '';
+  try {
+    const params = new URLSearchParams(window.location.search);
+    return normalizeWorkerIdValue(params.get('workerId') || localStorage.getItem(WORKER_ID_STORAGE_KEY) || '');
+  } catch {
+    return normalizeWorkerIdValue(localStorage.getItem(WORKER_ID_STORAGE_KEY) || '');
+  }
+}
+
+function getWorkerId() {
+  return session?.role === 'admin' ? getWorkerIdOverride() : session?.workerId || '';
+}
 
 const modules = [
   { id: 'start', title: 'Start', type: 'start' },
@@ -375,7 +417,21 @@ const finalQuestions = [
   ['Kiedy przekazać lead managerowi?', ['Gdy jest zainteresowanie i konkretny następny krok', 'Po każdym nieodebranym', 'Nigdy'], 0]
 ];
 
+const ACADEMY_VIEWS = ['home', 'training', 'servicesCatalog', 'scriptsExamples', 'parserGuide', 'aiTraining'];
+
+function readViewFromUrl() {
+  const raw = new URLSearchParams(window.location.search).get('section') || 'home';
+  return ACADEMY_VIEWS.includes(raw) ? raw : 'home';
+}
+
+function syncViewToUrl(view) {
+  const url = new URL(window.location.href);
+  url.searchParams.set('section', view);
+  window.history.replaceState(null, '', url);
+}
+
 const state = {
+  academyView: readViewFromUrl(),
   activeModule: 0,
   activeService: 'websites',
   serviceStep: 0,
@@ -386,28 +442,220 @@ const state = {
     displayName: '',
     completedModules: [],
     quizScores: {},
-    serviceProgress: {}
+    serviceProgress: {},
+    sectionsVisited: {},
+    servicesOpened: [],
+    servicesCompleted: [],
+    scriptsOpened: []
   },
-  finalAnswers: {}
+  finalAnswers: {},
+  catalogServiceId: null,
+  scriptsExpandedIds: [],
+  scriptsTab: 'scripts',
+  aiTraining: {
+    personas: [],
+    sessionId: null,
+    clientType: null,
+    personaLabel: '',
+    messages: [],
+    sending: false,
+    result: null,
+    history: [],
+    view: 'picker',
+    selectedHistoryId: null,
+    error: ''
+  }
 };
 
 const els = {
+  academyToolbar: document.querySelector('#academyToolbar'),
   moduleNav: document.querySelector('#moduleNav'),
   lessonHost: document.querySelector('#lessonHost'),
   overallProgress: document.querySelector('#overallProgress'),
   completedModules: document.querySelector('#completedModules'),
   nextLesson: document.querySelector('#nextLesson'),
   avgScore: document.querySelector('#avgScore'),
-  workerName: document.querySelector('#workerName')
+  workerName: document.querySelector('#workerName'),
+  academyLogoutButton: document.querySelector('#academyLogoutButton')
 };
 
-function getWorkerId() {
-  let workerId = localStorage.getItem(WORKER_ID_STORAGE_KEY);
-  if (!workerId) {
-    workerId = `worker-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-    localStorage.setItem(WORKER_ID_STORAGE_KEY, workerId);
+function normalizeApiBase(value) {
+  if (!value) return '';
+  let cleaned = String(value).trim().replace(/\/+$/, '');
+  if (!cleaned) return '';
+  if (!/^https?:\/\//i.test(cleaned)) cleaned = `https://${cleaned}`;
+  return cleaned;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function isPrivateHostname(hostname) {
+  const host = String(hostname || '').trim().toLowerCase();
+  if (!host) return false;
+  if (host === 'localhost' || host === '127.0.0.1' || host === '::1') return true;
+  if (/^10\./.test(host)) return true;
+  if (/^192\.168\./.test(host)) return true;
+  if (/^172\.(1[6-9]|2\d|3[0-1])\./.test(host)) return true;
+  if (/^\[::1\]$/.test(host)) return true;
+  return false;
+}
+
+function clearPrivateParserApiBase() {
+  if (window.location.protocol === 'file:' || isPrivateHostname(window.location.hostname)) return;
+  const saved = normalizeApiBase(localStorage.getItem(API_BASE_STORAGE_KEY));
+  if (!saved) return;
+  try {
+    if (isPrivateHostname(new URL(saved).hostname)) localStorage.removeItem(API_BASE_STORAGE_KEY);
+  } catch {
+    localStorage.removeItem(API_BASE_STORAGE_KEY);
   }
-  return workerId;
+}
+
+function resolveApiBase() {
+  try {
+    const fromQuery = new URLSearchParams(window.location.search).get('api');
+    if (fromQuery !== null) {
+      const cleaned = normalizeApiBase(fromQuery);
+      if (cleaned) localStorage.setItem(API_BASE_STORAGE_KEY, cleaned);
+      else localStorage.removeItem(API_BASE_STORAGE_KEY);
+      return cleaned;
+    }
+  } catch {}
+
+  if (window.location.protocol === 'file:') return 'http://localhost:4317';
+  clearPrivateParserApiBase();
+
+  try {
+    const saved = normalizeApiBase(localStorage.getItem(API_BASE_STORAGE_KEY));
+    if (!saved) return '';
+    try {
+      if (new URL(saved).origin === window.location.origin) return '';
+    } catch {}
+    return saved;
+  } catch {
+    return '';
+  }
+}
+
+let apiBase = resolveApiBase();
+let apiBootstrapPromise = null;
+
+function getApiBase() {
+  return apiBase;
+}
+
+function persistApiBase(value) {
+  try {
+    if (value) localStorage.setItem(API_BASE_STORAGE_KEY, value);
+    else localStorage.removeItem(API_BASE_STORAGE_KEY);
+  } catch {}
+}
+
+function setApiBase(value, { persist = false } = {}) {
+  apiBase = normalizeApiBase(value);
+  if (persist) persistApiBase(apiBase);
+  return apiBase;
+}
+
+function apiUrl(path) {
+  return `${getApiBase()}${path}`;
+}
+
+async function isApiBaseReachable(base) {
+  const cleaned = normalizeApiBase(base);
+  if (!cleaned) return false;
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), 5000);
+  try {
+    const response = await fetch(`${cleaned}/api/health`, { cache: 'no-store', signal: controller.signal });
+    return response.ok;
+  } catch {
+    return false;
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+}
+
+async function bootstrapApiBase() {
+  const queryBase = (() => {
+    try {
+      return normalizeApiBase(new URLSearchParams(window.location.search).get('api'));
+    } catch {
+      return '';
+    }
+  })();
+  if (queryBase && (await isApiBaseReachable(queryBase))) {
+    setApiBase(queryBase, { persist: true });
+    return queryBase;
+  }
+
+  const onPagesOrFile = window.location.protocol === 'file:' || window.location.hostname.endsWith('github.io');
+  if (onPagesOrFile) {
+    try {
+      const response = await fetch(`../tunnel.json?t=${Date.now()}`, { cache: 'no-store' });
+      if (response.ok) {
+        const data = await response.json();
+        const cleaned = normalizeApiBase(data.api || data.url || '');
+        if (cleaned) {
+          setApiBase(cleaned, { persist: true });
+          return cleaned;
+        }
+      }
+    } catch {}
+  }
+
+  try {
+    const saved = normalizeApiBase(localStorage.getItem(API_BASE_STORAGE_KEY));
+    if (saved) {
+      try {
+        if (new URL(saved).origin === window.location.origin) {
+          setApiBase('', { persist: true });
+          return '';
+        }
+      } catch {}
+      try {
+        if (!onPagesOrFile && isPrivateHostname(new URL(saved).hostname)) {
+          setApiBase('', { persist: true });
+          return '';
+        }
+      } catch {}
+      if (await isApiBaseReachable(saved)) {
+        setApiBase(saved, { persist: true });
+        return saved;
+      }
+    }
+  } catch {}
+
+  return getApiBase();
+}
+
+function wireCrossAppLinks() {
+  clearPrivateParserApiBase();
+  const parserLink = document.querySelector('#academyParserLink');
+  const adminLink = document.querySelector('#academyAdminLink');
+  const brandLink = document.querySelector('.brand');
+
+  const bind = (link, basePath) => {
+    if (!link) return;
+    const updateHref = () => {
+      const url = new URL(basePath, window.location.href);
+      if (getApiBase()) url.searchParams.set('api', getApiBase());
+      link.href = url.toString();
+    };
+    updateHref();
+    link.addEventListener('click', () => {
+      clearPrivateParserApiBase();
+      updateHref();
+    });
+  };
+
+  bind(parserLink, '../');
+  bind(adminLink, '../admin/');
+  bind(brandLink, '../');
+
+  adminLink?.classList.toggle('hidden-field', session?.role !== 'admin');
 }
 
 function escapeHtml(value) {
@@ -419,12 +667,18 @@ function escapeHtml(value) {
     .replace(/'/g, '&#039;');
 }
 
+function escapeAttribute(value) {
+  return escapeHtml(value).replace(/`/g, '&#096;');
+}
+
 async function api(path, options = {}) {
-  const response = await fetch(path, {
+  if (apiBootstrapPromise) await apiBootstrapPromise;
+  const response = await fetch(apiUrl(path), {
     ...options,
     headers: {
       'content-type': 'application/json',
-      'x-worker-id': state.progress.userId,
+      'x-worker-id': state.progress.userId || getWorkerId(),
+      ...authHeaders(),
       ...(options.headers || {})
     }
   });
@@ -434,26 +688,44 @@ async function api(path, options = {}) {
 }
 
 async function loadProgress() {
+  state.progress.userId = getWorkerId();
+  state.progress.displayName = session?.role === 'admin' ? state.progress.userId || session?.displayName || '' : session?.displayName || '';
+  if (state.progress.userId) localStorage.setItem(WORKER_ID_STORAGE_KEY, state.progress.userId);
+
   const fallback = JSON.parse(localStorage.getItem(ACADEMY_PROGRESS_KEY) || 'null');
-  if (fallback) state.progress = { ...state.progress, ...fallback, userId: getWorkerId() };
+  if (fallback) {
+    state.progress = {
+      ...state.progress,
+      ...fallback,
+      userId: getWorkerId(),
+      displayName: session?.role === 'admin' ? getWorkerId() || session?.displayName || '' : session?.displayName || ''
+    };
+  }
 
   try {
-    const data = await api(`/api/academy/progress?userId=${encodeURIComponent(state.progress.userId)}`);
-    state.progress = { ...state.progress, ...(data.progress || {}) };
+    const data = await api(`/api/academy/progress?workerId=${encodeURIComponent(state.progress.userId)}`);
+    state.progress = {
+      ...state.progress,
+      ...(data.progress || {}),
+      userId: state.progress.userId,
+      displayName:
+        data.progress?.displayName ||
+        (session?.role === 'admin' ? state.progress.userId || session?.displayName || '' : session?.displayName || '')
+    };
   } catch {
     // Local fallback keeps the academy usable if the backend is restarting.
   }
 
-  els.workerName.value = state.progress.displayName || state.progress.userId;
+  if (els.workerName) els.workerName.value = state.progress.displayName || state.progress.userId;
 }
 
-async function saveProgress() {
+async function saveProgress(extra = {}) {
   state.progress.lastActiveAt = new Date().toISOString();
   localStorage.setItem(ACADEMY_PROGRESS_KEY, JSON.stringify(state.progress));
   try {
     await api('/api/academy/progress', {
       method: 'POST',
-      body: JSON.stringify(state.progress)
+      body: JSON.stringify({ ...state.progress, ...extra })
     });
   } catch {}
 }
@@ -493,6 +765,11 @@ function renderShellStats() {
 }
 
 function renderNav() {
+  els.moduleNav.classList.toggle('hidden-field', state.academyView !== 'training');
+  if (state.academyView !== 'training') {
+    els.moduleNav.innerHTML = '';
+    return;
+  }
   const done = completedSet();
   els.moduleNav.innerHTML = modules
     .map((module, index) => {
@@ -508,6 +785,714 @@ function renderNav() {
       `;
     })
     .join('');
+}
+
+const TOOLBAR_TABS = [
+  { view: 'home', icon: 'house', key: 'nav_home' },
+  { view: 'training', icon: 'graduation-cap', key: 'nav_training' },
+  { view: 'servicesCatalog', icon: 'briefcase-business', key: 'nav_services' },
+  { view: 'scriptsExamples', icon: 'messages-square', key: 'nav_scripts' },
+  { view: 'parserGuide', icon: 'radar', key: 'nav_parser_guide' },
+  { view: 'aiTraining', icon: 'bot', key: 'nav_ai_training' }
+];
+
+function renderToolbar() {
+  if (!els.academyToolbar) return;
+  const tr = window.AuraI18n?.tr || ((key) => key);
+  const lang = window.AuraI18n?.getLanguage ? window.AuraI18n.getLanguage() : 'pl';
+  const tabsHtml = TOOLBAR_TABS.map(
+    (tab) => `
+      <button class="toolbar-tab ${state.academyView === tab.view ? 'active' : ''}" data-academy-view="${tab.view}">
+        <i data-lucide="${tab.icon}"></i>
+        <span>${escapeHtml(tr(tab.key))}</span>
+      </button>
+    `
+  ).join('');
+  const langHtml = `
+    <div class="toolbar-lang" data-lang-switch>
+      ${['pl', 'ru', 'en']
+        .map((code) => `<button class="lang-chip ${lang === code ? 'active' : ''}" data-set-lang="${code}">${code.toUpperCase()}</button>`)
+        .join('')}
+    </div>
+  `;
+  els.academyToolbar.innerHTML = `<div class="toolbar-tabs">${tabsHtml}</div>${langHtml}`;
+}
+
+function moduleIndexById(moduleId) {
+  const index = modules.findIndex((module) => module.id === moduleId);
+  return index >= 0 ? index : 0;
+}
+
+function sectionStatusLabel(percent) {
+  const tr = window.AuraI18n?.tr || ((key) => key);
+  if (percent >= 100) return tr('status_completed');
+  if (percent > 0) return tr('status_in_progress');
+  return tr('status_not_started');
+}
+
+function trainingPercent() {
+  return Math.round((completedSet().size / modules.length) * 100);
+}
+
+function servicesPercent() {
+  const total = Array.isArray(window.AURA_SERVICES) ? window.AURA_SERVICES.length : 22;
+  const done = (state.progress.servicesCompleted || []).length;
+  return total ? Math.round((done / total) * 100) : 0;
+}
+
+function scriptsPercent() {
+  const total = (window.AURA_SCRIPTS?.scripts?.length || 12) + (window.AURA_SCRIPTS?.examples?.length || 10);
+  const opened = (state.progress.scriptsOpened || []).length;
+  return total ? Math.min(100, Math.round((opened / total) * 100)) : 0;
+}
+
+function parserGuidePercent() {
+  return state.progress.sectionsVisited?.parserGuide ? 100 : 0;
+}
+
+function aiTrainingPercent() {
+  const sessions = state.aiTraining.history.length;
+  return Math.min(100, sessions * 34);
+}
+
+function portalCard({ title, body, icon, view, percent = 0 }) {
+  const tr = window.AuraI18n?.tr || ((key) => key);
+  return `
+    <a class="portal-card" href="#" data-academy-view="${escapeHtml(view)}">
+      <span class="portal-icon"><i data-lucide="${escapeHtml(icon || 'circle-dot')}"></i></span>
+      <h3>${escapeHtml(title)}</h3>
+      <p>${escapeHtml(body)}</p>
+      <div class="portal-card-progress">
+        <div class="progress-bar"><span style="width:${percent}%"></span></div>
+        <div class="portal-card-meta">
+          <span>${percent}%</span>
+          <span>${escapeHtml(sectionStatusLabel(percent))}</span>
+        </div>
+      </div>
+      <span class="portal-card-open">${escapeHtml(tr('btn_open'))}</span>
+    </a>
+  `;
+}
+
+function renderPortalHome() {
+  const tr = window.AuraI18n?.tr || ((key) => key);
+  const overall = Math.round(
+    (trainingPercent() + servicesPercent() + scriptsPercent() + parserGuidePercent() + aiTrainingPercent()) / 5
+  );
+  return `
+    <div class="lesson-top">
+      <div>
+        <p class="eyebrow">Aura Sales Academy</p>
+        <h2>Witaj, ${escapeHtml(state.progress.displayName || state.progress.userId)}</h2>
+        <p>
+          Akademia to Twój portal wdrożeniowy: poznajesz nasze usługi, uczysz się rozmawiać z klientem,
+          trenujesz z AI i wiesz, jak pracować z parserem. Postęp zapisuje się automatycznie i jest
+          widoczny dla administratora.
+        </p>
+        <p class="portal-overall">Ogólny postęp: <strong>${overall}%</strong></p>
+      </div>
+      <div class="lesson-top-actions">
+        <button class="primary" data-academy-view="training">${escapeHtml(tr('btn_continue_learning'))}</button>
+        <a class="secondary-link" href="../">${escapeHtml(tr('btn_go_to_parser'))}</a>
+      </div>
+    </div>
+    <div class="portal-grid">
+      ${portalCard({
+        title: tr('nav_training'),
+        body: 'Moduły od startu pracy do finalnego testu. Ten wynik widzi administrator.',
+        icon: 'graduation-cap',
+        view: 'training',
+        percent: trainingPercent()
+      })}
+      ${portalCard({
+        title: tr('nav_services'),
+        body: 'Pełny katalog usług: co to jest, komu proponować, ile to może kosztować i jak o tym mówić.',
+        icon: 'briefcase-business',
+        view: 'servicesCatalog',
+        percent: servicesPercent()
+      })}
+      ${portalCard({
+        title: tr('nav_scripts'),
+        body: 'Gotowe skrypty rozmów, obsługa obiekcji i przykłady prawdziwych rozmów z klientami.',
+        icon: 'messages-square',
+        view: 'scriptsExamples',
+        percent: scriptsPercent()
+      })}
+      ${portalCard({
+        title: tr('nav_parser_guide'),
+        body: 'Jak wybrać kategorię, czytać AI score i poprawnie ustawiać statusy leadów.',
+        icon: 'radar',
+        view: 'parserGuide',
+        percent: parserGuidePercent()
+      })}
+      ${portalCard({
+        title: tr('nav_ai_training'),
+        body: 'Trenuj rozmowy z AI, które gra różne typy klientów, i otrzymuj ocenę po każdej sesji.',
+        icon: 'bot',
+        view: 'aiTraining',
+        percent: aiTrainingPercent()
+      })}
+    </div>
+  `;
+}
+
+const PRICE_DEFLECTION_PHRASE_PL =
+  '„Dokładna cena zależy od zakresu, ale proste projekty zaczynają się od około 400–500 EUR. Najlepiej krótko sprawdzić, czego Państwo potrzebują, i wtedy przygotować konkretną propozycję.”';
+
+function mapSiteServiceToAcademyService(service, category = {}) {
+  const details = service.details || {};
+  const title = service.name || service.title || 'Usługa';
+  const short = service.short || details.what || '';
+  const problem = details.problem || 'Klient nie ma jasnego systemu pozyskiwania zapytań online.';
+  const gives = details.gives || 'Więcej zaufania, lepszy kontakt i większą szansę na zapytanie.';
+  return {
+    id: service.id,
+    icon: service.icon || 'briefcase-business',
+    title,
+    whatIsIt: details.what || short,
+    howWeDoIt: details.process || 'Najpierw sprawdzamy obecną sytuację firmy, potem dobieramy zakres i wdrażamy rozwiązanie krok po kroku.',
+    whoItsFor: details.forWho || 'Firmy usługowe i lokalne biznesy, które chcą wyglądać profesjonalnie i zdobywać więcej zapytań.',
+    problemSolved: problem,
+    whyClientNeedsIt: gives,
+    howItBringsSales: gives,
+    preCallSignals: [
+      problem,
+      details.forWho ? `Firma pasuje do grupy: ${details.forWho}` : '',
+      details.priceFactors ? `Cena zależy od: ${details.priceFactors}` : ''
+    ].filter(Boolean),
+    whatToCheck: {
+      website: 'Czy firma ma własną stronę i czy jasno pokazuje ofertę.',
+      googleBusiness: 'Czy profil Google ma aktualne dane, zdjęcia i opinie.',
+      leadForms: 'Czy klient ma prostą drogę do kontaktu: telefon, formularz, rezerwacja.',
+      automation: 'Czy zapytania nie giną między mailem, telefonem i wiadomościami.'
+    },
+    simpleExplanation: short || `To usługa z kategorii ${category.label || 'Aura Global'}, która pomaga firmie zdobywać i obsługiwać zapytania.`,
+    whatToPropose: `Krótka konsultacja i sprawdzenie, czy ${title.toLowerCase()} ma sens dla tej firmy.`,
+    priceRange: service.price || 'indywidualnie',
+    priceDepends: [details.priceFactors || 'Zakres projektu, liczba elementów i integracje.'],
+    packages: [
+      { tier: 'Start', price: service.price || 'indywidualnie', description: short || details.what || title },
+      { tier: 'Growth', price: 'po konsultacji', description: 'Szerszy zakres dopasowany do celu biznesowego klienta.' }
+    ],
+    faq: [
+      {
+        question: 'Czy można podać dokładną cenę przez telefon?',
+        answer: 'Nie. Caller podaje widełki i umawia konsultację, bo cena zależy od zakresu.'
+      },
+      {
+        question: 'Co jest celem rozmowy?',
+        answer: 'Zrozumieć sytuację klienta i umówić krótką rozmowę ze specjalistą.'
+      }
+    ],
+    objections: [
+      {
+        objection: 'Proszę wysłać ofertę.',
+        response: 'Żeby oferta miała sens, najlepiej najpierw krótko sprawdzić, czego firma realnie potrzebuje.'
+      },
+      {
+        objection: 'Ile to kosztuje?',
+        response: PRICE_DEFLECTION_PHRASE_PL
+      }
+    ],
+    exampleDialogue: `Sprzedawca: Dzień dobry, widzę że firma działa aktywnie online. Chciałem krótko sprawdzić, czy ${title.toLowerCase()} jest teraz dla Państwa tematem.\nKlient: A o co dokładnie chodzi?\nSprzedawca: Nie chcę sprzedawać przez telefon. Najpierw sprawdzamy, czy jest konkretny problem i czy warto przygotować propozycję. Możemy umówić 15 minut konsultacji?`,
+    whenNotToPitch: 'Nie proponuj, jeśli firma ma już mocne rozwiązanie w tym obszarze, dobrą widoczność, kontakt działa bez problemu i nie ma jasnego powodu do rozmowy.'
+  };
+}
+
+async function loadServicesCatalog() {
+  if (Array.isArray(window.AURA_SERVICES) && window.AURA_SERVICES.length) return;
+  try {
+    const module = await import('../site/data/services.js');
+    const categories = Array.isArray(module.serviceCategories) ? module.serviceCategories : [];
+    window.AURA_SERVICES = categories.flatMap((category) =>
+      (category.services || []).map((service) => mapSiteServiceToAcademyService(service, category))
+    );
+  } catch {
+    window.AURA_SERVICES = [];
+  }
+}
+
+function markServiceOpened(serviceId) {
+  const opened = new Set(state.progress.servicesOpened || []);
+  if (opened.has(serviceId)) return;
+  opened.add(serviceId);
+  state.progress.servicesOpened = [...opened];
+  saveProgress({ servicesOpened: [serviceId] });
+}
+
+function renderServiceCard(service) {
+  const tr = window.AuraI18n?.tr || ((key) => key);
+  const opened = (state.progress.servicesOpened || []).includes(service.id);
+  const completed = (state.progress.servicesCompleted || []).includes(service.id);
+  const badge = completed ? tr('status_completed') : opened ? tr('status_in_progress') : tr('status_not_started');
+  return `
+    <a class="portal-card service-card ${completed ? 'done' : ''}" href="#" data-open-service="${escapeHtml(service.id)}">
+      <span class="portal-icon"><i data-lucide="${escapeHtml(service.icon || 'briefcase-business')}"></i></span>
+      <h3>${escapeHtml(service.title)}</h3>
+      <p>${escapeHtml(service.whatIsIt || '')}</p>
+      <span class="service-badge">${escapeHtml(badge)}</span>
+    </a>
+  `;
+}
+
+function renderServiceDetail(service) {
+  const tr = window.AuraI18n?.tr || ((key) => key);
+  const completed = (state.progress.servicesCompleted || []).includes(service.id);
+  const checkList = service.whatToCheck || {};
+  const checkLabels = {
+    website: 'Strona internetowa',
+    googleBusiness: 'Google Business Profile',
+    ads: 'Reklamy',
+    socialMedia: 'Social media',
+    leadForms: 'Formularze zgłoszeniowe',
+    siteSpeed: 'Szybkość strony',
+    automation: 'Brak automatyzacji'
+  };
+  return `
+    <div class="lesson-top">
+      <div>
+        <p class="eyebrow">${escapeHtml(tr('nav_services'))}</p>
+        <h2>${escapeHtml(service.title)}</h2>
+      </div>
+      <div class="lesson-top-actions">
+        <button class="secondary" data-back-to-services>← Wszystkie usługi</button>
+        ${completed ? '' : `<button class="primary" data-complete-service="${escapeHtml(service.id)}">Oznacz jako przerobione</button>`}
+      </div>
+    </div>
+    <div class="service-detail">
+      <div class="content-card"><h3>1. Co to jest?</h3><p>${escapeHtml(service.whatIsIt)}</p></div>
+      <div class="content-card"><h3>2. Jak robimy to dla klienta?</h3><p>${escapeHtml(service.howWeDoIt)}</p></div>
+      <div class="content-card"><h3>3. Dla kogo to jest?</h3><p>${escapeHtml(service.whoItsFor)}</p></div>
+      <div class="content-card"><h3>4. Jaki problem klienta rozwiązuje?</h3><p>${escapeHtml(service.problemSolved)}</p></div>
+      <div class="content-card"><h3>5. Dlaczego klientowi jest to potrzebne?</h3><p>${escapeHtml(service.whyClientNeedsIt)}</p></div>
+      <div class="content-card"><h3>6. Jak to pomaga zdobywać więcej zapytań/sprzedaży?</h3><p>${escapeHtml(service.howItBringsSales)}</p></div>
+      <div class="content-card">
+        <h3>7. Jak rozpoznać przed telefonem, że klient tego potrzebuje?</h3>
+        <ul>${(service.preCallSignals || []).map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>
+      </div>
+      <div class="content-card">
+        <h3>8. Na co patrzeć u klienta?</h3>
+        <ul>${Object.entries(checkList)
+          .map(([key, value]) => `<li><strong>${escapeHtml(checkLabels[key] || key)}:</strong> ${escapeHtml(value)}</li>`)
+          .join('')}</ul>
+      </div>
+      <div class="content-card"><h3>9. Jak wytłumaczyć prostymi słowami?</h3><p>${escapeHtml(service.simpleExplanation)}</p></div>
+      <div class="content-card"><h3>10. Co konkretnie proponować?</h3><p>${escapeHtml(service.whatToPropose)}</p></div>
+      <div class="content-card">
+        <h3>11-12. Ile to kosztuje i od czego zależy cena?</h3>
+        <p><strong>${escapeHtml(service.priceRange)}</strong></p>
+        <ul>${(service.priceDepends || []).map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>
+        <p class="price-deflection">${PRICE_DEFLECTION_PHRASE_PL}</p>
+      </div>
+      <div class="content-card">
+        <h3>13. Typowe pakiety</h3>
+        <div class="package-grid">
+          ${(service.packages || [])
+            .map(
+              (pkg) => `
+                <div class="package-card">
+                  <span class="package-tier">${escapeHtml(pkg.tier)}</span>
+                  <strong>${escapeHtml(pkg.price)}</strong>
+                  <p>${escapeHtml(pkg.description)}</p>
+                </div>
+              `
+            )
+            .join('')}
+        </div>
+      </div>
+      <div class="content-card">
+        <h3>14. Częste pytania klienta</h3>
+        ${(service.faq || []).map((item) => `<p><strong>${escapeHtml(item.question)}</strong><br>${escapeHtml(item.answer)}</p>`).join('')}
+      </div>
+      <div class="content-card">
+        <h3>15-16. Obiekcje i jak na nie odpowiedzieć</h3>
+        ${(service.objections || [])
+          .map((item) => `<p><strong>„${escapeHtml(item.objection)}”</strong><br>→ ${escapeHtml(item.response)}</p>`)
+          .join('')}
+      </div>
+      <div class="content-card">
+        <h3>17. Przykład krótkiej rozmowy</h3>
+        <pre class="dialogue-block">${escapeHtml(service.exampleDialogue)}</pre>
+      </div>
+      <div class="content-card"><h3>18. Kiedy NIE proponować tej usługi?</h3><p>${escapeHtml(service.whenNotToPitch)}</p></div>
+    </div>
+  `;
+}
+
+function renderServicesCatalogSection() {
+  const services = Array.isArray(window.AURA_SERVICES) ? window.AURA_SERVICES : [];
+  if (state.catalogServiceId) {
+    const service = services.find((item) => item.id === state.catalogServiceId);
+    if (service) {
+      markServiceOpened(service.id);
+      return renderServiceDetail(service);
+    }
+  }
+  return `
+    <div class="lesson-top">
+      <div>
+        <p class="eyebrow">Baza wiedzy</p>
+        <h2>Nasze usługi</h2>
+        <p>
+          Poznaj każdą usługę na tyle, żeby nie brzmieć jak robot: rozumieć problem klienta, umieć
+          wytłumaczyć wartość i doprowadzić rozmowę do spotkania. Dokładnej ceny nie obiecujemy przez
+          telefon — zadaniem rozmowy jest umówić konsultację.
+        </p>
+        <p class="price-deflection">${PRICE_DEFLECTION_PHRASE_PL}</p>
+        <div class="action-row">
+          <a class="primary" href="${escapeAttribute(SITE_PAGE_URL)}" target="_blank" rel="noreferrer">Otwórz stronę z ofertą</a>
+        </div>
+      </div>
+    </div>
+    ${
+      services.length
+        ? `<div class="portal-grid services-grid">${services.map(renderServiceCard).join('')}</div>`
+        : `<p class="muted">Ładowanie katalogu usług...</p>`
+    }
+  `;
+}
+
+function markScriptOpened(itemId) {
+  const opened = new Set(state.progress.scriptsOpened || []);
+  if (opened.has(itemId)) return;
+  opened.add(itemId);
+  state.progress.scriptsOpened = [...opened];
+  saveProgress({ scriptsOpened: [itemId] });
+}
+
+function renderScriptCard(script) {
+  const expanded = state.scriptsExpandedIds.includes(script.id);
+  if (!expanded) {
+    return `
+      <a class="portal-card script-card" href="#" data-toggle-script="${escapeHtml(script.id)}">
+        <span class="portal-icon"><i data-lucide="message-circle"></i></span>
+        <h3>${escapeHtml(script.title)}</h3>
+        <p>${escapeHtml(script.situation)}</p>
+        <span class="portal-card-open">Rozwiń</span>
+      </a>
+    `;
+  }
+  return `
+    <div class="content-card script-card-expanded">
+      <div class="lesson-top">
+        <h3>${escapeHtml(script.title)}</h3>
+        <button class="secondary" data-toggle-script="${escapeHtml(script.id)}">Zwiń</button>
+      </div>
+      <p><strong>Sytuacja:</strong> ${escapeHtml(script.situation)}</p>
+      <p><strong>Cel:</strong> ${escapeHtml(script.goal)}</p>
+      <p><strong>Gotowa fraza:</strong> „${escapeHtml(script.readyPhrase)}”</p>
+      <p class="feedback bad"><strong>Zły przykład:</strong> ${escapeHtml(script.badExample)}</p>
+      <p class="feedback ok"><strong>Dobry przykład:</strong> ${escapeHtml(script.goodExample)}</p>
+      <p><strong>Logika:</strong> ${escapeHtml(script.logic)}</p>
+      <p><strong>Czego nie mówić:</strong> ${escapeHtml(script.whatNotToSay)}</p>
+      <p><strong>Jak przejść dalej:</strong> ${escapeHtml(script.howToTransition)}</p>
+    </div>
+  `;
+}
+
+function renderExampleCard(example) {
+  const expanded = state.scriptsExpandedIds.includes(example.id);
+  if (!expanded) {
+    return `
+      <a class="portal-card script-card" href="#" data-toggle-script="${escapeHtml(example.id)}">
+        <span class="portal-icon"><i data-lucide="scroll-text"></i></span>
+        <h3>${escapeHtml(example.title)}</h3>
+        <p>${escapeHtml((example.transcript || '').slice(0, 90))}…</p>
+        <span class="portal-card-open">Rozwiń</span>
+      </a>
+    `;
+  }
+  return `
+    <div class="content-card script-card-expanded">
+      <div class="lesson-top">
+        <h3>${escapeHtml(example.title)}</h3>
+        <button class="secondary" data-toggle-script="${escapeHtml(example.id)}">Zwiń</button>
+      </div>
+      <pre class="dialogue-block">${escapeHtml(example.transcript)}</pre>
+      <p class="feedback ok"><strong>Co zrobił dobrze:</strong> ${escapeHtml(example.whatWasGood)}</p>
+      <p class="feedback bad"><strong>Co zrobił źle:</strong> ${escapeHtml(example.whatWasBad)}</p>
+      <p><strong>Jak mogło być lepiej:</strong> ${escapeHtml(example.howItCouldBeBetter)}</p>
+      <p><strong>Wynik rozmowy:</strong> ${escapeHtml(example.outcome)}</p>
+      <p><strong>Status do ustawienia w parserze:</strong> ${escapeHtml(example.parserStatusToSet)}</p>
+    </div>
+  `;
+}
+
+function renderScriptsExamplesSection() {
+  const data = window.AURA_SCRIPTS || { scripts: [], examples: [] };
+  const tab = state.scriptsTab === 'examples' ? 'examples' : 'scripts';
+  return `
+    <div class="lesson-top">
+      <div>
+        <p class="eyebrow">Baza wiedzy</p>
+        <h2>Skrypty i przykłady rozmów</h2>
+        <p>Gotowe frazy na typowe sytuacje oraz prawdziwe przykłady rozmów — ucz się logiki, nie tylko tekstu na pamięć.</p>
+      </div>
+      <div class="lesson-top-actions">
+        <button class="${tab === 'scripts' ? 'primary' : 'secondary'}" data-scripts-tab="scripts">A. Skrypty</button>
+        <button class="${tab === 'examples' ? 'primary' : 'secondary'}" data-scripts-tab="examples">B. Przykłady rozmów</button>
+      </div>
+    </div>
+    <div class="portal-grid scripts-grid">
+      ${
+        tab === 'scripts'
+          ? data.scripts.map(renderScriptCard).join('')
+          : data.examples.map(renderExampleCard).join('')
+      }
+    </div>
+  `;
+}
+
+const PARSER_GUIDE_POINTS = [
+  { title: 'Jak wybrać kategorię', body: 'Wybierz branżę zgodną z tym, co realnie sprzedajemy (np. Klimatyzacja, Auto detailing). Zła kategoria = słabe leady.' },
+  { title: 'Jak wybrać miasto', body: 'Wybierz miasto lub dzielnicę, w której szukasz firm. Im węższy obszar, tym trafniejsze wyniki.' },
+  { title: 'Jak czytać listę leadów', body: 'Każdy wiersz to firma z podstawowymi danymi: nazwa, telefon, status strony, AI score. Sortuj wg score, żeby dzwonić od najlepszych.' },
+  { title: 'Co znaczy AI score', body: 'Liczba 0–100 pokazująca, jak dobrym leadem jest firma (brak strony, aktywność, potencjał). Wyżej = warto zadzwonić w pierwszej kolejności.' },
+  { title: 'Co znaczy category match', body: 'AI potwierdza, że firma faktycznie działa w wybranej branży. Zielony = pasuje, można dzwonić bez obaw.' },
+  { title: 'Co znaczy wrong category', body: 'AI podejrzewa, że firma NIE pasuje do wybranej kategorii (np. trafił się warsztat zamiast salonu kosmetycznego). Zweryfikuj przed telefonem.' },
+  { title: 'Jak otworzyć kartę firmy', body: 'Kliknij w wiersz firmy na liście — otworzy się karta ze wszystkimi danymi, historią statusów i wynikiem AI.' },
+  { title: 'Jak ocenić, czy warto dzwonić', body: 'Sprawdź status strony, AI score i category match. Priorytet: brak strony / słaba strona + wysoki score + pasująca kategoria.' },
+  { title: 'Jak ustawić status', body: 'Po rozmowie zawsze ustaw status leada (np. "Umówione spotkanie", "Nie zainteresowany") — to widzi też admin.' },
+  { title: 'Jak napisać notatkę', body: 'W karcie firmy dodaj krótką notatkę: co ustalono, kiedy oddzwonić, na co uważać przy kolejnym kontakcie.' },
+  { title: 'Co zrobić, gdy numer jest błędny', body: 'Ustaw status "Brak telefonu / błędny numer" i przejdź do kolejnego leada — nie trać czasu na próby.' },
+  { title: 'Co zrobić, gdy firma nie pasuje', body: 'Ustaw status "Nie pasuje" i krótko opisz dlaczego w notatce — to pomaga poprawiać jakość przyszłych wyszukiwań.' },
+  { title: 'Co zrobić, gdy AI ostrzega o złej kategorii', body: 'Zweryfikuj firmę ręcznie (strona, Google) zanim zadzwonisz — jeśli faktycznie nie pasuje, ustaw status "Nie pasuje" bez dzwonienia.' }
+];
+
+function renderParserGuideSection() {
+  const tr = window.AuraI18n?.tr || ((key) => key);
+  return `
+    <div class="lesson-top">
+      <div>
+        <p class="eyebrow">Instrukcja</p>
+        <h2>Praca z parserem</h2>
+        <p>Krótki przewodnik, jak korzystać z parsera leadów: od wyboru kategorii do ustawienia statusu po rozmowie.</p>
+      </div>
+      <a class="primary-link" href="../">${escapeHtml(tr('btn_go_to_parser'))}</a>
+    </div>
+    <div class="guide-list">
+      ${PARSER_GUIDE_POINTS.map(
+        (point, index) => `
+          <div class="content-card guide-item">
+            <span class="guide-index">${index + 1}</span>
+            <div>
+              <h3>${escapeHtml(point.title)}</h3>
+              <p>${escapeHtml(point.body)}</p>
+            </div>
+          </div>
+        `
+      ).join('')}
+    </div>
+  `;
+}
+
+const AI_TRAINING_FALLBACK_PERSONAS = [
+  { id: 'busy_owner', label: 'Zajęty właściciel' },
+  { id: 'angry_owner', label: 'Zły właściciel' },
+  { id: 'skeptic', label: 'Sceptyk' },
+  { id: 'no_website', label: 'Klient bez strony' },
+  { id: 'old_website', label: 'Klient ze starą stroną' },
+  { id: 'good_website', label: 'Klient z dobrą stroną' },
+  { id: 'send_offer', label: 'Klient mówi "wyślij ofertę"' },
+  { id: 'asks_price', label: 'Klient od razu pyta o cenę' },
+  { id: 'no_marketing', label: 'Klient nie rozumie marketingu' },
+  { id: 'has_agency', label: 'Klient ma już agencję' },
+  { id: 'interested_website', label: 'Klient zainteresowany stroną' },
+  { id: 'interested_ads', label: 'Klient zainteresowany reklamą' },
+  { id: 'wants_callback', label: 'Klient chce, żeby oddzwonić' },
+  { id: 'distrustful', label: 'Klient nie ufa' },
+  { id: 'ready_to_meet', label: 'Klient gotowy na spotkanie' }
+];
+
+async function loadAiTrainingHistory() {
+  try {
+    if (!state.aiTraining.personas.length) {
+      const personasData = await api('/api/academy/ai-training/personas');
+      state.aiTraining.personas = personasData.personas?.length ? personasData.personas : AI_TRAINING_FALLBACK_PERSONAS;
+    }
+  } catch {
+    state.aiTraining.personas = AI_TRAINING_FALLBACK_PERSONAS;
+  }
+  try {
+    const data = await api('/api/academy/ai-training/sessions');
+    state.aiTraining.history = data.sessions || [];
+  } catch {
+    state.aiTraining.history = [];
+  }
+  if (state.academyView === 'aiTraining') render();
+}
+
+async function startAiTraining(clientType) {
+  state.aiTraining.error = '';
+  state.aiTraining.sending = true;
+  render();
+  try {
+    const data = await api('/api/academy/ai-training/start', {
+      method: 'POST',
+      body: JSON.stringify({ clientType })
+    });
+    state.aiTraining.sessionId = data.sessionId;
+    state.aiTraining.clientType = data.clientType;
+    state.aiTraining.personaLabel = data.personaLabel;
+    state.aiTraining.messages = [{ role: 'client', text: data.openingLine }];
+    state.aiTraining.result = null;
+    state.aiTraining.view = 'chat';
+  } catch (error) {
+    state.aiTraining.error = error.message || 'Nie udało się rozpocząć treningu.';
+  } finally {
+    state.aiTraining.sending = false;
+    render();
+  }
+}
+
+async function sendAiTrainingMessage(text) {
+  if (!text.trim() || !state.aiTraining.sessionId) return;
+  state.aiTraining.messages.push({ role: 'worker', text });
+  state.aiTraining.sending = true;
+  render();
+  try {
+    const data = await api(`/api/academy/ai-training/${state.aiTraining.sessionId}/message`, {
+      method: 'POST',
+      body: JSON.stringify({ text })
+    });
+    state.aiTraining.messages.push({ role: 'client', text: data.reply });
+  } catch (error) {
+    state.aiTraining.error = error.message || 'Błąd rozmowy.';
+  } finally {
+    state.aiTraining.sending = false;
+    render();
+  }
+}
+
+async function finishAiTraining() {
+  if (!state.aiTraining.sessionId) return;
+  state.aiTraining.sending = true;
+  render();
+  try {
+    const data = await api(`/api/academy/ai-training/${state.aiTraining.sessionId}/finish`, { method: 'POST' });
+    state.aiTraining.result = data.session;
+    state.aiTraining.view = 'feedback';
+    loadAiTrainingHistory();
+  } catch (error) {
+    state.aiTraining.error = error.message || 'Nie udało się zakończyć treningu.';
+  } finally {
+    state.aiTraining.sending = false;
+    render();
+  }
+}
+
+function renderAiTrainingChatBubble(message) {
+  const isWorker = message.role === 'worker';
+  return `<div class="chat-bubble ${isWorker ? 'worker' : 'client'}"><span>${escapeHtml(message.text)}</span></div>`;
+}
+
+function renderAiTrainingFeedback(session) {
+  const feedback = session.feedback || {};
+  return `
+    <div class="lesson-top">
+      <div>
+        <p class="eyebrow">Wynik treningu</p>
+        <h2>${escapeHtml(session.score ?? 0)}/100</h2>
+        <p>${feedback.meetingBooked ? '✅ Spotkanie zostało umówione' : '❌ Spotkanie nie zostało umówione'}</p>
+      </div>
+      <div class="lesson-top-actions">
+        <button class="primary" data-ai-training-new>Nowy trening</button>
+        <button class="secondary" data-academy-view="aiTraining">Powrót do listy</button>
+      </div>
+    </div>
+    <div class="content-card">
+      <h3>Co poszło dobrze</h3>
+      <ul>${(feedback.good || []).map((item) => `<li>${escapeHtml(item)}</li>`).join('') || '<li>—</li>'}</ul>
+    </div>
+    <div class="content-card">
+      <h3>Co wymaga poprawy</h3>
+      <ul>${(feedback.bad || []).map((item) => `<li>${escapeHtml(item)}</li>`).join('') || '<li>—</li>'}</ul>
+    </div>
+    <div class="content-card">
+      <h3>Jak poprawić następnym razem</h3>
+      <ul>${(feedback.improvements || []).map((item) => `<li>${escapeHtml(item)}</li>`).join('') || '<li>—</li>'}</ul>
+    </div>
+  `;
+}
+
+function renderAiTrainingHistoryItem(session) {
+  const persona = state.aiTraining.personas.find((item) => item.id === session.clientType);
+  const date = session.completedAt || session.createdAt || '';
+  return `
+    <a class="portal-card" href="#" data-view-training-session="${escapeHtml(session.sessionId)}">
+      <span class="portal-icon"><i data-lucide="bot"></i></span>
+      <h3>${escapeHtml(persona?.label || session.clientType)}</h3>
+      <p>${date ? new Date(date).toLocaleString('pl-PL') : ''}</p>
+      <span class="portal-card-open">${session.status === 'completed' ? `Wynik: ${session.score ?? 0}/100` : 'W trakcie'}</span>
+    </a>
+  `;
+}
+
+function renderAiTrainingSection() {
+  const view = state.aiTraining.view;
+  const tr = window.AuraI18n?.tr || ((key) => key);
+
+  if (view === 'chat') {
+    return `
+      <div class="lesson-top">
+        <div>
+          <p class="eyebrow">${escapeHtml(tr('nav_ai_training'))}</p>
+          <h2>${escapeHtml(state.aiTraining.personaLabel || '')}</h2>
+        </div>
+        <button class="primary" data-ai-training-finish ${state.aiTraining.sending ? 'disabled' : ''}>${escapeHtml(tr('btn_finish_training'))}</button>
+      </div>
+      <div class="content-card chat-panel">
+        <div class="chat-log">${state.aiTraining.messages.map(renderAiTrainingChatBubble).join('')}</div>
+        <form id="aiTrainingForm" class="chat-input-row">
+          <input id="aiTrainingInput" type="text" autocomplete="off" placeholder="Napisz odpowiedź jako sprzedawca..." ${state.aiTraining.sending ? 'disabled' : ''} />
+          <button class="primary" type="submit" ${state.aiTraining.sending ? 'disabled' : ''}>${escapeHtml(tr('btn_send'))}</button>
+        </form>
+        ${state.aiTraining.error ? `<p class="feedback bad">${escapeHtml(state.aiTraining.error)}</p>` : ''}
+      </div>
+    `;
+  }
+
+  if (view === 'feedback' && state.aiTraining.result) {
+    return renderAiTrainingFeedback(state.aiTraining.result);
+  }
+
+  if (view === 'historyDetail' && state.aiTraining.selectedHistoryId) {
+    const session = state.aiTraining.history.find((item) => item.sessionId === state.aiTraining.selectedHistoryId);
+    if (session && session.status === 'completed') return renderAiTrainingFeedback(session);
+  }
+
+  const personas = state.aiTraining.personas.length ? state.aiTraining.personas : AI_TRAINING_FALLBACK_PERSONAS;
+  return `
+    <div class="lesson-top">
+      <div>
+        <p class="eyebrow">${escapeHtml(tr('nav_ai_training'))}</p>
+        <h2>Trenuj rozmowy z AI</h2>
+        <p>Wybierz typ klienta — AI odegra jego rolę w symulowanej rozmowie telefonicznej. Po zakończeniu otrzymasz ocenę i feedback.</p>
+      </div>
+    </div>
+    <div class="portal-grid">
+      ${personas
+        .map(
+          (persona) => `
+            <a class="portal-card" href="#" data-start-training="${escapeHtml(persona.id)}">
+              <span class="portal-icon"><i data-lucide="user"></i></span>
+              <h3>${escapeHtml(persona.label)}</h3>
+              <span class="portal-card-open">${escapeHtml(tr('btn_start_training'))}</span>
+            </a>
+          `
+        )
+        .join('')}
+    </div>
+    ${state.aiTraining.error ? `<p class="feedback bad">${escapeHtml(state.aiTraining.error)}</p>` : ''}
+    <h3 class="history-heading">Historia treningów</h3>
+    <div class="portal-grid">
+      ${
+        state.aiTraining.history.length
+          ? state.aiTraining.history.map(renderAiTrainingHistoryItem).join('')
+          : `<p class="muted">${escapeHtml(tr('empty_no_sessions'))}</p>`
+      }
+    </div>
+  `;
 }
 
 function renderStart(module) {
@@ -543,6 +1528,9 @@ function renderServices(module) {
       <div>
         <p class="eyebrow">Moduł 2</p>
         <h2>Services Academy</h2>
+        <div class="action-row">
+          <a class="secondary" href="${SITE_PAGE_URL}" target="_blank" rel="noopener"><i data-lucide="external-link"></i> Strona wizytowka</a>
+        </div>
         <p>Wybierz usługę i przejdź ją krok po kroku. Caller musi rozumieć, po co dana usługa istnieje i kiedy naprawdę pasuje do klienta.</p>
       </div>
       ${completionButton(module.id)}
@@ -769,6 +1757,26 @@ function completionButton(moduleId) {
 }
 
 function renderLesson() {
+  if (state.academyView === 'home') {
+    els.lessonHost.innerHTML = renderPortalHome();
+    return;
+  }
+  if (state.academyView === 'servicesCatalog') {
+    els.lessonHost.innerHTML = renderServicesCatalogSection();
+    return;
+  }
+  if (state.academyView === 'scriptsExamples') {
+    els.lessonHost.innerHTML = renderScriptsExamplesSection();
+    return;
+  }
+  if (state.academyView === 'parserGuide') {
+    els.lessonHost.innerHTML = renderParserGuideSection();
+    return;
+  }
+  if (state.academyView === 'aiTraining') {
+    els.lessonHost.innerHTML = renderAiTrainingSection();
+    return;
+  }
   const module = modules[state.activeModule];
   state.feedback = state.feedback || '';
   if (module.type === 'start') els.lessonHost.innerHTML = renderStart(module);
@@ -784,9 +1792,28 @@ function renderLesson() {
 
 function render() {
   renderShellStats();
+  renderToolbar();
   renderNav();
   renderLesson();
+  wireCrossAppLinks();
   window.lucide?.createIcons();
+}
+
+function switchAcademyView(view) {
+  if (!ACADEMY_VIEWS.includes(view)) view = 'home';
+  state.academyView = view;
+  state.feedback = '';
+  syncViewToUrl(view);
+  render();
+  markSectionVisited(view);
+  if (view === 'aiTraining') loadAiTrainingHistory();
+}
+
+function markSectionVisited(view) {
+  if (!state.progress.sectionsVisited) state.progress.sectionsVisited = {};
+  if (state.progress.sectionsVisited[view]) return;
+  state.progress.sectionsVisited[view] = new Date().toISOString();
+  saveProgress({ section: view });
 }
 
 function updateCalculator() {
@@ -808,10 +1835,112 @@ function updateCalculator() {
 }
 
 document.addEventListener('click', (event) => {
+  const langChip = event.target.closest('[data-set-lang]');
+  if (langChip) {
+    event.preventDefault();
+    window.AuraI18n?.setLanguage(langChip.dataset.setLang);
+    render();
+    return;
+  }
+
   const moduleButton = event.target.closest('[data-module]');
   if (moduleButton) {
+    state.academyView = 'training';
     state.activeModule = Number(moduleButton.dataset.module);
     state.feedback = '';
+    render();
+    return;
+  }
+
+  const academyViewButton = event.target.closest('[data-academy-view]');
+  if (academyViewButton) {
+    event.preventDefault();
+    switchAcademyView(academyViewButton.dataset.academyView || 'home');
+    return;
+  }
+
+  const openModuleButton = event.target.closest('[data-open-module]');
+  if (openModuleButton) {
+    event.preventDefault();
+    state.academyView = 'training';
+    state.activeModule = moduleIndexById(openModuleButton.dataset.openModule);
+    state.feedback = '';
+    render();
+    return;
+  }
+
+  const openServiceButton = event.target.closest('[data-open-service]');
+  if (openServiceButton) {
+    event.preventDefault();
+    state.catalogServiceId = openServiceButton.dataset.openService;
+    render();
+    return;
+  }
+
+  if (event.target.closest('[data-back-to-services]')) {
+    state.catalogServiceId = null;
+    render();
+    return;
+  }
+
+  const completeServiceButton = event.target.closest('[data-complete-service]');
+  if (completeServiceButton) {
+    const serviceId = completeServiceButton.dataset.completeService;
+    const done = new Set(state.progress.servicesCompleted || []);
+    done.add(serviceId);
+    state.progress.servicesCompleted = [...done];
+    saveProgress({ servicesCompleted: [serviceId] });
+    render();
+    return;
+  }
+
+  const scriptsTabButton = event.target.closest('[data-scripts-tab]');
+  if (scriptsTabButton) {
+    state.scriptsTab = scriptsTabButton.dataset.scriptsTab;
+    state.scriptsExpandedIds = [];
+    render();
+    return;
+  }
+
+  const toggleScriptButton = event.target.closest('[data-toggle-script]');
+  if (toggleScriptButton) {
+    const itemId = toggleScriptButton.dataset.toggleScript;
+    const expanded = new Set(state.scriptsExpandedIds);
+    if (expanded.has(itemId)) expanded.delete(itemId);
+    else {
+      expanded.add(itemId);
+      markScriptOpened(itemId);
+    }
+    state.scriptsExpandedIds = [...expanded];
+    render();
+    return;
+  }
+
+  const startTrainingButton = event.target.closest('[data-start-training]');
+  if (startTrainingButton) {
+    state.aiTraining.error = '';
+    startAiTraining(startTrainingButton.dataset.startTraining);
+    return;
+  }
+
+  if (event.target.closest('[data-ai-training-finish]')) {
+    finishAiTraining();
+    return;
+  }
+
+  if (event.target.closest('[data-ai-training-new]')) {
+    state.aiTraining.view = 'picker';
+    state.aiTraining.sessionId = null;
+    state.aiTraining.messages = [];
+    state.aiTraining.result = null;
+    render();
+    return;
+  }
+
+  const viewTrainingSessionButton = event.target.closest('[data-view-training-session]');
+  if (viewTrainingSessionButton) {
+    state.aiTraining.selectedHistoryId = viewTrainingSessionButton.dataset.viewTrainingSession;
+    state.aiTraining.view = 'historyDetail';
     render();
     return;
   }
@@ -916,11 +2045,114 @@ document.addEventListener('input', (event) => {
   if (event.target.closest('.calculator')) updateCalculator();
 });
 
-let workerSaveTimer = null;
-els.workerName.addEventListener('input', () => {
-  state.progress.displayName = els.workerName.value.trim() || state.progress.userId;
-  clearTimeout(workerSaveTimer);
-  workerSaveTimer = setTimeout(saveProgress, 350);
+document.addEventListener('submit', (event) => {
+  if (event.target.id === 'aiTrainingForm') {
+    event.preventDefault();
+    const input = document.querySelector('#aiTrainingInput');
+    const text = input?.value || '';
+    if (input) input.value = '';
+    sendAiTrainingMessage(text);
+  }
 });
 
-loadProgress().then(render);
+let workerSaveTimer = null;
+
+function renderLoginScreen(message = '') {
+  const overlay = document.querySelector('#authOverlay');
+  if (!overlay) return;
+  overlay.classList.remove('hidden-field');
+  document.querySelector('#appShell')?.classList.add('hidden-field');
+  overlay.innerHTML = `
+    <form class="auth-card" id="loginForm">
+      <div>
+        <p class="eyebrow">Aura Sales Academy</p>
+        <h2>Logowanie</h2>
+        <p class="muted">Wpisz login i haslo otrzymane od administratora.</p>
+      </div>
+      ${message ? `<div class="feedback bad">${escapeHtml(message)}</div>` : ''}
+      <label>Login<input name="login" autocomplete="username" required /></label>
+      <label>Password<input name="password" type="password" autocomplete="current-password" required /></label>
+      <button class="auth-submit" type="submit">Zaloguj</button>
+    </form>
+  `;
+  document.querySelector('#loginForm')?.addEventListener('submit', handleLoginSubmit);
+}
+
+function hideLoginScreen() {
+  document.querySelector('#authOverlay')?.classList.add('hidden-field');
+  document.querySelector('#appShell')?.classList.remove('hidden-field');
+}
+
+async function handleLoginSubmit(event) {
+  event.preventDefault();
+  const form = event.target;
+  const submitButton = form.querySelector('button[type="submit"]');
+  const login = form.login.value.trim();
+  const password = form.password.value;
+  submitButton.disabled = true;
+  submitButton.textContent = 'Loguje...';
+  try {
+    const response = await fetch(apiUrl('/api/auth/login'), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ login, password })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      renderLoginScreen(data.error || 'Bledny login lub haslo.');
+      return;
+    }
+    setAuthToken(data.token);
+    session = { role: data.role, workerId: data.workerId, displayName: data.displayName, language: data.language };
+    hideLoginScreen();
+    await bootAcademy();
+  } catch {
+    renderLoginScreen('Serwer nie odpowiada.');
+  }
+}
+
+async function handleLogout() {
+  fetch(apiUrl('/api/auth/logout'), { method: 'POST', headers: { ...authHeaders() } }).catch(() => {});
+  clearAuthToken();
+  session = null;
+  window.location.reload();
+}
+
+async function fetchSessionProfile() {
+  const token = getAuthToken();
+  if (!token) return null;
+  try {
+    const response = await fetch(apiUrl('/api/auth/me'), { headers: { ...authHeaders() } });
+    if (!response.ok) return null;
+    return await response.json();
+  } catch {
+    return null;
+  }
+}
+
+async function bootstrapSession() {
+  const profile = await fetchSessionProfile();
+  if (!profile) {
+    clearAuthToken();
+    renderLoginScreen();
+    return false;
+  }
+  session = profile;
+  hideLoginScreen();
+  return true;
+}
+
+async function bootAcademy() {
+  apiBootstrapPromise = bootstrapApiBase();
+  wireCrossAppLinks();
+  els.academyLogoutButton?.addEventListener('click', handleLogout);
+  await loadProgress();
+  await loadServicesCatalog();
+  render();
+  markSectionVisited(state.academyView);
+  if (state.academyView === 'aiTraining') loadAiTrainingHistory();
+}
+
+bootstrapSession().then((ok) => {
+  if (ok) bootAcademy();
+});

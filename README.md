@@ -1,4 +1,4 @@
-# Warsaw Site Parser
+# Aura Parser
 
 Локальный parser для поиска активных локальных компаний Варшавы, у которых нет полноценного собственного сайта или сайт явно слабый.
 
@@ -90,6 +90,7 @@ npm run smoke:boot
 ```env
 OPENAI_API_KEY=sk-...
 OPENAI_MODEL=gpt-5.4-mini
+OPENAI_TRAINING_MODEL=gpt-5.4-mini
 OPENAI_SEARCH_MODEL=gpt-5.5
 PORT=4317
 RESPECT_ROBOTS_TXT=true

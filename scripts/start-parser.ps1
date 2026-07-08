@@ -115,6 +115,21 @@ function Write-PublicTunnelConfig([string]$Url) {
   Set-Content -Path $publicTunnelFile -Value $payload -Encoding UTF8
 }
 
+function Get-CloudflaredTunnelName() {
+  foreach ($name in @(
+    'CLOUDFLARE_TUNNEL_NAME',
+    'CLOUDFLARED_TUNNEL_NAME',
+    'TUNNEL_NAME'
+  )) {
+    $value = Get-ConfigValue $name
+    if (-not [string]::IsNullOrWhiteSpace($value)) {
+      return $value.Trim()
+    }
+  }
+
+  return 'parser'
+}
+
 function Get-CloudflaredToken() {
   foreach ($name in @(
     'CLOUDFLARE_TUNNEL_TOKEN',
@@ -139,6 +154,26 @@ function Get-CloudflaredToken() {
         return $token
       }
     }
+  }
+
+  $runtimeTokenFile = Join-Path $runtimeDir 'cloudflared-token.txt'
+  if (Test-Path $runtimeTokenFile) {
+    $cachedToken = (Get-Content $runtimeTokenFile -Raw -ErrorAction SilentlyContinue).Trim()
+    if (-not [string]::IsNullOrWhiteSpace($cachedToken)) {
+      return $cachedToken
+    }
+  }
+
+  $tunnelName = Get-CloudflaredTunnelName
+  if (Get-Command cloudflared -ErrorAction SilentlyContinue) {
+    try {
+      $tokenOutput = & cloudflared tunnel token $tunnelName 2>$null
+      $token = (($tokenOutput | Out-String).Trim() -split '\r?\n' | Where-Object { $_ -match '^eyJ[a-zA-Z0-9._-]+' } | Select-Object -First 1).Trim()
+      if (-not [string]::IsNullOrWhiteSpace($token) -and $token.StartsWith('eyJ')) {
+        Set-Content -Path $runtimeTokenFile -Value $token -Encoding ASCII
+        return $token
+      }
+    } catch {}
   }
 
   return ''
@@ -249,7 +284,7 @@ function Ensure-FirewallRule() {
     return
   }
 
-  $ruleName = "Warsaw Site Parser $script:port"
+  $ruleName = "Aura Parser $script:port"
   $existing = Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue
   if ($existing) {
     Write-Host "[3/5] Firewall rule already exists: $ruleName" -ForegroundColor Green
@@ -312,12 +347,19 @@ function Start-CloudflaredTunnel() {
   $logPath = Join-Path $runtimeDir 'cloudflared.log'
   $namedTunnelUrl = Get-ConfiguredPublicUrl
   $namedTunnelToken = Get-CloudflaredToken
+  $namedTunnelName = Get-CloudflaredTunnelName
+
+  if ($namedTunnelUrl -and (Test-BackendHealth $namedTunnelUrl 10)) {
+    Write-Host "[5/5] Reusing healthy public tunnel: $namedTunnelUrl" -ForegroundColor Green
+    Write-PublicTunnelConfig $namedTunnelUrl
+    return $namedTunnelUrl
+  }
 
   if ($namedTunnelUrl -and $namedTunnelToken) {
     Stop-CloudflaredIfOwned
     Remove-Item $logPath -ErrorAction SilentlyContinue
 
-    Write-Host "[5/5] Starting named Cloudflare tunnel for $namedTunnelUrl..." -ForegroundColor Yellow
+    Write-Host "[5/5] Starting named Cloudflare tunnel '$namedTunnelName' for $namedTunnelUrl..." -ForegroundColor Yellow
     $process = Start-Process cloudflared -ArgumentList @('tunnel', 'run', '--token', $namedTunnelToken) -WorkingDirectory $proj -WindowStyle Hidden -RedirectStandardError $logPath -PassThru
     Set-Content -Path $cloudflaredPidFile -Value $process.Id -Encoding ASCII
 
@@ -367,7 +409,7 @@ $script:listenHost = Get-ConfigValue 'HOST' '0.0.0.0'
 [Environment]::SetEnvironmentVariable('PORT', [string]$script:port, 'Process')
 [Environment]::SetEnvironmentVariable('HOST', $script:listenHost, 'Process')
 
-Write-Host '=== Warsaw Site Parser ===' -ForegroundColor Cyan
+Write-Host '=== Aura Parser ===' -ForegroundColor Cyan
 Write-Host "Project: $proj" -ForegroundColor DarkGray
 
 Ensure-NodeEnvironment
@@ -383,7 +425,12 @@ foreach ($url in $lanUrls) {
   Write-Host "LAN:   $url" -ForegroundColor Green
 }
 
-$preferredUrl = if ($lanUrls.Count -gt 0) { $lanUrls[0] } else { $localUrl }
+$configuredPublicUrl = Get-ConfiguredPublicUrl
+if ($configuredPublicUrl) {
+  Write-Host "Public: $configuredPublicUrl" -ForegroundColor Green
+}
+
+$preferredUrl = if ($configuredPublicUrl) { $configuredPublicUrl } elseif ($lanUrls.Count -gt 0) { $lanUrls[0] } else { $localUrl }
 
 $tunnelUrl = Start-CloudflaredTunnel
 if ($tunnelUrl) {
