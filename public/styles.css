@@ -1335,3 +1335,224 @@ tbody tr.selected {
   color: var(--red);
 }
 
+/* ===================== Zapisane (saved companies) ===================== */
+
+.saved-layout {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: 240px 1fr;
+}
+
+.saved-folders {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.saved-folders-head {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.saved-folders-head h3 {
+  font-size: 13px;
+  margin: 0;
+}
+
+.saved-folders-list {
+  display: grid;
+  gap: 4px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.saved-folder-item {
+  align-items: center;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  font-size: 13px;
+  gap: 6px;
+  justify-content: space-between;
+  padding: 8px 10px;
+}
+
+.saved-folder-item:hover {
+  background: #f4f6f8;
+}
+
+.saved-folder-item.active {
+  background: var(--accent-soft, #eef2ff);
+  font-weight: 700;
+}
+
+.saved-folder-item .folder-actions {
+  display: none;
+  gap: 4px;
+}
+
+.saved-folder-item:hover .folder-actions {
+  display: flex;
+}
+
+.saved-folder-item .folder-actions button {
+  background: none;
+  border: 0;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 2px;
+}
+
+.saved-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.saved-toolbar input[type='text'] {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  flex: 1 1 220px;
+  min-height: 38px;
+  padding: 8px 10px;
+}
+
+.saved-toolbar select {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  min-height: 38px;
+  padding: 8px 10px;
+}
+
+.saved-pagination {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  font-size: 12px;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+
+.saved-pagination button {
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+  padding: 4px 10px;
+}
+
+.saved-pagination button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+@media (max-width: 860px) {
+  .saved-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .saved-folders {
+    max-height: 180px;
+    overflow-y: auto;
+  }
+}
+
+/* ===================== Lead workflow / CRM card additions ===================== */
+
+.lead-workflow-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.lead-workflow-actions button {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+}
+
+.lead-workflow-actions .save-toggle.saved-active {
+  background: var(--green, #1a9e5c);
+  border-color: var(--green, #1a9e5c);
+  color: #fff;
+}
+
+.folder-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 6px 0;
+}
+
+.folder-chip {
+  background: #f0f2f5;
+  border-radius: 999px;
+  font-size: 11px;
+  padding: 3px 9px;
+}
+
+.comment-form {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.comment-form textarea {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  min-height: 64px;
+  padding: 8px 10px;
+  resize: vertical;
+}
+
+.comment-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.comment-item {
+  background: #f8f9fb;
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+
+.comment-item-head {
+  color: var(--muted);
+  display: flex;
+  font-size: 11px;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.comment-item p {
+  font-size: 13px;
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.comment-item-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.comment-item-actions button {
+  background: none;
+  border: 0;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 0;
+  text-decoration: underline;
+}
+

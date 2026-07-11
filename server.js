@@ -1,12 +1,16 @@
 import 'dotenv/config';
 import express from 'express';
 import path from 'node:path';
+import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { performance } from 'node:perf_hooks';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import * as cheerio from 'cheerio';
 import OpenAI from 'openai';
 import robotsParser from 'robots-parser';
 import * as store from './store.js';
+import { getPortfolioProjects } from './public/site/data/portfolio.js';
+import { getServiceCategories } from './public/site/data/services.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -29,6 +33,14 @@ const FETCH_TIMEOUT_MS = 12_000;
 const GOOGLE_PLACES_TIMEOUT_MS = 8_000;
 const CROSS_VERIFY_TIMEOUT_MS = Number(process.env.CROSS_VERIFY_TIMEOUT_MS || 25_000);
 const MAX_EXTRA_PAGES = 5;
+const REGISTRY_TIMEOUT_MS = Number(process.env.REGISTRY_TIMEOUT_MS || 10_000);
+const OPENAI_TIMEOUT_MS = Number(process.env.OPENAI_TIMEOUT_MS || 30_000);
+// If a source keeps returning only companies we already know about this many
+// times in a row, further attempts are extremely unlikely to find anything
+// new - stop early instead of burning through every remaining district/niche
+// combination.
+const MAX_DUPLICATE_STREAK = Number(process.env.MAX_DUPLICATE_STREAK || 3);
+const MAX_DISCOVERY_JOB_MS = Number(process.env.MAX_DISCOVERY_JOB_MS || 5 * 60_000);
 
 // DuckDuckGo HTML search starts returning an "anomaly detected" interstitial
 // (HTTP 202, no .result nodes, contains an img-form/captcha shell) after a
@@ -459,11 +471,139 @@ function requireWorkerLeadAccess(req, res, company) {
   return true;
 }
 
-// Mutable per-request discovery context read by the Google Places helpers.
-// This tool runs as a single-user local server (one discovery run at a time in
-// practice), so a module-level context avoids threading two extra parameters
-// through every function in the discovery call graph.
-let discoveryContext = { country: '', radiusKm: 0 };
+// Wider than requireWorkerLeadAccess: covers the case where a worker's own
+// saved company/comments/CRM status must stay reachable even after the lead
+// has been returned to the pool (assigned_worker_id cleared) or reassigned to
+// someone else - a pool return must never lock the original worker out of
+// their own notes and folder on that company. Used by comments/crm-status/
+// lead-detail read-and-write endpoints instead of the stricter ownership
+// check that pool-return actions use.
+function requireWorkerCompanyRelation(req, res, company) {
+  if (isAdminAuthorized(req)) return true;
+  if (!company || company.status === 'deleted' || company.pool_state === 'deleted') {
+    res.status(404).json({ error: 'Lead not found.' });
+    return false;
+  }
+  const workerId = requestWorkerId(req);
+  if (!workerId) {
+    res.status(401).json({ error: 'Worker identity is required.' });
+    return false;
+  }
+  const isCurrentOwner = assignedWorkerId(company) === workerId;
+  const hasSaved = store.isCompanySavedByWorker(workerId, company.id);
+  const hasCrmHistory = store.normalizeWorkerId(company.crm_status_updated_by || '') === workerId;
+  if (!isCurrentOwner && !hasSaved && !hasCrmHistory) {
+    res.status(403).json({ error: 'This lead belongs to another worker.' });
+    return false;
+  }
+  return true;
+}
+
+function requireWorkerRunAccess(req, res, run) {
+  if (isAdminAuthorized(req)) return true;
+  if (!run) {
+    res.status(404).json({ error: 'Run not found.' });
+    return false;
+  }
+  const workerId = requestWorkerId(req);
+  if (!workerId) {
+    res.status(401).json({ error: 'Worker identity is required.' });
+    return false;
+  }
+  if (store.normalizeWorkerId(run.worker_id || '') !== workerId) {
+    res.status(403).json({ error: 'This parser query belongs to another worker.' });
+    return false;
+  }
+  return true;
+}
+
+// Resolves who is actually performing an action, for audit logs and comment/
+// status authorship. Never trusts a client-supplied identity for the worker
+// case - only an admin (verified via requireAdmin/isAdminAuthorized) may act
+// as a different actor by supplying an explicit id.
+function resolveActor(req) {
+  if (isAdminAuthorized(req)) {
+    return { actorRole: 'admin', actorId: req.adminId || ADMIN_LOGIN, workerId: requestWorkerId(req) };
+  }
+  const workerId = requestWorkerId(req);
+  return { actorRole: 'worker', actorId: workerId, workerId };
+}
+
+// Ownership gate for the /api/saved, /api/companies/:id/comments etc. family:
+// a worker may only ever act on their own resources; an admin may act on
+// behalf of any worker by passing an explicit workerId.
+function requireActingWorkerId(req, res) {
+  const { workerId } = resolveActor(req);
+  if (!workerId) {
+    res.status(401).json({ error: 'Worker identity is required.' });
+    return '';
+  }
+  return workerId;
+}
+
+// Applies search/status/website/category filters and pagination to an
+// in-memory list of serialized company records. Shared by the run-detail and
+// admin-run-detail endpoints so opening a saved query never has to load the
+// whole database - only this run's own companies are ever in scope.
+function paginateCompanyList(records, query = {}, { savedByWorkerId = '' } = {}) {
+  const q = String(query.q || '').trim().toLowerCase();
+  const status = String(query.status || '').trim();
+  const hasWebsite = String(query.hasWebsite || 'all').trim().toLowerCase();
+  const category = String(query.category || '').trim().toLowerCase();
+  const savedOnly = String(query.savedOnly || '') === 'true';
+  const sort = String(query.sort || 'newest').trim().toLowerCase();
+
+  let rows = records;
+  if (status) rows = rows.filter((record) => record.status === status);
+  if (hasWebsite === 'yes') rows = rows.filter((record) => Boolean(String(record.data?.website_url || '').trim()));
+  if (hasWebsite === 'no') rows = rows.filter((record) => !String(record.data?.website_url || '').trim());
+  if (category) rows = rows.filter((record) => String(record.data?.niche || '').toLowerCase().includes(category));
+  if (savedOnly && savedByWorkerId) {
+    rows = rows.filter((record) => store.isCompanySavedByWorker(savedByWorkerId, record.id));
+  }
+  if (q) {
+    rows = rows.filter((record) =>
+      [record.data?.company, record.data?.legal_name, record.data?.phone, record.data?.email, record.data?.city, record.data?.address]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+        .includes(q)
+    );
+  }
+
+  rows = [...rows].sort((a, b) => {
+    if (sort === 'name') return String(a.data?.company || '').localeCompare(String(b.data?.company || ''));
+    if (sort === 'status') return String(a.status || '').localeCompare(String(b.status || ''));
+    if (sort === 'oldest') return String(a.first_seen_at || '').localeCompare(String(b.first_seen_at || ''));
+    return String(b.last_seen_at || b.first_seen_at || '').localeCompare(String(a.last_seen_at || a.first_seen_at || ''));
+  });
+
+  const total = rows.length;
+  const hasPagination = query.page !== undefined || query.pageSize !== undefined;
+  if (!hasPagination) return { items: rows, total, page: 1, pageSize: total, paginated: false };
+
+  const page = Math.max(1, Number.parseInt(query.page, 10) || 1);
+  const pageSize = Math.max(1, Math.min(500, Number.parseInt(query.pageSize, 10) || 50));
+  const start = (page - 1) * pageSize;
+  return { items: rows.slice(start, start + pageSize), total, page, pageSize, paginated: true };
+}
+
+// Per-discovery-job context (country/city/radiusKm) read by the Google Places /
+// Amazon Location / phone-normalization helpers deep in the discovery call
+// graph. This used to be a single mutable module-level object that every
+// concurrent discovery job (and even the HTTP route handler's own `finally`
+// block) wrote to and reset - which meant two jobs running at the same time
+// (e.g. one for Warszawa, one for Kraków) could clobber each other's
+// city/country/radius mid-request, and the route handler could even wipe the
+// context of a job it had just fired off in the background before that job's
+// first await ran. AsyncLocalStorage gives every discovery job (and every
+// nested async call it makes, including cross-source enrichment) its own
+// isolated context automatically, with no shared mutable state and no manual
+// reset/cleanup required.
+const discoveryContextStorage = new AsyncLocalStorage();
+function getDiscoveryContext() {
+  return discoveryContextStorage.getStore() || { country: '', radiusKm: 0, city: '' };
+}
 
 // In-memory discovery job registry. Discovery runs happen in the background and
 // the frontend polls /api/discover/jobs/:id so results can stream in
@@ -504,7 +644,11 @@ function createDiscoveryJob(meta) {
     warnings: [],
     queries: [],
     result: null,
-    error: ''
+    error: '',
+    // Set by runDiscoveryJob once discovery starts; the cancel endpoint flips
+    // guard.stopped on this same object so the running discovery loop (which
+    // only checks between HTTP calls, not mid-request) notices and unwinds.
+    guard: null
   };
   discoveryJobs.set(id, job);
   return job;
@@ -579,7 +723,7 @@ const AWS_LOCATION_API_KEY = process.env.AWS_LOCATION_API_KEY || '';
 const AWS_LOCATION_REGION = process.env.AWS_LOCATION_REGION || 'eu-north-1';
 
 const openai = process.env.OPENAI_API_KEY
-  ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+  ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY, timeout: OPENAI_TIMEOUT_MS, maxRetries: 2 })
   : null;
 
 // AI roleplay training personas. Behavior prompt stays Polish-only (matches the
@@ -774,6 +918,97 @@ app.get(/^\/parser\/?$/, (req, res) => {
   const query = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
   res.redirect(302, `/${query}`);
 });
+
+const AURA_SITE_ORIGIN = String(process.env.AURA_SITE_ORIGIN || 'https://parser.auraglobal-merchants.com').replace(/\/$/, '');
+const AURA_SITE_TEMPLATE = path.join(__dirname, 'public', 'site', 'index.html');
+
+function auraLanguage(req) {
+  const candidate = String(req.query?.lang || 'pl').toLowerCase();
+  return ['pl', 'en', 'ru'].includes(candidate) ? candidate : 'pl';
+}
+
+function auraServiceBySlug(slug, language) {
+  return getServiceCategories(language)
+    .flatMap((category) => category.services.map((service) => ({ ...service, category: category.label })))
+    .find((service) => service.slug === slug || service.id === slug) || null;
+}
+
+function auraPageMeta(req) {
+  const language = auraLanguage(req);
+  const routePath = String(req.path || '').replace(/\/$/, '') || '/site';
+  const projectMatch = routePath.match(/(?:^|\/)portfolio\/([^/]+)$/);
+  const serviceMatch = routePath.match(/(?:^|\/)services\/([^/]+)$/);
+  const portfolio = getPortfolioProjects(language);
+  let title = 'Aura Global — websites and digital systems built around a real business task';
+  let description = 'Strategy, design, development, marketing and AI automation. Aura Global starts with the real business task.';
+  let schema = { '@context': 'https://schema.org', '@type': 'Organization', name: 'Aura Global', url: `${AURA_SITE_ORIGIN}/site/` };
+  let canonicalPath = routePath.startsWith('/site') ? routePath : routePath;
+
+  if (routePath === '/portfolio' || routePath === '/site/portfolio') {
+    title = 'Portfolio — Aura Global';
+    description = 'Published digital projects with real media, project context and direct links.';
+    schema = { '@context': 'https://schema.org', '@type': 'CollectionPage', name: title, url: `${AURA_SITE_ORIGIN}${routePath}`, hasPart: portfolio.map((project) => ({ '@type': 'CreativeWork', name: project.title, url: `${AURA_SITE_ORIGIN}/portfolio/${project.slug}`, image: `${AURA_SITE_ORIGIN}${project.cover}` })) };
+  } else if (projectMatch) {
+    const project = portfolio.find((item) => item.slug === projectMatch[1] || item.id === projectMatch[1]);
+    if (project) {
+      title = `${project.title} — Aura Global`;
+      description = project.summary;
+      schema = { '@context': 'https://schema.org', '@type': 'CreativeWork', name: project.title, description: project.summary, url: `${AURA_SITE_ORIGIN}${routePath}`, image: project.media.map((item) => `${AURA_SITE_ORIGIN}${item}`), sameAs: project.projectUrl };
+    }
+  } else if (serviceMatch) {
+    const service = auraServiceBySlug(serviceMatch[1], language);
+    if (service) {
+      title = `${service.name} — Aura Global`;
+      description = service.short;
+      schema = { '@context': 'https://schema.org', '@type': 'Service', name: service.name, description: service.short, provider: { '@type': 'Organization', name: 'Aura Global', url: `${AURA_SITE_ORIGIN}/site/` }, offers: { '@type': 'Offer', priceCurrency: 'EUR', description: service.price } };
+    }
+  } else if (routePath === '/services' || routePath === '/site/services') {
+    title = 'Services — Aura Global';
+    description = 'Website, marketing, AI automation and business-system services with scope, timing and a clear next step.';
+  }
+
+  return { language, title, description, schema, canonical: `${AURA_SITE_ORIGIN}${canonicalPath || '/site/'}` };
+}
+
+function renderAuraSite(req, res) {
+  try {
+    const meta = auraPageMeta(req);
+    const page = cheerio.load(fs.readFileSync(AURA_SITE_TEMPLATE, 'utf8'));
+    page('html').attr('lang', meta.language);
+    page('title').text(meta.title);
+    page('#metaDescription').attr('content', meta.description);
+    page('#ogTitle, #twitterTitle').attr('content', meta.title);
+    page('#ogDescription, #twitterDescription').attr('content', meta.description);
+    page('#ogUrl').attr('content', meta.canonical);
+    page('#canonicalLink').attr('href', meta.canonical);
+    page('#structuredData').text(JSON.stringify(meta.schema));
+    page('head').append(`<script>window.__AURA_SITE_LANG__=${JSON.stringify(meta.language)};</script>`);
+    res.type('html').send(page.html());
+  } catch (error) {
+    console.error('[aura-site] render failed', error);
+    res.status(500).send('Aura Global site is temporarily unavailable.');
+  }
+}
+
+const auraSiteRoutes = [
+  '/portfolio', '/portfolio/', '/site/portfolio', '/site/portfolio/',
+  '/services', '/services/', '/site/services', '/site/services/'
+];
+app.get(auraSiteRoutes, renderAuraSite);
+app.get(['/portfolio/:slug', '/portfolio/:slug/', '/site/portfolio/:slug', '/site/portfolio/:slug/', '/services/:slug', '/services/:slug/', '/site/services/:slug', '/site/services/:slug/'], renderAuraSite);
+
+app.get(['/sitemap.xml', '/site/sitemap.xml'], (_req, res) => {
+  const projects = getPortfolioProjects('pl');
+  const services = getServiceCategories('pl').flatMap((category) => category.services);
+  const routes = ['/site/', '/portfolio', '/services', ...projects.map((project) => `/portfolio/${project.slug}`), ...services.map((service) => `/services/${service.slug}`)];
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${routes.map((route) => `<url><loc>${AURA_SITE_ORIGIN}${route}</loc></url>`).join('')}</urlset>`;
+  res.type('application/xml').send(xml);
+});
+
+app.get(['/robots.txt', '/site/robots.txt'], (_req, res) => {
+  res.type('text/plain').send(`User-agent: *\nAllow: /\nDisallow: /admin/\nSitemap: ${AURA_SITE_ORIGIN}/sitemap.xml\n`);
+});
+
 app.use(
   express.static(path.join(__dirname, 'public'), {
     setHeaders(res) {
@@ -859,11 +1094,24 @@ app.post('/api/site-leads', (req, res) => {
     const phone = cleanText(req.body?.phone || '');
     const email = cleanText(req.body?.email || '');
 
+    if (cleanText(req.body?.companyFax || '')) {
+      return res.status(400).json({ error: 'Invalid submission.' });
+    }
+
     if (!name) {
       return res.status(400).json({ error: 'Podaj imie osoby kontaktowej.' });
     }
     if (!phone && !email) {
       return res.status(400).json({ error: 'Podaj telefon lub email.' });
+    }
+    if (name.length > 120) {
+      return res.status(400).json({ error: 'Imie jest zbyt dlugie.' });
+    }
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ error: 'Podaj poprawny adres email.' });
+    }
+    if (phone && phone.replace(/\D/g, '').length < 7) {
+      return res.status(400).json({ error: 'Podaj poprawny numer telefonu.' });
     }
 
     const record = store.createSiteLead({
@@ -1077,7 +1325,6 @@ app.post('/api/discover', async (req, res) => {
       message.includes('AWS_LOCATION_API_KEY');
     res.status(missingDiscoverySource ? 400 : 500).json({ error: message });
   } finally {
-    discoveryContext = { country: '', radiusKm: 0 };
     void runStartedAt;
   }
 });
@@ -1095,6 +1342,28 @@ app.get('/api/discover/jobs/:id', (req, res) => {
   res.json(serializeDiscoveryJob(job));
 });
 
+app.post('/api/discover/jobs/:id/cancel', (req, res) => {
+  const job = getDiscoveryJob(req.params.id);
+  if (!job) return res.status(404).json({ error: 'Discovery job not found.' });
+  const admin = isAdminAuthorized(req);
+  if (!admin) {
+    const workerId = requestWorkerId(req);
+    const ownerId = store.normalizeWorkerId(job.meta?.workerId || '');
+    if (!workerId || workerId !== ownerId) {
+      return res.status(403).json({ error: 'This discovery job belongs to another worker.' });
+    }
+  }
+  if (['completed', 'failed', 'cancelled'].includes(job.status)) {
+    return res.json({ ok: true, alreadyFinished: true, status: job.status });
+  }
+  if (job.guard) {
+    job.guard.stopped = true;
+    job.guard.reason = 'cancelled';
+  }
+  updateDiscoveryJob(job.id, { progress: { message: 'Отмена поиска...' } });
+  res.json({ ok: true, status: job.status });
+});
+
 app.get('/api/history/runs', (req, res) => {
   const admin = isAdminAuthorized(req);
   const workerId = admin ? '' : requestWorkerId(req);
@@ -1104,13 +1373,10 @@ app.get('/api/history/runs', (req, res) => {
 app.get('/api/history/runs/:id', (req, res) => {
   const run = store.getRun(String(req.params.id));
   if (!run) return res.status(404).json({ error: 'Run not found.' });
-  if (!isAdminAuthorized(req)) {
-    const workerId = requestWorkerId(req);
-    if (!workerId || store.normalizeWorkerId(run.worker_id || '') !== workerId) {
-      return res.status(403).json({ error: 'This parser query belongs to another worker.' });
-    }
-  }
-  res.json({ run, companies: store.getCompaniesByIds(run.company_ids) });
+  if (!requireWorkerRunAccess(req, res, run)) return;
+  const { workerId } = resolveActor(req);
+  const page = paginateCompanyList(store.getCompaniesByIds(run.company_ids), req.query, { savedByWorkerId: workerId });
+  res.json({ run, companies: page.items, total: page.total, page: page.page, pageSize: page.pageSize, paginated: page.paginated });
 });
 
 app.get('/api/companies', requireAdmin, (_req, res) => {
@@ -1176,7 +1442,10 @@ app.post('/api/admin/workers', (req, res) => {
 });
 
 app.get('/api/admin/workers/:workerId', (req, res) => {
-  res.json(store.getWorkerDetail(req.params.workerId));
+  const detail = store.getWorkerDetail(req.params.workerId);
+  const folders = store.listFolders(req.params.workerId);
+  const saved = store.listSavedCompaniesForWorker(req.params.workerId, { pageSize: 500 });
+  res.json({ ...detail, folders, saved: saved.items, savedTotal: saved.total });
 });
 
 app.patch('/api/admin/workers/:workerId', (req, res) => {
@@ -1226,25 +1495,227 @@ app.delete('/api/admin/workers/:workerId', (req, res) => {
   res.json({ ok: true, result, stats: store.getStoreStats() });
 });
 
+// Historically this physically removed the worker's run history. Per project
+// policy nothing found by the parser may ever be destroyed through the UI, so
+// this now archives the worker's history and returns their leads to the pool
+// instead - same button, honest behaviour.
 app.delete('/api/admin/workers/:workerId/history', (req, res) => {
-  if (req.body?.confirm !== 'DELETE') {
-    return res.status(400).json({ error: 'Type DELETE to confirm worker history cleanup.' });
+  let outcome;
+  try {
+    outcome = store.bulkReturnRunsToPool({
+      filters: { workerId: req.params.workerId },
+      actorId: req.adminId,
+      actorRole: 'admin',
+      reason: 'worker_history_cleared'
+    });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'No history to clear for this worker.' });
   }
-  const deletedRunIds = store.clearWorkerHistory(req.params.workerId);
   store.logAdminAction({
     adminId: cleanText(req.body?.adminId || 'admin'),
-    action: 'clear_worker_history',
+    action: 'return_worker_history_to_pool',
     targetType: 'worker',
     targetId: req.params.workerId,
-    details: { runIds: deletedRunIds, count: deletedRunIds.length }
+    details: outcome
   });
-  res.json({ ok: true, deletedRunIds, stats: store.getStoreStats() });
+  res.json({ ok: true, ...outcome, stats: store.getStoreStats() });
+});
+
+app.post('/api/admin/workers/bulk', (req, res) => {
+  const workerIds = [...new Set((Array.isArray(req.body?.workerIds) ? req.body.workerIds : []).map((value) => store.normalizeWorkerId(value)).filter(Boolean))];
+  const action = String(req.body?.action || '').trim();
+  if (!workerIds.length) return res.status(400).json({ error: 'workerIds is required.' });
+  if (!['delete', 'deactivate', 'activate', 'reset-leads'].includes(action)) {
+    return res.status(400).json({ error: 'Unknown bulk action.' });
+  }
+  if (action === 'delete' && req.body?.confirm !== 'DELETE') {
+    return res.status(400).json({ error: 'Type DELETE to confirm bulk worker deletion.' });
+  }
+
+  const results = [];
+  for (const workerId of workerIds) {
+    if (action === 'delete') {
+      // deleteWorkerAccount returns leads to the pool and keeps dedupe memory.
+      results.push({ workerId, deleted: Boolean(store.deleteWorkerAccount(workerId)) });
+    } else if (action === 'reset-leads') {
+      results.push({ workerId, resetIds: store.resetWorkerCompanies(workerId) });
+    } else {
+      results.push({ workerId, updated: Boolean(store.updateWorkerAccount(workerId, { active: action === 'activate' })) });
+    }
+  }
+
+  store.logAdminAction({
+    adminId: cleanText(req.body?.adminId || 'admin'),
+    action: `workers_bulk_${action.replace(/-/g, '_')}`,
+    targetType: 'worker',
+    targetId: 'bulk',
+    details: { workerIds, count: workerIds.length }
+  });
+  res.json({ ok: true, action, results, stats: store.getStoreStats() });
+});
+
+app.get('/api/admin/history', (req, res) => {
+  res.json({
+    runs: store.listRunsFiltered({
+      country: req.query.country || '',
+      city: req.query.city || '',
+      category: req.query.category || '',
+      workerId: req.query.workerId || '',
+      status: req.query.status || '',
+      source: req.query.source || '',
+      dateFrom: req.query.dateFrom || '',
+      dateTo: req.query.dateTo || '',
+      only: req.query.only || '',
+      view: req.query.view || 'active',
+      limit: Number.parseInt(req.query.limit, 10) || 100,
+      sort: req.query.sort || 'newest'
+    })
+  });
+});
+
+// Preview for the filtered bulk return-to-pool tool: shows exactly what
+// "Wroc zapytania do puli wedlug filtrow" would touch before anything moves,
+// so an admin can deselect individual runs before committing.
+app.get('/api/admin/history/preview', (req, res) => {
+  const filters = {
+    country: req.query.country || '',
+    city: req.query.city || '',
+    category: req.query.category || '',
+    workerId: req.query.workerId || '',
+    status: req.query.status || '',
+    source: req.query.source || '',
+    dateFrom: req.query.dateFrom || '',
+    dateTo: req.query.dateTo || '',
+    only: req.query.only || ''
+  };
+  res.json(store.previewBulkReturn(filters));
+});
+
+// Archive views. These never delete anything - archived_at is set on return
+// (single, bulk, or manual archive) and restore only clears it.
+app.get('/api/admin/history/archive', (req, res) => {
+  res.json({
+    runs: store.listRunsFiltered({
+      country: req.query.country || '',
+      city: req.query.city || '',
+      category: req.query.category || '',
+      workerId: req.query.workerId || '',
+      status: req.query.status || '',
+      dateFrom: req.query.dateFrom || '',
+      dateTo: req.query.dateTo || '',
+      view: 'archived',
+      limit: Number.parseInt(req.query.limit, 10) || 200,
+      sort: req.query.sort || 'newest'
+    })
+  });
+});
+
+app.post('/api/admin/history/:id/archive', (req, res) => {
+  const run = store.archiveRun(req.params.id, { actorId: req.adminId, reason: cleanText(req.body?.reason || '') });
+  if (!run) return res.status(404).json({ error: 'Run not found.' });
+  store.logAdminAction({ adminId: req.adminId, action: 'archive_history', targetType: 'run', targetId: req.params.id, details: {} });
+  res.json({ ok: true, run });
+});
+
+app.post('/api/admin/history/:id/restore', (req, res) => {
+  const run = store.restoreRun(req.params.id);
+  if (!run) return res.status(404).json({ error: 'Run not found.' });
+  store.logAdminAction({ adminId: req.adminId, action: 'restore_history', targetType: 'run', targetId: req.params.id, details: {} });
+  res.json({ ok: true, run });
+});
+
+// Honest, non-destructive replacements for the old physical-delete flow.
+// "Wroc query do puli" (single) and "Wroc zapytania do puli wedlug filtrow"
+// (bulk) - leads/companies/comments/statuses/folders are never touched
+// except to snap the pool assignment back to available; the run itself is
+// archived, never removed.
+app.post('/api/admin/history/:id/return-to-pool', (req, res) => {
+  const outcome = store.returnRunToPool(req.params.id, {
+    actorId: req.adminId,
+    actorRole: 'admin',
+    reason: cleanText(req.body?.reason || '')
+  });
+  if (!outcome) return res.status(404).json({ error: 'Run not found.' });
+  store.logAdminAction({
+    adminId: req.adminId,
+    action: 'return_query_to_pool',
+    targetType: 'run',
+    targetId: req.params.id,
+    details: { alreadyReturned: outcome.alreadyReturned, ...outcome.result }
+  });
+  res.json({ ok: true, ...outcome, stats: store.getStoreStats() });
+});
+
+app.post('/api/admin/history/return-to-pool', (req, res) => {
+  const runIds = Array.isArray(req.body?.runIds) ? req.body.runIds : [];
+  const filters = req.body?.filters && typeof req.body.filters === 'object' ? req.body.filters : null;
+  try {
+    const outcome = store.bulkReturnRunsToPool({
+      runIds,
+      filters,
+      actorId: req.adminId,
+      actorRole: 'admin',
+      reason: cleanText(req.body?.reason || '')
+    });
+    store.logAdminAction({
+      adminId: req.adminId,
+      action: 'bulk_return_history_to_pool',
+      targetType: 'run',
+      targetId: 'bulk',
+      details: { runIds: runIds.slice(0, 200), filters: filters || null, ...outcome }
+    });
+    res.json({ ok: true, ...outcome, stats: store.getStoreStats() });
+  } catch (error) {
+    res.status(400).json({ error: error.message || 'Bulk return failed.' });
+  }
+});
+
+// Historically a hard delete of history entries. Kept at the same path for
+// backward compatibility but now archives + returns leads to the pool -
+// identical outcome to POST /api/admin/history/return-to-pool.
+app.post('/api/admin/history/bulk-delete', (req, res) => {
+  const runIds = Array.isArray(req.body?.runIds) ? req.body.runIds : [];
+  const filters = req.body?.filters && typeof req.body.filters === 'object' ? req.body.filters : null;
+  try {
+    const outcome = store.bulkReturnRunsToPool({
+      runIds,
+      filters,
+      actorId: req.adminId,
+      actorRole: 'admin',
+      reason: 'legacy_bulk_delete_redirect'
+    });
+    store.logAdminAction({
+      adminId: cleanText(req.body?.adminId || 'admin'),
+      action: 'bulk_return_history_to_pool',
+      targetType: 'run',
+      targetId: 'bulk',
+      details: { runIds: runIds.slice(0, 200), filters: filters || null, ...outcome }
+    });
+    res.json({ ok: true, ...outcome, stats: store.getStoreStats() });
+  } catch (error) {
+    res.status(400).json({ error: error.message || 'No history entries matched.' });
+  }
+});
+
+app.post('/api/admin/history/bulk-reset', (req, res) => {
+  const runIds = [...new Set((Array.isArray(req.body?.runIds) ? req.body.runIds : []).map(String).filter(Boolean))];
+  if (!runIds.length) return res.status(400).json({ error: 'runIds is required.' });
+  const resetIds = store.resetRunsCompanies(runIds);
+  store.logAdminAction({
+    adminId: cleanText(req.body?.adminId || 'admin'),
+    action: 'reset_history_leads_to_pool',
+    targetType: 'run',
+    targetId: 'bulk',
+    details: { runIds, count: resetIds.length }
+  });
+  res.json({ ok: true, resetIds, stats: store.getStoreStats() });
 });
 
 app.get('/api/admin/runs/:id', (req, res) => {
   const detail = store.getRunDetail(req.params.id);
   if (!detail) return res.status(404).json({ error: 'Run not found.' });
-  res.json(detail);
+  const page = paginateCompanyList(detail.companies, req.query);
+  res.json({ run: detail.run, companies: page.items, total: page.total, page: page.page, pageSize: page.pageSize, paginated: page.paginated });
 });
 
 app.post('/api/admin/runs/:id/reset', (req, res) => {
@@ -1260,21 +1731,24 @@ app.post('/api/admin/runs/:id/reset', (req, res) => {
   res.json({ ok: true, resetIds, stats: store.getStoreStats() });
 });
 
+// Historically a hard delete of the run and its leads. Now redirects to the
+// same archive + return-to-pool flow as the honestly-named endpoint - no
+// company, comment, folder or CRM status is ever destroyed by this route.
 app.delete('/api/admin/runs/:id', (req, res) => {
-  if (req.body?.confirm !== 'DELETE') {
-    return res.status(400).json({ error: 'Type DELETE to confirm permanent query deletion.' });
-  }
-  const deletedLeadIds = req.body?.deleteLeads === false ? [] : store.deleteRunCompanies(req.params.id);
-  const deletedRun = store.deleteRun(req.params.id);
-  if (!deletedRun) return res.status(404).json({ error: 'Run not found.' });
+  const outcome = store.returnRunToPool(req.params.id, {
+    actorId: req.adminId,
+    actorRole: 'admin',
+    reason: 'legacy_delete_redirect'
+  });
+  if (!outcome) return res.status(404).json({ error: 'Run not found.' });
   store.logAdminAction({
     adminId: cleanText(req.body?.adminId || 'admin'),
-    action: 'delete_query_permanently',
+    action: 'return_query_to_pool',
     targetType: 'run',
     targetId: req.params.id,
-    details: { deletedLeadIds, deletedLeadCount: deletedLeadIds.length }
+    details: { alreadyReturned: outcome.alreadyReturned, ...outcome.result }
   });
-  res.json({ ok: true, deletedRun, deletedLeadIds, stats: store.getStoreStats() });
+  res.json({ ok: true, ...outcome, stats: store.getStoreStats() });
 });
 
 app.post('/api/admin/runs/:runId/leads/:leadId/reset', (req, res) => {
@@ -1290,20 +1764,23 @@ app.post('/api/admin/runs/:runId/leads/:leadId/reset', (req, res) => {
   res.json({ ok: true, resetIds, stats: store.getStoreStats() });
 });
 
+// Historically a hard delete of a single lead. Now returns it to the pool -
+// contacts, comments, CRM status and folders are preserved.
 app.delete('/api/admin/runs/:runId/leads/:leadId', (req, res) => {
-  if (req.body?.confirm !== 'DELETE') {
-    return res.status(400).json({ error: 'Type DELETE to confirm permanent lead deletion.' });
-  }
-  const deletedIds = store.deleteCompanies([req.params.leadId]);
-  if (!deletedIds.length) return res.status(404).json({ error: 'Lead not found.' });
+  const result = store.returnLeadsToPool([req.params.leadId], {
+    actorId: req.adminId,
+    actorRole: 'admin',
+    reason: 'legacy_delete_redirect'
+  });
+  if (!result.returned.length && !result.alreadyInPool.length) return res.status(404).json({ error: 'Lead not found.' });
   store.logAdminAction({
     adminId: cleanText(req.body?.adminId || 'admin'),
-    action: 'delete_lead_permanently',
+    action: 'return_lead_to_pool',
     targetType: 'lead',
     targetId: req.params.leadId,
-    details: { runId: req.params.runId }
+    details: { runId: req.params.runId, ...result }
   });
-  res.json({ ok: true, deletedIds, stats: store.getStoreStats() });
+  res.json({ ok: true, ...result, stats: store.getStoreStats() });
 });
 
 app.post('/api/admin/leads/reset', (req, res) => {
@@ -1319,20 +1796,26 @@ app.post('/api/admin/leads/reset', (req, res) => {
   res.json({ ok: true, resetIds, stats: store.getStoreStats() });
 });
 
+// Historically a hard delete of the selected leads. Now returns them to the
+// pool in one transaction-like batch (see store.returnLeadsToPool).
 app.delete('/api/admin/leads', (req, res) => {
   const ids = Array.isArray(req.body?.ids) ? req.body.ids : [];
-  if (ids.length && req.body?.confirm !== 'DELETE') {
-    return res.status(400).json({ error: 'Type DELETE to confirm permanent lead deletion.' });
-  }
-  const deletedIds = store.deleteCompanies(ids);
+  const result = store.returnLeadsToPool(ids, { actorId: req.adminId, actorRole: 'admin', reason: 'legacy_delete_redirect' });
   store.logAdminAction({
     adminId: cleanText(req.body?.adminId || 'admin'),
-    action: deletedIds.length > 1 ? 'delete_selected_leads_permanently' : 'delete_lead_permanently',
+    action: result.returned.length > 1 ? 'return_selected_leads_to_pool' : 'return_lead_to_pool',
     targetType: 'lead',
-    targetId: deletedIds.length === 1 ? deletedIds[0] : 'bulk',
-    details: { count: deletedIds.length, leadIds: deletedIds }
+    targetId: result.returned.length === 1 ? result.returned[0] : 'bulk',
+    details: result
   });
-  res.json({ ok: true, deletedIds, stats: store.getStoreStats() });
+  res.json({ ok: true, ...result, stats: store.getStoreStats() });
+});
+
+app.get('/api/leads/:id', (req, res) => {
+  const company = store.getCompany(String(req.params.id));
+  if (!company) return res.status(404).json({ error: 'Lead not found.' });
+  if (!requireWorkerCompanyRelation(req, res, company)) return;
+  res.json({ company });
 });
 
 app.post('/api/leads/:id/status', (req, res) => {
@@ -1354,6 +1837,280 @@ app.post('/api/leads/:id/status', (req, res) => {
     details: { status: company.status, workerId: company.assigned_worker_id || '' }
   });
   res.json({ ok: true, company });
+});
+
+// =====================================================================
+// POOL RETURN - worker + admin. A worker may only return their own leads/
+// runs; an admin may act on any. Every action is idempotent and reports a
+// precise breakdown instead of a blind "ok".
+// =====================================================================
+
+// B. Single lead / selected leads ("Wroc lead do puli" / "Wroc zaznaczone leady do puli").
+app.post('/api/leads/:id/return-to-pool', (req, res) => {
+  const existing = store.getCompany(String(req.params.id));
+  if (!existing) return res.status(404).json({ error: 'Lead not found.' });
+  if (!requireWorkerLeadAccess(req, res, existing)) return;
+  const actor = resolveActor(req);
+  const result = store.returnLeadsToPool([req.params.id], { actorId: actor.actorId, actorRole: actor.actorRole });
+  store.logAdminAction({
+    adminId: actor.actorId || actor.actorRole,
+    action: 'return_lead_to_pool',
+    targetType: 'lead',
+    targetId: req.params.id,
+    details: result
+  });
+  res.json({ ok: true, ...result });
+});
+
+app.post('/api/leads/return-to-pool', (req, res) => {
+  const ids = [...new Set((Array.isArray(req.body?.ids) ? req.body.ids : []).map(String).filter(Boolean))];
+  if (!ids.length) return res.status(400).json({ error: 'ids is required.' });
+  const actor = resolveActor(req);
+  let allowedIds = ids;
+  if (actor.actorRole !== 'admin') {
+    if (!actor.workerId) return res.status(401).json({ error: 'Worker identity is required.' });
+    allowedIds = ids.filter((id) => assignedWorkerId(store.getCompany(id)) === actor.workerId);
+  }
+  const result = store.returnLeadsToPool(allowedIds, { actorId: actor.actorId, actorRole: actor.actorRole });
+  const forbiddenIds = ids.filter((id) => !allowedIds.includes(id));
+  for (const id of forbiddenIds) result.skipped.push({ id, reason: 'not_owned_by_requester' });
+  store.logAdminAction({
+    adminId: actor.actorId || actor.actorRole,
+    action: 'return_selected_leads_to_pool',
+    targetType: 'lead',
+    targetId: 'bulk',
+    details: result
+  });
+  res.json({ ok: true, ...result });
+});
+
+// A. Whole query back to the pool ("Wroc query do puli").
+app.post('/api/runs/:id/return-to-pool', (req, res) => {
+  const run = store.getRun(String(req.params.id));
+  if (!run) return res.status(404).json({ error: 'Run not found.' });
+  if (!requireWorkerRunAccess(req, res, run)) return;
+  const actor = resolveActor(req);
+  const outcome = store.returnRunToPool(req.params.id, { actorId: actor.actorId, actorRole: actor.actorRole });
+  store.logAdminAction({
+    adminId: actor.actorId || actor.actorRole,
+    action: 'return_query_to_pool',
+    targetType: 'run',
+    targetId: req.params.id,
+    details: { alreadyReturned: outcome.alreadyReturned, ...outcome.result }
+  });
+  res.json({ ok: true, ...outcome });
+});
+
+// C. All leads of one query back to the pool, without archiving the query
+// itself ("Wroc wszystkie leady tego zapytania do puli").
+app.post('/api/runs/:id/leads/return-to-pool', (req, res) => {
+  const run = store.getRun(String(req.params.id));
+  if (!run) return res.status(404).json({ error: 'Run not found.' });
+  if (!requireWorkerRunAccess(req, res, run)) return;
+  const actor = resolveActor(req);
+  const outcome = store.returnRunLeadsToPool(req.params.id, { actorId: actor.actorId, actorRole: actor.actorRole });
+  store.logAdminAction({
+    adminId: actor.actorId || actor.actorRole,
+    action: 'return_query_leads_to_pool',
+    targetType: 'run',
+    targetId: req.params.id,
+    details: outcome.result
+  });
+  res.json({ ok: true, ...outcome });
+});
+
+// =====================================================================
+// CRM STATUS - separate axis from the pool/lead status above; survives pool
+// returns and reassignment untouched.
+// =====================================================================
+
+app.get('/api/crm-statuses', (_req, res) => {
+  res.json({ statuses: store.listCrmStatuses() });
+});
+
+app.post('/api/companies/:id/crm-status', (req, res) => {
+  const existing = store.getCompany(String(req.params.id));
+  if (!existing) return res.status(404).json({ error: 'Company not found.' });
+  if (!requireWorkerCompanyRelation(req, res, existing)) return;
+  const actor = resolveActor(req);
+  const company = store.setCompanyCrmStatus(req.params.id, {
+    status: cleanText(req.body?.status || ''),
+    workerId: actor.workerId || actor.actorId,
+    actorRole: actor.actorRole,
+    note: req.body?.note
+  });
+  if (!company) return res.status(404).json({ error: 'Company not found.' });
+  store.logAdminAction({
+    adminId: actor.actorId || actor.actorRole,
+    action: 'update_crm_status',
+    targetType: 'lead',
+    targetId: req.params.id,
+    details: { status: company.crm_status }
+  });
+  res.json({ ok: true, company });
+});
+
+// =====================================================================
+// COMMENTS - separate entity from status; soft-deletable, own-comment-only
+// edit/delete for workers, full access for admin.
+// =====================================================================
+
+app.get('/api/companies/:id/comments', (req, res) => {
+  const existing = store.getCompany(String(req.params.id));
+  if (!existing) return res.status(404).json({ error: 'Company not found.' });
+  if (!requireWorkerCompanyRelation(req, res, existing)) return;
+  res.json({ comments: store.listComments(req.params.id, { includeArchived: isAdminAuthorized(req) }) });
+});
+
+app.post('/api/companies/:id/comments', (req, res) => {
+  const existing = store.getCompany(String(req.params.id));
+  if (!existing) return res.status(404).json({ error: 'Company not found.' });
+  if (!requireWorkerCompanyRelation(req, res, existing)) return;
+  const actor = resolveActor(req);
+  if (actor.actorRole === 'worker' && !actor.workerId) return res.status(401).json({ error: 'Worker identity is required.' });
+  try {
+    const comment = store.addComment(req.params.id, {
+      authorId: actor.actorId,
+      authorRole: actor.actorRole,
+      text: req.body?.text || '',
+      source: cleanText(req.body?.source || ''),
+      parserQueryId: cleanText(req.body?.parserQueryId || '')
+    });
+    if (!comment) return res.status(404).json({ error: 'Company not found.' });
+    res.status(201).json({ ok: true, comment });
+  } catch (error) {
+    res.status(400).json({ error: error.message || 'Invalid comment.' });
+  }
+});
+
+app.patch('/api/comments/:commentId', (req, res) => {
+  const actor = resolveActor(req);
+  if (actor.actorRole === 'worker' && !actor.workerId) return res.status(401).json({ error: 'Worker identity is required.' });
+  try {
+    const comment = store.editComment(req.params.commentId, {
+      authorId: actor.actorId,
+      authorRole: actor.actorRole,
+      text: req.body?.text || ''
+    });
+    if (!comment) return res.status(404).json({ error: 'Comment not found.' });
+    res.json({ ok: true, comment });
+  } catch (error) {
+    res.status(403).json({ error: error.message || 'You can only edit your own comment.' });
+  }
+});
+
+app.delete('/api/comments/:commentId', (req, res) => {
+  const actor = resolveActor(req);
+  if (actor.actorRole === 'worker' && !actor.workerId) return res.status(401).json({ error: 'Worker identity is required.' });
+  try {
+    const comment = store.softDeleteComment(req.params.commentId, { authorId: actor.actorId, authorRole: actor.actorRole });
+    if (!comment) return res.status(404).json({ error: 'Comment not found.' });
+    res.json({ ok: true, comment });
+  } catch (error) {
+    res.status(403).json({ error: error.message || 'You can only delete your own comment.' });
+  }
+});
+
+// =====================================================================
+// SAVED FOLDERS + SAVED COMPANIES ("Zapisane"). Worker-owned; admin can view
+// or manage on behalf of a worker by passing workerId explicitly.
+// =====================================================================
+
+app.get('/api/saved/folders', (req, res) => {
+  const workerId = requireActingWorkerId(req, res);
+  if (!workerId) return;
+  res.json({ folders: store.listFolders(workerId) });
+});
+
+app.post('/api/saved/folders', (req, res) => {
+  const workerId = requireActingWorkerId(req, res);
+  if (!workerId) return;
+  try {
+    const folder = store.createFolder(workerId, req.body?.name || '');
+    res.status(201).json({ ok: true, folder });
+  } catch (error) {
+    res.status(400).json({ error: error.message || 'Invalid folder name.' });
+  }
+});
+
+app.patch('/api/saved/folders/:folderId', (req, res) => {
+  const workerId = requireActingWorkerId(req, res);
+  if (!workerId) return;
+  try {
+    const folder = store.renameFolder(workerId, req.params.folderId, req.body?.name || '');
+    if (!folder) return res.status(404).json({ error: 'Folder not found.' });
+    res.json({ ok: true, folder });
+  } catch (error) {
+    res.status(400).json({ error: error.message || 'Invalid folder name.' });
+  }
+});
+
+app.delete('/api/saved/folders/:folderId', (req, res) => {
+  const workerId = requireActingWorkerId(req, res);
+  if (!workerId) return;
+  try {
+    const result = store.deleteFolder(workerId, req.params.folderId, { moveToFolderId: req.body?.moveToFolderId || null });
+    if (!result) return res.status(404).json({ error: 'Folder not found.' });
+    res.json({ ok: true, ...result });
+  } catch (error) {
+    res.status(400).json({ error: error.message || 'Could not delete folder.' });
+  }
+});
+
+app.get('/api/saved', (req, res) => {
+  const workerId = requireActingWorkerId(req, res);
+  if (!workerId) return;
+  const page = store.listSavedCompaniesForWorker(workerId, {
+    folderId: req.query.folderId ?? '',
+    q: req.query.q || '',
+    status: req.query.status || '',
+    crmStatus: req.query.crmStatus || '',
+    city: req.query.city || '',
+    country: req.query.country || '',
+    category: req.query.category || '',
+    sort: req.query.sort || 'newest',
+    page: req.query.page,
+    pageSize: req.query.pageSize
+  });
+  res.json(page);
+});
+
+app.post('/api/saved', (req, res) => {
+  const workerId = requireActingWorkerId(req, res);
+  if (!workerId) return;
+  const companyIds = Array.isArray(req.body?.companyIds) ? req.body.companyIds : req.body?.companyId ? [req.body.companyId] : [];
+  if (!companyIds.length) return res.status(400).json({ error: 'companyIds is required.' });
+  try {
+    const result = store.saveCompaniesForWorker(workerId, companyIds, req.body?.folderId || null);
+    res.json({ ok: true, ...result });
+  } catch (error) {
+    res.status(400).json({ error: error.message || 'Could not save companies.' });
+  }
+});
+
+app.post('/api/saved/move', (req, res) => {
+  const workerId = requireActingWorkerId(req, res);
+  if (!workerId) return;
+  const companyIds = Array.isArray(req.body?.companyIds) ? req.body.companyIds : [];
+  if (!companyIds.length) return res.status(400).json({ error: 'companyIds is required.' });
+  try {
+    const moved = store.moveCompaniesBetweenFolders(workerId, companyIds, req.body?.fromFolderId || null, req.body?.toFolderId || null);
+    res.json({ ok: true, moved });
+  } catch (error) {
+    res.status(400).json({ error: error.message || 'Could not move companies.' });
+  }
+});
+
+app.delete('/api/saved', (req, res) => {
+  const workerId = requireActingWorkerId(req, res);
+  if (!workerId) return;
+  const companyIds = Array.isArray(req.body?.companyIds) ? req.body.companyIds : [];
+  if (!companyIds.length) return res.status(400).json({ error: 'companyIds is required.' });
+  const removed =
+    req.body?.folderId !== undefined
+      ? store.removeCompaniesFromFolderForWorker(workerId, companyIds, req.body.folderId || null)
+      : store.unsaveCompaniesForWorker(workerId, companyIds);
+  res.json({ ok: true, removed });
 });
 
 app.get('/api/academy/progress', (req, res) => {
@@ -1638,10 +2395,28 @@ app.post('/api/ai/site-analysis', async (req, res) => {
   }
 });
 
+// Registry APIs (CEIDG, KRS) are external government services with no SLA -
+// without a timeout a slow/hanging response leaves the request (and the
+// worker waiting on it) stuck indefinitely.
+async function fetchWithTimeout(url, options = {}, timeoutMs = REGISTRY_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      throw new Error(`Registry request timed out after ${Math.round(timeoutMs / 1000)}s: ${url}`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 app.get('/api/registry/ceidg/search', async (req, res) => {
   if (!CEIDG_TOKEN) {
     return res.status(400).json({
-      error: 'CEIDG_API_TOKEN не указан в .env. Импортируйте CSV или добавьте токен.'
+      error: 'CEIDG_API_TOKEN не указан в .env. �?мпортируйте CSV или добавьте токен.'
     });
   }
 
@@ -1651,7 +2426,7 @@ app.get('/api/registry/ceidg/search', async (req, res) => {
       if (req.query[key]) params.set(key, String(req.query[key]));
     }
     const url = `${CEIDG_ENDPOINT}?${params.toString()}`;
-    const response = await fetch(url, {
+    const response = await fetchWithTimeout(url, {
       headers: {
         authorization: `Bearer ${CEIDG_TOKEN}`,
         accept: 'application/json',
@@ -1671,7 +2446,7 @@ app.get('/api/registry/krs/:krs', async (req, res) => {
 
   try {
     const url = `https://api-krs.ms.gov.pl/api/krs/OdpisAktualny/${krs}`;
-    const response = await fetch(url, {
+    const response = await fetchWithTimeout(url, {
       headers: { accept: 'application/json', 'user-agent': USER_AGENT }
     });
     const text = await response.text();
@@ -1696,7 +2471,7 @@ function normalizeItems(items) {
     .map((item) => {
       const sourceProfile = cleanText(item.source_profile || item.profile_url || item.source_url || '');
       const city = cleanText(item.city || item.miasto || 'Warszawa');
-      const country = cleanText(item.country || item.kraj || discoveryContext.country || '');
+      const country = cleanText(item.country || item.kraj || getDiscoveryContext().country || '');
       const socialProfiles = {
         instagram: cleanText(item.instagram || item.instagram_url || ''),
         facebook: cleanText(item.facebook || item.facebook_url || ''),
@@ -1776,7 +2551,17 @@ function computeDiscoveryCandidateLimit(requestedLimit, sourceFocus = 'internet'
 async function runDiscoveryJob(jobId, params) {
   const runStartedAt = performance.now();
   let run = null;
+  let progressNewCount = 0;
+  let progressDuplicateCount = 0;
+  const progressCompanyIds = [];
 
+  // Every discovery job (and every nested async call it makes - Google Places,
+  // Amazon Location, cross-source enrichment, phone normalization, etc.) runs
+  // inside this AsyncLocalStorage context, so params.country/city/radiusKm
+  // stay isolated per job even when multiple discovery jobs run concurrently.
+  await discoveryContextStorage.run(
+    { country: params.country, radiusKm: params.radiusKm, city: params.city },
+    async () => {
   try {
     updateDiscoveryJob(jobId, {
       status: 'running',
@@ -1789,7 +2574,6 @@ async function runDiscoveryJob(jobId, params) {
       }
     });
 
-    discoveryContext = { country: params.country, radiusKm: params.radiusKm, city: params.city };
     const candidateLimit = computeDiscoveryCandidateLimit(params.limit, params.sourceFocus);
     run = store.createRun({
       niches: params.niches,
@@ -1804,34 +2588,70 @@ async function runDiscoveryJob(jobId, params) {
     });
     updateDiscoveryJob(jobId, { runId: run.id });
 
-    const discovery = await discoverCompaniesBatchWithoutAI({
-      niches: params.niches,
-      city: params.city,
-      district: params.district,
-      limit: candidateLimit,
-      sourceFocus: params.sourceFocus,
-      onProgress(event) {
-        const progressRelevance = applyCategoryRelevance(normalizeItems(event.companies || []), params.niches);
-        const claimedPreview = store.claimCompaniesForRun(progressRelevance.companies, {
-          runId: run.id,
-          workerId: params.workerId,
-          limit: params.limit
-        });
-        updateDiscoveryJob(jobId, {
-          appendCompanies: claimedPreview.companies,
-          appendQueries: event.queries || [],
-          appendWarnings: event.warnings || [],
-          progress: {
-            message: event.message || 'Ищу компании...',
-            currentNiche: event.niche || '',
-            currentSource: event.source || '',
-            processedNiches: event.processedNiches ?? 0,
-            totalNiches: params.niches.length,
-            foundCount: claimedPreview.companies.length || event.foundSoFar || event.count || 0
+    const guard = { stopped: false, reason: '' };
+    const jobRef = getDiscoveryJob(jobId);
+    if (jobRef) jobRef.guard = guard;
+    let duplicateStreak = 0;
+    let progressAttempts = 0;
+
+    const discovery = await Promise.race([
+      discoverCompaniesBatchWithoutAI({
+        niches: params.niches,
+        city: params.city,
+        district: params.district,
+        limit: candidateLimit,
+        sourceFocus: params.sourceFocus,
+        guard,
+        onProgress(event) {
+          progressAttempts += 1;
+          const progressRelevance = applyCategoryRelevance(normalizeItems(event.companies || []), params.niches);
+          const claimedPreview = store.claimCompaniesForRun(progressRelevance.companies, {
+            runId: run.id,
+            workerId: params.workerId,
+            limit: params.limit
+          });
+          progressCompanyIds.push(...(claimedPreview.companyIds || []));
+          progressNewCount += claimedPreview.newCount;
+          progressDuplicateCount += claimedPreview.duplicateCount;
+
+          if (claimedPreview.newCount === 0 && claimedPreview.duplicateCount > 0) {
+            duplicateStreak += 1;
+          } else if (claimedPreview.newCount > 0) {
+            duplicateStreak = 0;
           }
-        });
-      }
-    });
+          if (duplicateStreak >= MAX_DUPLICATE_STREAK && !guard.stopped) {
+            guard.stopped = true;
+            guard.reason = 'duplicate_streak';
+          }
+
+          updateDiscoveryJob(jobId, {
+            appendCompanies: claimedPreview.companies,
+            appendQueries: event.queries || [],
+            appendWarnings: event.warnings || [],
+            progress: {
+              message: guard.stopped
+                ? '�?сточник исчерпан: несколько подряд результатов оказались уже известными компаниями.'
+                : event.message || '�?щу компании...',
+              currentNiche: event.niche || '',
+              currentSource: event.source || '',
+              processedNiches: event.processedNiches ?? 0,
+              totalNiches: params.niches.length,
+              foundCount: claimedPreview.companies.length || event.foundSoFar || event.count || 0,
+              newCount: progressNewCount,
+              duplicateCount: progressDuplicateCount,
+              attempts: progressAttempts
+            }
+          });
+        }
+      }),
+      new Promise((_, reject) => {
+        setTimeout(() => {
+          guard.stopped = true;
+          guard.reason = 'timeout';
+          reject(Object.assign(new Error('Поиск прерван по тайм-ауту.'), { code: 'DISCOVERY_TIMEOUT' }));
+        }, MAX_DISCOVERY_JOB_MS);
+      })
+    ]);
 
     const relevance = applyCategoryRelevance(normalizeItems(discovery.companies || []), params.niches);
     const rawCompanies = relevance.companies.slice(0, candidateLimit);
@@ -1846,11 +2666,22 @@ async function runDiscoveryJob(jobId, params) {
     const newCount = claimedFinal.newCount;
     const duplicateCount = claimedFinal.duplicateCount;
     const companyIds = claimedFinal.companyIds;
-    const finalStatus = foundCount >= params.limit ? 'completed' : 'exhausted';
+    const finalStatus =
+      guard.reason === 'cancelled'
+        ? 'cancelled'
+        : foundCount >= params.limit
+          ? 'completed'
+          : newCount === 0 && duplicateCount > 0
+            ? 'duplicates_only'
+            : 'exhausted';
     const progressMessage =
-      finalStatus === 'completed'
-        ? `Найдено ${foundCount} новых компаний. Поиск завершен.`
-        : `Поиск исчерпан: найдено ${foundCount} новых компаний из ${params.limit}, дублей пропущено ${duplicateCount}.`;
+      finalStatus === 'cancelled'
+        ? `Поиск отменен. Найдено ${foundCount} новых компаний до отмены.`
+        : finalStatus === 'completed'
+          ? `Найдено ${foundCount} новых компаний. Поиск завершен.`
+          : finalStatus === 'duplicates_only'
+            ? `Все найденные компании уже есть в базе (дублей: ${duplicateCount}). Новых нет.`
+            : `Поиск исчерпан: найдено ${foundCount} новых компаний из ${params.limit}, дублей пропущено ${duplicateCount}.`;
 
     store.addCompanyIdsToRun(run.id, companyIds);
     store.updateRun(run.id, {
@@ -1867,7 +2698,7 @@ async function runDiscoveryJob(jobId, params) {
     });
 
     updateDiscoveryJob(jobId, {
-      status: 'completed',
+      status: finalStatus === 'cancelled' ? 'cancelled' : 'completed',
       partialCompanies: companies.map((company, index) => ({ ...company, _companyId: company._companyId || companyIds[index] })),
       appendQueries: discovery.queries || [],
       appendWarnings: discovery.warnings || [],
@@ -1905,27 +2736,43 @@ async function runDiscoveryJob(jobId, params) {
     });
   } catch (error) {
     console.error(`[discover-job] id=${jobId} run=${run?.id || 'n/a'} failed:`, error);
+
+    let message = error.message || 'Ошибка поиска компаний.';
+    let runStatus = 'failed';
+    if (error?.code === 'DISCOVERY_TIMEOUT' || error?.name === 'AbortError') {
+      message = 'Поиск прерван по тайм-ауту.';
+      runStatus = 'timeout';
+    } else if (error?.code === 'ECONNRESET' || error?.cause?.code === 'ECONNRESET' || /ECONNRESET|network/i.test(message)) {
+      message = 'Сетевая ошибка: соединение с внешним источником прервано. Попробуйте запустить поиск еще раз.';
+    } else if (/GOOGLE_PLACES_API_KEY|CEIDG_API_TOKEN|AWS_LOCATION_API_KEY|OPENAI_API_KEY/.test(message)) {
+      message = `Не настроен API-ключ для источника поиска: ${message}`;
+    }
+
     if (run) {
+      if (progressCompanyIds.length) store.addCompanyIdsToRun(run.id, progressCompanyIds);
       store.updateRun(run.id, {
-        status: 'failed',
+        status: runStatus,
         finished_at: new Date().toISOString(),
-        warnings: [error.message || 'Ошибка поиска компаний.']
+        found_count: progressCompanyIds.length,
+        new_count: progressNewCount,
+        duplicate_count: progressDuplicateCount,
+        warnings: [message]
       });
     }
     updateDiscoveryJob(jobId, {
-      status: 'failed',
-      error: error.message || 'Ошибка поиска компаний.',
-      appendWarnings: [error.message || 'Ошибка поиска компаний.'],
+      status: runStatus,
+      error: message,
+      appendWarnings: [message],
       progress: {
-        message: error.message || 'Ошибка поиска компаний.'
+        message
       }
     });
-  } finally {
-    discoveryContext = { country: '', radiusKm: 0, city: '' };
   }
+    }
+  );
 }
 
-async function discoverCompaniesBatchWithoutAI({ niches, city, district, limit, sourceFocus, onProgress }) {
+async function discoverCompaniesBatchWithoutAI({ niches, city, district, limit, sourceFocus, onProgress, guard }) {
   if (sourceFocus === 'amazon_location') {
     if (!AWS_LOCATION_API_KEY) {
       throw new Error('Для Amazon Location нужен AWS_LOCATION_API_KEY в .env.');
@@ -1934,6 +2781,7 @@ async function discoverCompaniesBatchWithoutAI({ niches, city, district, limit, 
     const amazonDiscoveries = [];
     const perNicheLimit = Math.max(5, Math.ceil(limit / Math.max(1, niches.length)));
     for (const niche of niches) {
+      if (guard?.stopped) break;
       if (uniqueCompanies(amazonDiscoveries.flatMap((item) => item.companies || [])).length >= limit) break;
       const discovery = await discoverCompaniesFromAmazonLocationExpanded({
         niche,
@@ -1941,7 +2789,8 @@ async function discoverCompaniesBatchWithoutAI({ niches, city, district, limit, 
         district,
         limit: perNicheLimit,
         sourceFocus,
-        onProgress
+        onProgress,
+        guard
       });
       amazonDiscoveries.push(discovery);
       if (typeof onProgress === 'function') {
@@ -1965,6 +2814,7 @@ async function discoverCompaniesBatchWithoutAI({ niches, city, district, limit, 
     const googleDiscoveries = [];
     const perNicheLimit = Math.max(5, Math.ceil(limit / Math.max(1, niches.length)));
     for (const niche of niches) {
+      if (guard?.stopped) break;
       if (uniqueCompanies(googleDiscoveries.flatMap((item) => item.companies || [])).length >= limit) break;
       const discovery = await discoverCompaniesFromGooglePlacesExpanded({
         niche,
@@ -1972,7 +2822,8 @@ async function discoverCompaniesBatchWithoutAI({ niches, city, district, limit, 
         district,
         limit: perNicheLimit,
         sourceFocus,
-        onProgress
+        onProgress,
+        guard
       });
       googleDiscoveries.push(discovery);
       if (typeof onProgress === 'function') {
@@ -2004,6 +2855,7 @@ async function discoverCompaniesBatchWithoutAI({ niches, city, district, limit, 
   const perNicheLimit = Math.max(3, Math.ceil(limit / Math.max(1, niches.length)));
 
   for (const niche of niches) {
+    if (guard?.stopped) break;
     const remaining = limit - uniqueCompanies(collected).length;
     if (remaining <= 0) break;
     try {
@@ -2013,6 +2865,7 @@ async function discoverCompaniesBatchWithoutAI({ niches, city, district, limit, 
         district,
         limit: Math.max(perNicheLimit, remaining),
         sourceFocus,
+        guard,
         onProgress: (event) => {
           if (typeof onProgress !== 'function') return;
           onProgress({
@@ -2068,7 +2921,7 @@ function discoveryPriority(discovery) {
   return 9;
 }
 
-async function discoverCompaniesWithoutAI({ niche, city, district, limit, sourceFocus, onProgress }) {
+async function discoverCompaniesWithoutAI({ niche, city, district, limit, sourceFocus, onProgress, guard }) {
   if (sourceFocus === 'all_sources') {
     // Smart pipeline: one source finds the primary list of companies (up to
     // the requested limit), then every other configured source is used only
@@ -2081,9 +2934,9 @@ async function discoverCompaniesWithoutAI({ niche, city, district, limit, source
     const warnings = [];
     let primary = null;
 
-    if (GOOGLE_PLACES_API_KEY) {
+    if (GOOGLE_PLACES_API_KEY && !guard?.stopped) {
       try {
-        primary = await discoverCompaniesFromGooglePlacesExpanded({ niche, city, district, limit, sourceFocus, onProgress });
+        primary = await discoverCompaniesFromGooglePlacesExpanded({ niche, city, district, limit, sourceFocus, onProgress, guard });
         if (typeof onProgress === 'function') {
           onProgress({
             niche,
@@ -2101,9 +2954,9 @@ async function discoverCompaniesWithoutAI({ niche, city, district, limit, source
       }
     }
 
-    if (!primary?.companies?.length && AWS_LOCATION_API_KEY) {
+    if (!primary?.companies?.length && AWS_LOCATION_API_KEY && !guard?.stopped) {
       try {
-        primary = await discoverCompaniesFromAmazonLocationExpanded({ niche, city, district, limit, sourceFocus, onProgress });
+        primary = await discoverCompaniesFromAmazonLocationExpanded({ niche, city, district, limit, sourceFocus, onProgress, guard });
         if (typeof onProgress === 'function') {
           onProgress({
             niche,
@@ -2121,7 +2974,7 @@ async function discoverCompaniesWithoutAI({ niche, city, district, limit, source
       }
     }
 
-    if (!primary?.companies?.length && CEIDG_TOKEN) {
+    if (!primary?.companies?.length && CEIDG_TOKEN && !guard?.stopped) {
       try {
         primary = await discoverCompaniesFromCeidg({ niche, city, district, limit });
       } catch (error) {
@@ -2129,9 +2982,9 @@ async function discoverCompaniesWithoutAI({ niche, city, district, limit, source
       }
     }
 
-    if (!primary?.companies?.length) {
+    if (!primary?.companies?.length && !guard?.stopped) {
       try {
-        primary = await discoverCompaniesFromPublicSearchExpanded({ niche, city, district, limit, sourceFocus, onProgress });
+        primary = await discoverCompaniesFromPublicSearchExpanded({ niche, city, district, limit, sourceFocus, onProgress, guard });
       } catch (error) {
         warnings.push(`Public search skipped: ${error.message || 'unknown error'}`);
       }
@@ -2168,7 +3021,7 @@ async function discoverCompaniesWithoutAI({ niche, city, district, limit, source
   if (['internet', 'directories', 'booking', 'social'].includes(sourceFocus)) {
     const shouldExpandPublicSearch = ['internet'].includes(sourceFocus);
     const publicDiscovery = shouldExpandPublicSearch
-      ? await discoverCompaniesFromPublicSearchExpanded({ niche, city, district, limit, sourceFocus })
+      ? await discoverCompaniesFromPublicSearchExpanded({ niche, city, district, limit, sourceFocus, guard })
       : await discoverCompaniesFromPublicSearch({ niche, city, district, limit, sourceFocus });
     return publicDiscovery;
   }
@@ -2181,7 +3034,7 @@ async function discoverCompaniesWithoutAI({ niche, city, district, limit, source
   }
 
   if (sourceFocus === 'amazon_location' && AWS_LOCATION_API_KEY) {
-    return discoverCompaniesFromAmazonLocationExpanded({ niche, city, district, limit, sourceFocus });
+    return discoverCompaniesFromAmazonLocationExpanded({ niche, city, district, limit, sourceFocus, guard });
   }
 
   if (sourceFocus === 'amazon_location') {
@@ -2189,7 +3042,7 @@ async function discoverCompaniesWithoutAI({ niche, city, district, limit, source
   }
 
   if (sourceFocus === 'maps_api' && GOOGLE_PLACES_API_KEY) {
-    return discoverCompaniesFromGooglePlacesExpanded({ niche, city, district, limit, sourceFocus });
+    return discoverCompaniesFromGooglePlacesExpanded({ niche, city, district, limit, sourceFocus, guard });
   }
 
   if (sourceFocus === 'maps_api') {
@@ -2225,7 +3078,7 @@ function uniqueCompanies(companies) {
   return result;
 }
 
-async function discoverCompaniesFromAmazonLocationExpanded({ niche, city, district, limit, sourceFocus, onProgress }) {
+async function discoverCompaniesFromAmazonLocationExpanded({ niche, city, district, limit, sourceFocus, onProgress, guard }) {
   const cityIsWarsaw = isWarsawCity(city);
   const districts = district ? [district] : cityIsWarsaw ? ['', ...DEFAULT_WARSAW_DISTRICTS.slice(0, 8)] : [''];
   const queryNiches = district ? [niche] : buildSearchPhrasesForNiche(niche);
@@ -2240,6 +3093,7 @@ async function discoverCompaniesFromAmazonLocationExpanded({ niche, city, distri
   const warnings = [];
 
   for (const { queryNiche, districtName } of queryPlans) {
+    if (guard?.stopped) break;
     const collectedCount = uniqueCompanies(discoveries.flatMap((item) => item.companies || [])).length;
     if (collectedCount >= limit) break;
 
@@ -2286,7 +3140,7 @@ async function discoverCompaniesFromAmazonLocation({ niche, city, district, limi
   }
 
   const cityPreset = getCityPreset(city);
-  const countryPreset = getCountryPreset(discoveryContext.country) || (cityPreset ? getCountryPreset(cityPreset.country) : null);
+  const countryPreset = getCountryPreset(getDiscoveryContext().country) || (cityPreset ? getCountryPreset(cityPreset.country) : null);
   const includeCountry = countryPreset?.regionCode === 'UA' ? 'UKR' : 'POL';
   const queryText = [niche, district, city].filter(Boolean).join(' ').slice(0, 200);
   const url = `https://places.geo.${AWS_LOCATION_REGION}.amazonaws.com/v2/search-text?${new URLSearchParams({
@@ -2381,7 +3235,7 @@ function amazonLocationItemToCompany(item, { niche, city, district, sourceFocus 
   const title = cleanText(item.Title || item.Name || '');
   const label = cleanText(address.Label || '');
   const locality = cleanText(address.Locality || city || 'Warszawa');
-  const country = cleanText(address.Country || address.CountryCode || discoveryContext.country || '');
+  const country = cleanText(address.Country || address.CountryCode || getDiscoveryContext().country || '');
   const phones = unique(
     (contacts.Phones || [])
       .map((entry) => normalizePhoneField(entry.Value || entry.Label || '', { city: locality, country }))
@@ -2415,7 +3269,7 @@ function amazonLocationItemToCompany(item, { niche, city, district, sourceFocus 
   };
 }
 
-async function discoverCompaniesFromGooglePlacesExpanded({ niche, city, district, limit, sourceFocus, onProgress }) {
+async function discoverCompaniesFromGooglePlacesExpanded({ niche, city, district, limit, sourceFocus, onProgress, guard }) {
   const cityIsWarsaw = isWarsawCity(city);
   const districts = district ? [district] : cityIsWarsaw ? ['', ...DEFAULT_WARSAW_DISTRICTS] : [''];
   const queryNiches = district ? [niche] : buildSearchPhrasesForNiche(niche);
@@ -2425,6 +3279,7 @@ async function discoverCompaniesFromGooglePlacesExpanded({ niche, city, district
   const warnings = [];
 
   for (const { queryNiche, districtName } of queryPlans) {
+    if (guard?.stopped) break;
     const collectedCount = uniqueCompanies(discoveries.flatMap((item) => item.companies || [])).length;
     if (collectedCount >= limit) break;
 
@@ -2470,12 +3325,12 @@ async function discoverCompaniesFromGooglePlacesExpanded({ niche, city, district
 
 async function discoverCompaniesFromGooglePlaces({ niche, city, district, limit, sourceFocus }) {
   const cityPreset = getCityPreset(city);
-  const countryPreset = getCountryPreset(discoveryContext.country) || (cityPreset ? getCountryPreset(cityPreset.country) : null);
+  const countryPreset = getCountryPreset(getDiscoveryContext().country) || (cityPreset ? getCountryPreset(cityPreset.country) : null);
   const regionCode = cityPreset?.regionCode || countryPreset?.regionCode || 'PL';
   const languageCode = cityPreset?.languageCode || countryPreset?.languageCode || 'pl';
   // If searching by country only (no specific city), let Google Places interpret the
   // free-text query without a location bias circle.
-  const textQuery = [niche, district, city || discoveryContext.country].filter(Boolean).join(' ');
+  const textQuery = [niche, district, city || getDiscoveryContext().country].filter(Boolean).join(' ');
   const fieldMask = [
     'places.id',
     'places.displayName',
@@ -2496,13 +3351,13 @@ async function discoverCompaniesFromGooglePlaces({ niche, city, district, limit,
       ? {
           circle: {
             center: { latitude: cityPreset.lat, longitude: cityPreset.lng },
-            radius: clamp(Math.round((discoveryContext.radiusKm || 15) * 1000), 1000, 50000)
+            radius: clamp(Math.round((getDiscoveryContext().radiusKm || 15) * 1000), 1000, 50000)
           }
         }
       : undefined;
 
   console.log(
-    `[google_places] query="${textQuery}" city=${city || '(country-wide)'} regionCode=${regionCode} radiusKm=${discoveryContext.radiusKm || '(default)'} bias=${Boolean(locationBias)}`
+    `[google_places] query="${textQuery}" city=${city || '(country-wide)'} regionCode=${regionCode} radiusKm=${getDiscoveryContext().radiusKm || '(default)'} bias=${Boolean(locationBias)}`
   );
 
   // Google Places (New) Text Search paginates with nextPageToken (max 20 per
@@ -2558,7 +3413,7 @@ async function discoverCompaniesFromGooglePlaces({ niche, city, district, limit,
       .filter((place) => !place.businessStatus || place.businessStatus === 'OPERATIONAL')
       .map((place) => {
         const placeCity = city || cleanText(place.formattedAddress || '').split(',').slice(-2, -1)[0]?.trim() || city;
-        const country = countryPreset?.label || discoveryContext.country || '';
+        const country = countryPreset?.label || getDiscoveryContext().country || '';
         return {
           company: cleanText(place.displayName?.text || ''),
           niche,
@@ -2572,6 +3427,7 @@ async function discoverCompaniesFromGooglePlaces({ niche, city, district, limit,
             regionCode
           }),
           website_url: cleanText(place.websiteUri || ''),
+          google_place_id: cleanText(place.id || ''),
           source: 'google_places_api',
           source_profile: cleanText(place.googleMapsUri || ''),
           review_count: parseNumber(place.userRatingCount),
@@ -2611,7 +3467,7 @@ async function discoverCompaniesFromGooglePlaces({ niche, city, district, limit,
   };
 }
 
-async function discoverCompaniesFromPublicSearchExpanded({ niche, city, district, limit, sourceFocus, onProgress }) {
+async function discoverCompaniesFromPublicSearchExpanded({ niche, city, district, limit, sourceFocus, onProgress, guard }) {
   if (district) {
     return discoverCompaniesFromPublicSearch({ niche, city, district, limit, sourceFocus });
   }
@@ -2624,6 +3480,7 @@ async function discoverCompaniesFromPublicSearchExpanded({ niche, city, district
   const perDistrictLimit = Math.min(24, Math.max(8, Math.ceil(limit / Math.min(queryPlans.length, 8))));
 
   for (const { queryNiche, districtName } of queryPlans) {
+    if (guard?.stopped) break;
     const collectedCount = uniqueCompanies(discoveries.flatMap((item) => item.companies || [])).length;
     if (collectedCount >= limit) break;
 
@@ -2745,7 +3602,7 @@ async function discoverCompaniesFromPublicSearch({ niche, city, district, limit,
           niche: inferNicheFromSearchResult(evidence, niche),
           city: city || 'Warszawa',
           district: district || '',
-          phone: extractPhones(evidence, { city, country: discoveryContext.country }).join('; '),
+          phone: extractPhones(evidence, { city, country: getDiscoveryContext().country }).join('; '),
           email: extractEmails(evidence).join('; '),
           website_url: ['official_candidate', 'free_subdomain'].includes(type) ? href : '',
           source: `public_search_${sourceFocus}`,
@@ -2821,7 +3678,7 @@ async function discoverCompaniesFromPublicRegistries({ niche, city, district, li
           niche: inferNicheFromSearchResult(evidence, niche),
           city: city || 'Warszawa',
           district: district || '',
-          phone: extractPhones(evidence, { city, country: discoveryContext.country }).join('; '),
+          phone: extractPhones(evidence, { city, country: getDiscoveryContext().country }).join('; '),
           email: extractEmails(evidence).join('; '),
           nip: (evidence.match(/\b\d{10}\b/) || [''])[0],
           regon: (evidence.match(/\b\d{9}\b/) || [''])[0],
@@ -2907,7 +3764,7 @@ async function crossVerifyPrimaryCompany(company, warnings) {
     return current;
   }
 
-  const city = current.city || discoveryContext.city || 'Warszawa';
+  const city = current.city || getDiscoveryContext().city || 'Warszawa';
   const district = current.district || '';
   const candidates = [];
 
@@ -3103,7 +3960,7 @@ async function enrichOneDiscoveredCompany(company) {
       companyName: company.company,
       niche: company.niche
     });
-  const phoneContext = { city: company.city, country: company.country || discoveryContext.country };
+  const phoneContext = { city: company.city, country: company.country || getDiscoveryContext().country };
   const phones = unique(
     [company.phone, ...(signals.phones || []), ...(signals.telLinks || [])].flatMap((value) =>
       splitPhoneValues(value, phoneContext)
@@ -3530,7 +4387,7 @@ async function discoverCompaniesFromOpenAIInternet({ niche, city, district, limi
       city: cleanText(row.city || city || 'Warszawa'),
       district: cleanText(row.district || district || ''),
       address: cleanText(row.address || ''),
-      phone: normalizePhoneField(row.phone || '', { city: cleanText(row.city || city || 'Warszawa'), country: discoveryContext.country }),
+      phone: normalizePhoneField(row.phone || '', { city: cleanText(row.city || city || 'Warszawa'), country: getDiscoveryContext().country }),
       email: cleanText(row.email || '').toLowerCase(),
       website_url: cleanText(row.website_url || row.website || ''),
       source: `openai_web_search_${sourceFocus}`,
@@ -3560,7 +4417,7 @@ async function discoverCompaniesFromCeidg({ niche, city, district, limit }) {
   if (niche) params.set('nazwa', niche);
   params.set('status', 'AKTYWNY');
 
-  const response = await fetch(`${CEIDG_ENDPOINT}?${params.toString()}`, {
+  const response = await fetchWithTimeout(`${CEIDG_ENDPOINT}?${params.toString()}`, {
     headers: {
       authorization: `Bearer ${CEIDG_TOKEN}`,
       accept: 'application/json',
@@ -3803,8 +4660,8 @@ async function discoverWebsiteFromPublicSearch(item) {
     return { candidates: [], checks: {}, warnings: [], queries: [] };
   }
 
-  const city = cleanText(item.city || discoveryContext.city || 'Warszawa');
-  const country = cleanText(item.country || discoveryContext.country || '');
+  const city = cleanText(item.city || getDiscoveryContext().city || 'Warszawa');
+  const country = cleanText(item.country || getDiscoveryContext().country || '');
   const phoneTail = (splitPhoneValues(item.phone, { city, country })[0] || normalizePhone(item.phone || '')).slice(-9);
   const queryParts = [
     [`"${company}"`, city, 'strona kontakt'],

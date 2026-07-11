@@ -55,7 +55,16 @@ const state = {
   activeRun: null,
   activeLead: null,
   stats: {},
-  selected: new Set()
+  selected: new Set(),
+  runsSelected: new Set(),
+  workersSelected: new Set(),
+  historyFilters: null,
+  historyView: 'active',
+  historyLoading: false,
+  historyError: '',
+  historyPreview: null,
+  historyPreviewExcluded: new Set(),
+  archivedRuns: []
 };
 
 const els = {
@@ -72,6 +81,9 @@ const els = {
   workerAcademyBox: document.querySelector('#workerAcademyBox'),
   workerLeadsCount: document.querySelector('#workerLeadsCount'),
   workerLeadsBody: document.querySelector('#workerLeadsBody'),
+  workerFoldersList: document.querySelector('#workerFoldersList'),
+  workerSavedList: document.querySelector('#workerSavedList'),
+  workerSavedCount: document.querySelector('#workerSavedCount'),
   workerDetailPanel: document.querySelector('#workerDetailPanel'),
   leadsBody: document.querySelector('#leadsBody'),
   runsList: document.querySelector('#runsList'),
@@ -81,8 +93,27 @@ const els = {
   searchInput: document.querySelector('#searchInput'),
   statusFilter: document.querySelector('#statusFilter'),
   resetSelected: document.querySelector('#resetSelected'),
-  deleteSelected: document.querySelector('#deleteSelected'),
-  selectedCount: document.querySelector('#selectedCount')
+  selectedCount: document.querySelector('#selectedCount'),
+  historyFiltersForm: document.querySelector('#historyFiltersForm'),
+  historyFiltersClear: document.querySelector('#historyFiltersClear'),
+  historyFiltersToggle: document.querySelector('#historyFiltersToggle'),
+  historyFiltersPanel: document.querySelector('#historyFiltersPanel'),
+  historyViewTabs: document.querySelector('#historyViewTabs'),
+  historyPreviewByFilter: document.querySelector('#historyPreviewByFilter'),
+  historyPreviewPanel: document.querySelector('#historyPreviewPanel'),
+  historyStateMessage: document.querySelector('#historyStateMessage'),
+  archiveList: document.querySelector('#archiveList'),
+  historyBulkBar: document.querySelector('#historyBulkBar'),
+  runsSelectAll: document.querySelector('#runsSelectAll'),
+  runsSelectedCount: document.querySelector('#runsSelectedCount'),
+  historyBulkReset: document.querySelector('#historyBulkReset'),
+  historyBulkDelete: document.querySelector('#historyBulkDelete'),
+  workersSelectAll: document.querySelector('#workersSelectAll'),
+  workersSelectedCount: document.querySelector('#workersSelectedCount'),
+  workersBulkActivate: document.querySelector('#workersBulkActivate'),
+  workersBulkDeactivate: document.querySelector('#workersBulkDeactivate'),
+  workersBulkResetLeads: document.querySelector('#workersBulkResetLeads'),
+  workersBulkDelete: document.querySelector('#workersBulkDelete')
 };
 
 function escapeHtml(value) {
@@ -553,10 +584,14 @@ async function loadAll({ keepSelection = true } = {}) {
   state.workers = workersData.workers || [];
   state.leads = leadsData.leads || [];
   state.stats = summaryData.stats || workersData.stats || leadsData.stats || {};
-  state.runs = summaryData.runs || [];
   state.academyUsers = summaryData.academyUsers || [];
   state.audit = auditData.actions || [];
   state.selected.clear();
+  state.runsSelected.clear();
+  const knownWorkers = new Set(state.workers.map((worker) => worker.workerId));
+  state.workersSelected = new Set([...state.workersSelected].filter((id) => knownWorkers.has(id)));
+
+  await loadHistoryRuns();
 
   const hasSelected = state.workers.some((worker) => worker.workerId === state.selectedWorkerId);
   if (!keepSelection || !hasSelected) state.selectedWorkerId = state.workers[0]?.workerId || '';
@@ -626,7 +661,8 @@ function workerMatchesSearch(worker) {
 function renderWorkers() {
   const workers = state.workers.filter(workerMatchesSearch);
   if (!workers.length) {
-    els.workersBody.innerHTML = '<tr><td colspan="7" class="muted">Brak workerów dla tego filtra.</td></tr>';
+    els.workersBody.innerHTML = '<tr><td colspan="8" class="muted">Brak workerów dla tego filtra.</td></tr>';
+    renderWorkersSelection();
     return;
   }
 
@@ -637,6 +673,7 @@ function renderWorkers() {
       const conversion = worker.leadsAssigned ? Math.round(((worker.meetingBooked || 0) / worker.leadsAssigned) * 100) : 0;
       return `
         <tr class="${selected}">
+          <td><input type="checkbox" data-select-worker="${escapeAttribute(worker.workerId)}" ${state.workersSelected.has(worker.workerId) ? 'checked' : ''} aria-label="Zaznacz workera"></td>
           <td>
             <strong>${escapeHtml(worker.displayName || worker.workerId)}</strong>
             <div class="muted mono">${escapeHtml(worker.login || worker.workerId)}</div>
@@ -657,6 +694,7 @@ function renderWorkers() {
       `;
     })
     .join('');
+  renderWorkersSelection();
 }
 
 function renderWorkerDetail() {
@@ -726,21 +764,85 @@ function renderWorkerDetail() {
   els.workerLeadsBody.innerHTML = companies.length
     ? companies.slice(0, 250).map((record) => renderLeadRow(record, { selectable: false })).join('')
     : '<tr><td colspan="6" class="muted">Brak leadów przypisanych do workera.</td></tr>';
+
+  const folders = detail.folders || [];
+  const saved = detail.saved || [];
+  if (els.workerSavedCount) els.workerSavedCount.textContent = `${detail.savedTotal ?? saved.length} zapisanych · ${folders.length} folderów`;
+  if (els.workerFoldersList) {
+    els.workerFoldersList.innerHTML = folders.length
+      ? folders.map((folder) => `<span class="chip">${escapeHtml(folder.name)}</span>`).join('')
+      : '<span class="muted">Worker nie utworzył jeszcze żadnego folderu.</span>';
+  }
+  if (els.workerSavedList) {
+    els.workerSavedList.innerHTML = saved.length
+      ? saved
+          .slice(0, 50)
+          .map((item) => {
+            const folderNames = (item.saved_folder_ids || [])
+              .map((id) => folders.find((folder) => folder.id === id)?.name)
+              .filter(Boolean);
+            return `
+            <div class="list-item">
+              <strong>${escapeHtml(item.data?.company || item.data?.legal_name || 'Bez nazwy')}</strong>
+              <div class="muted">${escapeHtml(folderNames.join(', ') || 'bez folderu')} · status CRM: ${escapeHtml(crmStatusAdminLabel(item.crm_status))}</div>
+              ${item.last_comment ? `<div class="muted">"${escapeHtml(item.last_comment.text.slice(0, 80))}"</div>` : ''}
+            </div>`;
+          })
+          .join('')
+      : '<div class="list-item muted">Worker nie zapisał jeszcze żadnej firmy.</div>';
+  }
 }
 
-function renderRunItem(run) {
+function crmStatusAdminLabel(value) {
+  const labels = {
+    nowy: 'Nowy',
+    do_kontaktu: 'Do kontaktu',
+    proba_kontaktu: 'Próba kontaktu',
+    brak_odpowiedzi: 'Brak odpowiedzi',
+    oddzwonic: 'Oddzwonić',
+    zainteresowany: 'Zainteresowany',
+    oferta_wyslana: 'Oferta wysłana',
+    umowione_spotkanie: 'Umówione spotkanie',
+    klient: 'Klient',
+    odrzucony: 'Odrzucony'
+  };
+  return labels[value] || 'Nowy';
+}
+
+function formatRunStatusLabel(status) {
+  if (status === 'duplicates_only') return 'Только дубли / новых нет';
+  if (status === 'cancelled') return 'Отменено';
+  return status || '-';
+}
+
+function renderRunItem(run, { selectable = false, archived = false } = {}) {
   const title = (run.niches || []).join(', ') || 'Zapytanie';
+  const badges = [
+    `<span class="badge">${escapeHtml(formatRunStatusLabel(run.status))}</span>`,
+    run.pool_status === 'returned_to_pool' ? '<span class="badge badge-returned">Zwrócone do puli</span>' : '',
+    run.archived_at ? '<span class="badge badge-archived">Zarchiwizowane</span>' : ''
+  ]
+    .filter(Boolean)
+    .join('');
   return `
     <div class="list-item run-item">
+      ${selectable ? `<input type="checkbox" data-select-run="${escapeAttribute(run.id)}" ${state.runsSelected.has(String(run.id)) ? 'checked' : ''} aria-label="Zaznacz zapytanie" />` : ''}
       <div>
         <strong>${escapeHtml(title)}</strong>
         <div class="muted">${escapeHtml(formatDate(run.started_at))} · ${escapeHtml(run.city || '-')} · worker: ${escapeHtml(run.worker_id || '-')}</div>
-        <div>Znaleziono: ${escapeHtml(run.found_count || 0)} · nowe: ${escapeHtml(run.new_count || 0)} · duble: ${escapeHtml(run.duplicate_count || 0)} · wrong category: ${escapeHtml(run.skipped_wrong_category || 0)} · ${escapeHtml(run.status || '-')}</div>
+        <div class="run-badges">${badges}</div>
+        <div>Znaleziono: ${escapeHtml(run.found_count || 0)} · nowe: ${escapeHtml(run.new_count || 0)} · duble: ${escapeHtml(run.duplicate_count || 0)} · wrong category: ${escapeHtml(run.skipped_wrong_category || 0)}</div>
       </div>
       <div class="inline-actions">
         <button class="button secondary" data-open-run="${escapeAttribute(run.id)}">Otwórz</button>
-        <button class="button secondary" data-reset-run="${escapeAttribute(run.id)}">Wróć query do puli</button>
-        <button class="button danger" data-delete-run="${escapeAttribute(run.id)}">Usuń query</button>
+        ${
+          archived
+            ? `<button class="button secondary" data-restore-run="${escapeAttribute(run.id)}">Przywróć z archiwum</button>`
+            : `
+          <button class="button secondary" data-reset-run="${escapeAttribute(run.id)}">Wróć leady do puli</button>
+          <button class="button danger" data-delete-run="${escapeAttribute(run.id)}">Wróć query do puli i zarchiwizuj</button>
+        `
+        }
       </div>
     </div>
   `;
@@ -772,7 +874,6 @@ function renderLeadRow(record, { selectable = true } = {}) {
       <td>
         <button class="button secondary" data-open-lead="${escapeAttribute(record.id)}">Otwórz lead</button>
         <button class="button secondary" data-reset-one="${escapeAttribute(record.id)}">Wróć do puli</button>
-        <button class="button danger" data-delete-one="${escapeAttribute(record.id)}">Usuń</button>
       </td>
     </tr>
   `;
@@ -787,9 +888,28 @@ function renderLeads() {
 }
 
 function renderRuns() {
-  els.runsList.innerHTML = state.runs.length
-    ? state.runs.map(renderRunItem).join('')
-    : '<div class="list-item muted">Brak historii parsera.</div>';
+  const archived = state.historyView === 'archived';
+  const target = archived ? els.archiveList : els.runsList;
+  if (!target) return;
+  target.innerHTML = state.runs.length
+    ? state.runs.map((run) => renderRunItem(run, { selectable: !archived, archived })).join('')
+    : `<div class="list-item muted">${archived ? 'Archiwum jest puste.' : 'Brak historii parsera dla tego filtra/zakładki.'}</div>`;
+  renderHistorySelection();
+}
+
+function renderHistorySelection() {
+  if (els.runsSelectedCount) els.runsSelectedCount.textContent = formatSelectedCount(state.runsSelected.size, state.runs.length);
+  if (els.runsSelectAll) {
+    els.runsSelectAll.checked = state.runs.length > 0 && state.runs.every((run) => state.runsSelected.has(String(run.id)));
+  }
+}
+
+function renderWorkersSelection() {
+  if (els.workersSelectedCount) els.workersSelectedCount.textContent = formatSelectedCount(state.workersSelected.size, state.workers.length);
+  if (els.workersSelectAll) {
+    const visible = state.workers.filter(workerMatchesSearch);
+    els.workersSelectAll.checked = visible.length > 0 && visible.every((worker) => state.workersSelected.has(worker.workerId));
+  }
 }
 
 function renderRunDetail() {
@@ -807,8 +927,8 @@ function renderRunDetail() {
         ${queries.length ? `<p class="muted"><strong>Search queries:</strong> ${escapeHtml(queries.slice(0, 10).join(' | '))}</p>` : ''}
       </div>
       <div class="inline-actions">
-        <button class="button secondary" data-reset-run="${escapeAttribute(run.id)}">Wróć cały query do puli</button>
-        <button class="button danger" data-delete-run="${escapeAttribute(run.id)}">Usuń cały query</button>
+        <button class="button secondary" data-reset-run="${escapeAttribute(run.id)}">Wróć wszystkie leady tego zapytania do puli</button>
+        <button class="button danger" data-delete-run="${escapeAttribute(run.id)}">Wróć zapytanie do puli i zarchiwizuj</button>
       </div>
     </div>
     <div class="table-wrap">
@@ -879,7 +999,7 @@ function renderAudit() {
 }
 
 function renderSelectedCount() {
-  els.selectedCount.textContent = `${state.selected.size} selected`;
+  els.selectedCount.textContent = formatSelectedCount(state.selected.size, state.leads.length);
 }
 
 function render() {
@@ -889,6 +1009,7 @@ function render() {
   renderLeads();
   renderRuns();
   renderRunDetail();
+  renderHistoryState();
   renderAcademy();
   renderAudit();
   renderSelectedCount();
@@ -903,18 +1024,6 @@ async function resetIds(ids) {
     body: JSON.stringify({ ids, adminId: 'admin' })
   });
   showToast(`Wrócono do puli: ${ids.length}`);
-  await loadAll();
-}
-
-async function deleteIds(ids) {
-  if (!ids.length) return;
-  const confirmation = window.prompt(`Usunąć ${ids.length} leadów globalnie? Wpisz DELETE.`);
-  if (confirmation !== 'DELETE') return;
-  await api('/api/admin/leads', {
-    method: 'DELETE',
-    body: JSON.stringify({ ids, confirm: 'DELETE', adminId: 'admin' })
-  });
-  showToast(`Usunięto: ${ids.length}`);
   await loadAll();
 }
 
@@ -933,25 +1042,40 @@ async function openRun(runId) {
   window.lucide?.createIcons();
 }
 
+// C. "Wroc wszystkie leady tego zapytania do puli" - frees the leads, keeps
+// the query entry as-is (not archived). Companies, comments, CRM statuses
+// and folders are never touched.
 async function resetRun(runId) {
-  if (!window.confirm('Wrócić wszystkie aktywne leady z tego query do puli?')) return;
-  await api(`/api/admin/runs/${encodeURIComponent(runId)}/reset`, {
+  const companyCount = (state.activeRun?.run?.id === runId ? state.activeRun.companies?.length : null) ?? findRunCompanyCount(runId);
+  if (!window.confirm(`Wrócić do puli ${companyCount != null ? companyCount + ' ' : ''}firm z tego zapytania? Komentarze, statusy i foldery zostają nietknięte.`)) return;
+  const data = await api(`/api/admin/runs/${encodeURIComponent(runId)}/reset`, {
     method: 'POST',
     body: JSON.stringify({ adminId: 'admin' })
   });
-  showToast('Query wrócił do puli');
+  showToast(`Wrócono do puli: ${(data.resetIds || []).length} firm.`);
   await loadAll();
 }
 
+function findRunCompanyCount(runId) {
+  const run = state.runs.find((item) => String(item.id) === String(runId));
+  return run ? Number(run.found_count || 0) : null;
+}
+
+// A. "Wroc zapytanie do puli i zarchiwizuj" - archives the query entry AND
+// frees its leads. Never a hard delete: see store.returnRunToPool.
 async function deleteRun(runId) {
-  const confirmation = window.prompt('Usunąć query i oznaczyć jego leady jako deleted? Wpisz DELETE.');
-  if (confirmation !== 'DELETE') return;
-  await api(`/api/admin/runs/${encodeURIComponent(runId)}`, {
+  const companyCount = findRunCompanyCount(runId);
+  if (!window.confirm(`Wrócić zapytanie${companyCount != null ? ` (${companyCount} firm)` : ''} do puli i zarchiwizować wpis historii? Firmy, komentarze, statusy i foldery zostają nietknięte.`)) return;
+  const data = await api(`/api/admin/runs/${encodeURIComponent(runId)}`, {
     method: 'DELETE',
-    body: JSON.stringify({ confirm: 'DELETE', adminId: 'admin' })
+    body: JSON.stringify({ adminId: 'admin' })
   });
   state.activeRun = null;
-  showToast('Query usunięty');
+  showToast(
+    data.alreadyReturned
+      ? 'To zapytanie już było w puli.'
+      : `Zapytanie wróciło do puli i zostało zarchiwizowane. Firm zwróconych: ${data.result?.returned?.length || 0}, już w puli: ${data.result?.alreadyInPool?.length || 0}.`
+  );
   await loadAll();
 }
 
@@ -1026,7 +1150,6 @@ function renderLeadModal() {
           ${statusSelect(record)}
           <div class="inline-actions modal-actions">
             <button class="button secondary" data-reset-one="${escapeAttribute(record.id)}">Wróć do puli</button>
-            <button class="button danger" data-delete-one="${escapeAttribute(record.id)}">Usuń permanentnie</button>
           </div>
         </section>
       </div>
@@ -1162,10 +1285,231 @@ function bindLeadTable(table) {
 
     const reset = event.target.closest('[data-reset-one]');
     if (reset) await resetIds([reset.dataset.resetOne]);
-
-    const remove = event.target.closest('[data-delete-one]');
-    if (remove) await deleteIds([remove.dataset.deleteOne]);
   });
+}
+
+function readHistoryFilters() {
+  if (!els.historyFiltersForm) return null;
+  const formData = new FormData(els.historyFiltersForm);
+  const filters = {
+    country: String(formData.get('country') || '').trim(),
+    city: String(formData.get('city') || '').trim(),
+    category: String(formData.get('category') || '').trim(),
+    workerId: String(formData.get('workerId') || '').trim(),
+    status: String(formData.get('status') || '').trim(),
+    dateFrom: String(formData.get('dateFrom') || '').trim(),
+    dateTo: String(formData.get('dateTo') || '').trim()
+  };
+  return Object.values(filters).some(Boolean) ? filters : null;
+}
+
+// Central loader for the Historia panel. Always goes through
+// /api/admin/history so the Aktywne/Zakończone/Zwrócone do puli/Archiwum
+// tabs and the country/city/category/worker/date filters stay in sync -
+// nothing here can ever delete a run, only change which bucket it's shown in.
+async function loadHistoryRuns() {
+  state.historyLoading = true;
+  state.historyError = '';
+  renderHistoryState();
+  try {
+    const filters = readHistoryFilters() || {};
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(filters)) {
+      if (String(value || '').trim()) params.set(key, String(value).trim());
+    }
+    params.set('view', state.historyView);
+    params.set('limit', '300');
+    const data = await api(`/api/admin/history?${params.toString()}`);
+    state.runs = data.runs || [];
+  } catch (error) {
+    state.historyError = error.message || 'Nie udało się załadować historii.';
+    state.runs = [];
+  } finally {
+    state.historyLoading = false;
+  }
+  renderRuns();
+  renderHistoryState();
+}
+
+function formatSelectedCount(count, total) {
+  if (!count) return 'Nic nie zaznaczono';
+  return `Zaznaczono: ${count}${total ? ` z ${total}` : ''}`;
+}
+
+function renderHistoryState() {
+  if (!els.historyStateMessage) return;
+  if (state.historyLoading) {
+    els.historyStateMessage.textContent = 'Ładowanie historii...';
+    els.historyStateMessage.className = 'history-state-message loading';
+    return;
+  }
+  if (state.historyError) {
+    els.historyStateMessage.textContent = state.historyError;
+    els.historyStateMessage.className = 'history-state-message error';
+    return;
+  }
+  if (!state.runs.length && state.historyView !== 'archived') {
+    els.historyStateMessage.textContent = 'Brak zapytań dla tego filtra/zakładki.';
+    els.historyStateMessage.className = 'history-state-message empty';
+    return;
+  }
+  els.historyStateMessage.className = 'history-state-message hidden-panel';
+}
+
+function switchHistoryView(view) {
+  state.historyView = view;
+  state.runsSelected.clear();
+  els.historyViewTabs?.querySelectorAll('[data-history-view]').forEach((button) => {
+    button.classList.toggle('active', button.dataset.historyView === view);
+  });
+  els.runsList?.classList.toggle('hidden-panel', view === 'archived');
+  els.archiveList?.classList.toggle('hidden-panel', view !== 'archived');
+  els.historyBulkBar?.classList.toggle('hidden-panel', view === 'archived');
+  loadHistoryRuns();
+}
+
+// "Wroc zaznaczone zapytania do puli" - explicit selection, no filters
+// involved, so it's allowed even with nothing else set.
+async function historyBulkReturnSelected(runIds) {
+  if (!runIds.length) return showToast('Zaznacz wpisy historii.', 'warn');
+  if (!window.confirm(`Wrócić do puli ${runIds.length} zaznaczonych zapytań? Leady, komentarze, statusy i foldery zostają nietknięte.`)) return;
+  const data = await api('/api/admin/history/return-to-pool', {
+    method: 'POST',
+    body: JSON.stringify({ runIds, adminId: 'admin' })
+  });
+  state.runsSelected.clear();
+  if (state.activeRun?.run && runIds.includes(String(state.activeRun.run.id))) state.activeRun = null;
+  showToast(
+    `Wrócono do puli: ${data.returnedRunCount || 0} zapytań, ${data.result?.returned?.length || 0} unikalnych firm. ` +
+      `${data.result?.alreadyInPool?.length || 0} firm już było w puli. Komentarze, statusy i foldery zachowane.`
+  );
+  await loadAll();
+}
+
+// Preview-first bulk return by filters. Blocked server-side (and here) when
+// no filter is set, so a stray click can never touch the whole database.
+async function historyPreviewByFilter() {
+  const filters = readHistoryFilters();
+  if (!filters) return showToast('Ustaw najpierw przynajmniej jeden filtr.', 'warn');
+  try {
+    const params = new URLSearchParams(filters);
+    const preview = await api(`/api/admin/history/preview?${params.toString()}`);
+    state.historyPreview = { filters, ...preview };
+    state.historyPreviewExcluded = new Set();
+    renderHistoryPreview();
+  } catch (error) {
+    showToast(error.message || 'Nie udało się zbudować podglądu.', 'warn');
+  }
+}
+
+function renderHistoryPreview() {
+  if (!els.historyPreviewPanel) return;
+  const preview = state.historyPreview;
+  if (!preview) {
+    els.historyPreviewPanel.className = 'history-preview-panel hidden-panel';
+    els.historyPreviewPanel.innerHTML = '';
+    return;
+  }
+  const includedCount = preview.matchedRunCount - state.historyPreviewExcluded.size;
+  els.historyPreviewPanel.className = 'history-preview-panel';
+  els.historyPreviewPanel.innerHTML = `
+    <div class="history-preview-summary">
+      <strong>Pasujące zapytania: ${preview.matchedRunCount}</strong>
+      <span>Unikalnych firm: ${preview.matchedCompanyCount}</span>
+      <span>Nowych: ${preview.newCount}</span>
+      <span>Dubli: ${preview.duplicateCount}</span>
+      <span>Workerów: ${preview.workerCount}</span>
+    </div>
+    <div class="history-preview-list">
+      ${preview.runs
+        .map(
+          (run) => `
+        <label class="history-preview-item">
+          <input type="checkbox" data-preview-exclude="${escapeAttribute(run.id)}" ${state.historyPreviewExcluded.has(String(run.id)) ? '' : 'checked'} />
+          <span>${escapeHtml((run.niches || []).join(', ') || 'Zapytanie')} · ${escapeHtml(run.city || '-')} · worker: ${escapeHtml(run.worker_id || '-')} · ${escapeHtml(formatDate(run.started_at))}</span>
+        </label>`
+        )
+        .join('')}
+    </div>
+    <div class="history-preview-actions">
+      <button id="historyPreviewConfirm" class="button danger" type="button">Wróć do puli (${includedCount})</button>
+      <button id="historyPreviewCancel" class="button secondary" type="button">Anuluj</button>
+    </div>
+  `;
+  els.historyPreviewPanel.querySelectorAll('[data-preview-exclude]').forEach((checkbox) => {
+    checkbox.addEventListener('change', () => {
+      const id = String(checkbox.dataset.previewExclude);
+      if (checkbox.checked) state.historyPreviewExcluded.delete(id);
+      else state.historyPreviewExcluded.add(id);
+      renderHistoryPreview();
+    });
+  });
+  els.historyPreviewPanel.querySelector('#historyPreviewCancel')?.addEventListener('click', () => {
+    state.historyPreview = null;
+    renderHistoryPreview();
+  });
+  els.historyPreviewPanel.querySelector('#historyPreviewConfirm')?.addEventListener('click', historyConfirmPreviewReturn);
+}
+
+async function historyConfirmPreviewReturn() {
+  const preview = state.historyPreview;
+  if (!preview) return;
+  const runIds = preview.runs.map((run) => String(run.id)).filter((id) => !state.historyPreviewExcluded.has(id));
+  if (!runIds.length) return showToast('Nic nie zostało wybrane do zwrotu.', 'warn');
+  if (!window.confirm(`Wrócić do puli ${runIds.length} zapytań i ich unikalne firmy? Komentarze, statusy i foldery zostają nietknięte.`)) return;
+  const data = await api('/api/admin/history/return-to-pool', {
+    method: 'POST',
+    body: JSON.stringify({ runIds, adminId: 'admin' })
+  });
+  state.historyPreview = null;
+  renderHistoryPreview();
+  showToast(
+    `Wrócono do puli: ${data.returnedRunCount || 0} zapytań i ${data.result?.returned?.length || 0} unikalnych firm. ` +
+      'Karty firm, komentarze i statusy zachowane.'
+  );
+  await loadAll();
+}
+
+async function restoreArchivedRun(runId) {
+  await api(`/api/admin/history/${encodeURIComponent(runId)}/restore`, { method: 'POST', body: JSON.stringify({ adminId: 'admin' }) });
+  showToast('Wpis przywrócony z archiwum do historii.');
+  await loadAll();
+}
+
+async function historyBulkReset(runIds) {
+  if (!runIds.length) return showToast('Zaznacz wpisy historii.', 'warn');
+  if (!window.confirm(`Wrócić do puli wszystkie leady z ${runIds.length} zaznaczonych zapytań?`)) return;
+  const data = await api('/api/admin/history/bulk-reset', {
+    method: 'POST',
+    body: JSON.stringify({ runIds, adminId: 'admin' })
+  });
+  showToast(`Wrócono do puli leadów: ${(data.resetIds || []).length}`);
+  await loadAll();
+}
+
+async function workersBulk(action) {
+  const workerIds = [...state.workersSelected];
+  if (!workerIds.length) return showToast('Zaznacz workerów.', 'warn');
+  const payload = { workerIds, action, adminId: 'admin' };
+  if (action === 'delete') {
+    const confirmation = window.prompt(
+      `Usunąć ${workerIds.length} workerów? Konta i sesje zostaną skasowane, leady wrócą do puli. Wpisz DELETE.`
+    );
+    if (confirmation !== 'DELETE') return;
+    payload.confirm = 'DELETE';
+  } else if (action === 'reset-leads' && !window.confirm(`Wrócić leady ${workerIds.length} workerów do puli?`)) {
+    return;
+  }
+  await api('/api/admin/workers/bulk', { method: 'POST', body: JSON.stringify(payload) });
+  if (action === 'delete') {
+    state.workersSelected.clear();
+    if (workerIds.includes(state.selectedWorkerId)) {
+      state.selectedWorkerId = '';
+      state.workerDetail = null;
+    }
+  }
+  showToast(`Wykonano "${action}" dla ${workerIds.length} workerów`);
+  await loadAll({ keepSelection: action !== 'delete' });
 }
 
 function bindRunActions(container) {
@@ -1231,9 +1575,6 @@ document.addEventListener('click', async (event) => {
 
   const modalReset = event.target.closest('#leadModal [data-reset-one]');
   if (modalReset) await resetIds([modalReset.dataset.resetOne]);
-
-  const modalDelete = event.target.closest('#leadModal [data-delete-one]');
-  if (modalDelete) await deleteIds([modalDelete.dataset.deleteOne]);
 });
 
 document.addEventListener('change', async (event) => {
@@ -1286,7 +1627,73 @@ bindRunActions(els.workerRunsList);
 bindRunActions(els.runDetail);
 
 els.resetSelected.addEventListener('click', () => resetIds([...state.selected]).catch((error) => showToast(error.message, 'warn')));
-els.deleteSelected.addEventListener('click', () => deleteIds([...state.selected]).catch((error) => showToast(error.message, 'warn')));
+
+// History view tabs (Aktywne / Zakończone / Zwrócone do puli / Archiwum).
+els.historyViewTabs?.addEventListener('click', (event) => {
+  const button = event.target.closest('[data-history-view]');
+  if (!button) return;
+  switchHistoryView(button.dataset.historyView);
+});
+
+// Mobile: filters + bulk-action panel collapses behind one toggle button.
+els.historyFiltersToggle?.addEventListener('click', () => {
+  els.historyFiltersPanel?.classList.toggle('open');
+});
+
+// History filters + bulk actions. Nothing here can ever permanently delete a
+// run - "return to pool" always archives the entry and frees its leads.
+els.historyFiltersForm?.addEventListener('submit', (event) => {
+  event.preventDefault();
+  state.runsSelected.clear();
+  state.historyPreview = null;
+  renderHistoryPreview();
+  loadHistoryRuns().catch((error) => showToast(error.message, 'warn'));
+});
+els.historyFiltersClear?.addEventListener('click', () => {
+  els.historyFiltersForm?.reset();
+  state.runsSelected.clear();
+  state.historyPreview = null;
+  renderHistoryPreview();
+  loadHistoryRuns().catch((error) => showToast(error.message, 'warn'));
+});
+els.historyPreviewByFilter?.addEventListener('click', () => historyPreviewByFilter().catch((error) => showToast(error.message, 'warn')));
+els.runsList?.addEventListener('change', (event) => {
+  const checkbox = event.target.closest('[data-select-run]');
+  if (!checkbox) return;
+  if (checkbox.checked) state.runsSelected.add(String(checkbox.dataset.selectRun));
+  else state.runsSelected.delete(String(checkbox.dataset.selectRun));
+  renderHistorySelection();
+});
+els.runsSelectAll?.addEventListener('change', () => {
+  if (els.runsSelectAll.checked) state.runs.forEach((run) => state.runsSelected.add(String(run.id)));
+  else state.runsSelected.clear();
+  renderRuns();
+});
+els.historyBulkReset?.addEventListener('click', () => historyBulkReset([...state.runsSelected]).catch((error) => showToast(error.message, 'warn')));
+els.historyBulkDelete?.addEventListener('click', () => historyBulkReturnSelected([...state.runsSelected]).catch((error) => showToast(error.message, 'warn')));
+els.archiveList?.addEventListener('click', (event) => {
+  const restore = event.target.closest('[data-restore-run]');
+  if (restore) restoreArchivedRun(restore.dataset.restoreRun).catch((error) => showToast(error.message, 'warn'));
+});
+
+// Workers bulk selection + mass actions.
+els.workersBody.addEventListener('change', (event) => {
+  const checkbox = event.target.closest('[data-select-worker]');
+  if (!checkbox) return;
+  if (checkbox.checked) state.workersSelected.add(checkbox.dataset.selectWorker);
+  else state.workersSelected.delete(checkbox.dataset.selectWorker);
+  renderWorkersSelection();
+});
+els.workersSelectAll?.addEventListener('change', () => {
+  const visible = state.workers.filter(workerMatchesSearch);
+  if (els.workersSelectAll.checked) visible.forEach((worker) => state.workersSelected.add(worker.workerId));
+  else visible.forEach((worker) => state.workersSelected.delete(worker.workerId));
+  renderWorkers();
+});
+els.workersBulkActivate?.addEventListener('click', () => workersBulk('activate').catch((error) => showToast(error.message, 'warn')));
+els.workersBulkDeactivate?.addEventListener('click', () => workersBulk('deactivate').catch((error) => showToast(error.message, 'warn')));
+els.workersBulkResetLeads?.addEventListener('click', () => workersBulk('reset-leads').catch((error) => showToast(error.message, 'warn')));
+els.workersBulkDelete?.addEventListener('click', () => workersBulk('delete').catch((error) => showToast(error.message, 'warn')));
 
 ensureEnhancements();
 ensureLogoutButton();
@@ -1310,6 +1717,6 @@ async function bootstrapAdmin() {
 
 bootstrapAdmin().catch((error) => {
   showToast(error.message, 'warn');
-  els.workersBody.innerHTML = `<tr><td colspan="7">${escapeHtml(error.message)}</td></tr>`;
+  els.workersBody.innerHTML = `<tr><td colspan="8">${escapeHtml(error.message)}</td></tr>`;
   els.leadsBody.innerHTML = `<tr><td colspan="8">${escapeHtml(error.message)}</td></tr>`;
 });

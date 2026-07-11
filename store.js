@@ -18,6 +18,9 @@ const AUDIT_FILE = path.join(DATA_DIR, 'audit-log.json');
 const SESSIONS_FILE = path.join(DATA_DIR, 'sessions.json');
 const AI_TRAINING_FILE = path.join(DATA_DIR, 'ai-training-sessions.json');
 const AI_USAGE_FILE = path.join(DATA_DIR, 'ai-usage.json');
+const FOLDERS_FILE = path.join(DATA_DIR, 'saved-folders.json');
+const SAVED_FILE = path.join(DATA_DIR, 'saved-companies.json');
+const COMMENTS_FILE = path.join(DATA_DIR, 'company-comments.json');
 
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days, sliding
 const ACADEMY_SECTIONS = ['home', 'training', 'services', 'scripts', 'parserGuide', 'aiTraining'];
@@ -26,6 +29,40 @@ function ensureDataDir() {
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 }
 
+// Stale .tmp files can only be left behind by a crash mid-write (see saveJson
+// below) - the rename is atomic so a clean shutdown never leaves one. Anything
+// older than 5 minutes is safe to remove; fresher ones may belong to a save
+// that's still in flight from another process.
+const STALE_TMP_MAX_AGE_MS = 5 * 60_000;
+
+function cleanupStaleTmpFiles() {
+  ensureDataDir();
+  let removed = 0;
+  let entries = [];
+  try {
+    entries = fs.readdirSync(DATA_DIR);
+  } catch (error) {
+    console.error('store: failed to scan data dir for stale .tmp files:', error.message);
+    return;
+  }
+  const now = Date.now();
+  for (const entry of entries) {
+    if (!entry.endsWith('.tmp')) continue;
+    const fullPath = path.join(DATA_DIR, entry);
+    try {
+      const stats = fs.statSync(fullPath);
+      if (now - stats.mtimeMs < STALE_TMP_MAX_AGE_MS) continue;
+      fs.rmSync(fullPath, { force: true });
+      removed += 1;
+    } catch (error) {
+      console.error(`store: failed to remove stale tmp file ${entry}:`, error.message);
+    }
+  }
+  if (removed > 0) console.log(`store: removed ${removed} stale .tmp file(s) from data/ on startup`);
+}
+
+cleanupStaleTmpFiles();
+
 function loadJson(file, fallback) {
   try {
     if (!fs.existsSync(file)) return fallback;
@@ -33,7 +70,20 @@ function loadJson(file, fallback) {
     if (!raw.trim()) return fallback;
     return JSON.parse(raw);
   } catch (error) {
-    console.error(`store: failed to load ${file}:`, error.message);
+    if (error instanceof SyntaxError) {
+      try {
+        const corruptPath = `${file}.corrupt-${Date.now()}.json`;
+        fs.copyFileSync(file, corruptPath);
+        console.error(
+          `store: ${file} contains invalid JSON and could not be parsed. The broken file was preserved at ${corruptPath}. Falling back to an empty store - restore from backups/ if this data is needed.`,
+          error.message
+        );
+      } catch (backupError) {
+        console.error(`store: failed to back up corrupt file ${file}:`, backupError.message);
+      }
+    } else {
+      console.error(`store: failed to load ${file}:`, error.message);
+    }
     return fallback;
   }
 }
@@ -41,9 +91,40 @@ function loadJson(file, fallback) {
 function saveJson(file, data) {
   try {
     ensureDataDir();
-    fs.writeFileSync(file, JSON.stringify(data, null, 2), 'utf8');
+    // Write to a temp file then rename over the target. rename() replaces the
+    // destination atomically (same volume), so a crash or an overlapping write
+    // from another process can never leave a half-written/corrupt JSON file on
+    // disk - readers always see either the old or the new complete content.
+    const tmpFile = `${file}.${process.pid}.${Date.now()}.tmp`;
+    fs.writeFileSync(tmpFile, JSON.stringify(data, null, 2), 'utf8');
+    renameOverTarget(tmpFile, file);
   } catch (error) {
     console.error(`store: failed to save ${file}:`, error.message);
+  }
+}
+
+// On Windows, rename-over-an-existing-file can transiently fail with EPERM/
+// EBUSY/EACCES if something else (antivirus scan, a concurrent reader) has
+// the destination briefly open. Retry with backoff; if it still won't budge,
+// write the content directly to the target rather than silently dropping the
+// update, then clean up the temp file either way.
+function renameOverTarget(tmpFile, file, attempts = 5) {
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      fs.renameSync(tmpFile, file);
+      return;
+    } catch (error) {
+      const transient = error.code === 'EPERM' || error.code === 'EBUSY' || error.code === 'EACCES';
+      if (!transient || attempt === attempts) {
+        try {
+          fs.writeFileSync(file, fs.readFileSync(tmpFile));
+        } finally {
+          fs.rmSync(tmpFile, { force: true });
+        }
+        return;
+      }
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 30 * attempt);
+    }
   }
 }
 
@@ -55,7 +136,10 @@ const state = {
   audit: loadJson(AUDIT_FILE, { nextId: 1, actions: [] }),
   sessions: loadJson(SESSIONS_FILE, { sessions: {} }),
   aiTraining: loadJson(AI_TRAINING_FILE, { sessions: {} }),
-  aiUsage: loadJson(AI_USAGE_FILE, { nextId: 1, entries: [] })
+  aiUsage: loadJson(AI_USAGE_FILE, { nextId: 1, entries: [] }),
+  folders: loadJson(FOLDERS_FILE, { nextId: 1, folders: {} }),
+  saved: loadJson(SAVED_FILE, { nextId: 1, links: {} }),
+  comments: loadJson(COMMENTS_FILE, { nextId: 1, comments: {} })
 };
 
 function persistCompanies() {
@@ -90,6 +174,18 @@ function persistAiUsage() {
   saveJson(AI_USAGE_FILE, state.aiUsage);
 }
 
+function persistFolders() {
+  saveJson(FOLDERS_FILE, state.folders);
+}
+
+function persistSaved() {
+  saveJson(SAVED_FILE, state.saved);
+}
+
+function persistComments() {
+  saveJson(COMMENTS_FILE, state.comments);
+}
+
 function markAbandonedRuns() {
   const now = new Date().toISOString();
   let changed = false;
@@ -105,6 +201,90 @@ function markAbandonedRuns() {
   }
   if (changed) persistRuns();
 }
+
+// One-time backfill: normalizeWorkerId used to preserve casing, so the same
+// worker could end up stored under two different keys ("Kate" vs "kate") in
+// different places (login, discover requests, admin panel), which made runs
+// created under one casing invisible under the other ("0 zapytan" even
+// though the runs existed). Re-keys every worker-id-bearing record to the
+// now-lowercased canonical form exactly once per boot; safe to run every
+// startup since it's a no-op once everything is already normalized.
+function migrateWorkerIdCasing() {
+  let workersChanged = false;
+  const remappedWorkers = {};
+  for (const [key, account] of Object.entries(state.workers.workers || {})) {
+    const normalizedKey = normalizeWorkerId(key);
+    if (normalizedKey !== key) workersChanged = true;
+    const existing = remappedWorkers[normalizedKey];
+    if (!existing || String(account?.updatedAt || '') > String(existing?.updatedAt || '')) {
+      remappedWorkers[normalizedKey] = { ...account, workerId: normalizedKey, login: account.login || normalizedKey };
+    }
+  }
+  if (workersChanged) {
+    state.workers.workers = remappedWorkers;
+    persistWorkers();
+  }
+
+  let academyChanged = false;
+  const remappedAcademy = {};
+  for (const [key, user] of Object.entries(state.academy.users || {})) {
+    const normalizedKey = normalizeWorkerId(key);
+    if (normalizedKey !== key) academyChanged = true;
+    const existing = remappedAcademy[normalizedKey];
+    if (!existing || String(user?.lastActiveAt || '') > String(existing?.lastActiveAt || '')) {
+      remappedAcademy[normalizedKey] = { ...user, userId: normalizedKey };
+    }
+  }
+  if (academyChanged) {
+    state.academy.users = remappedAcademy;
+    persistAcademy();
+  }
+
+  let runsChanged = false;
+  for (const run of state.runs.runs) {
+    if (run?.worker_id) {
+      const normalized = normalizeWorkerId(run.worker_id);
+      if (normalized !== run.worker_id) {
+        run.worker_id = normalized;
+        runsChanged = true;
+      }
+    }
+  }
+  if (runsChanged) persistRuns();
+
+  let companiesChanged = false;
+  for (const record of Object.values(state.companies.companies || {})) {
+    if (record?.assigned_worker_id) {
+      const normalized = normalizeWorkerId(record.assigned_worker_id);
+      if (normalized !== record.assigned_worker_id) {
+        record.assigned_worker_id = normalized;
+        companiesChanged = true;
+      }
+    }
+    if (record?.first_assigned_worker_id) {
+      const normalized = normalizeWorkerId(record.first_assigned_worker_id);
+      if (normalized !== record.first_assigned_worker_id) {
+        record.first_assigned_worker_id = normalized;
+        companiesChanged = true;
+      }
+    }
+  }
+  if (companiesChanged) persistCompanies();
+
+  let sessionsChanged = false;
+  for (const session of Object.values(state.sessions.sessions || {})) {
+    if (session?.workerId) {
+      const normalized = normalizeWorkerId(session.workerId);
+      if (normalized !== session.workerId) {
+        session.workerId = normalized;
+        sessionsChanged = true;
+      }
+    }
+  }
+  if (sessionsChanged) persistSessions();
+}
+
+migrateWorkerIdCasing();
 
 markAbandonedRuns();
 
@@ -241,6 +421,8 @@ function isKnownNonCompanyHost(host) {
 // stored record (NIP/REGON > phone > own website host > normalized name+location).
 export function buildCompanyKeys(company) {
   const keys = [];
+  const placeId = String(company?.google_place_id || '').trim();
+  if (placeId) keys.push(`place:${placeId}`);
   const nip = cleanIdentifier(company?.nip);
   if (nip && nip.length >= 10) keys.push(`nip:${nip}`);
   const regon = cleanIdentifier(company?.regon);
@@ -359,7 +541,10 @@ function mergeCompanyData(existing, incoming) {
 
 // Registers (or updates) a company in the store. Returns { id, isNew, record }.
 // isNew=false means this exact business was already known from a previous run.
-export function upsertCompany(company, { runId, stage = 'discovered' } = {}) {
+// deferPersist=true skips the disk write here - the caller (a batch loop) is
+// responsible for calling persistCompanies() once after all its iterations,
+// so a run touching many companies doesn't do a full-state write per company.
+export function upsertCompany(company, { runId, stage = 'discovered', deferPersist = false } = {}) {
   const now = new Date().toISOString();
   const existingId = findExistingCompanyId(company);
   const keys = buildCompanyKeys(company);
@@ -380,7 +565,7 @@ export function upsertCompany(company, { runId, stage = 'discovered' } = {}) {
     if (!Array.isArray(record.source_history)) record.source_history = [];
     if (incomingSource && !record.source_history.includes(incomingSource)) record.source_history.push(incomingSource);
     for (const key of keys) state.companies.keyIndex[key] = existingId;
-    persistCompanies();
+    if (!deferPersist) persistCompanies();
     return { id: existingId, isNew: false, record };
   }
 
@@ -407,16 +592,25 @@ export function upsertCompany(company, { runId, stage = 'discovered' } = {}) {
     claimed_run_ids: [],
     global_keys: keys,
     run_ids: runId ? [runId] : [],
-    source_history: incomingSource ? [incomingSource] : []
+    source_history: incomingSource ? [incomingSource] : [],
+    crm_status: 'nowy',
+    crm_status_updated_at: '',
+    crm_status_updated_by: '',
+    crm_status_history: []
   };
   state.companies.companies[id] = record;
   for (const key of keys) state.companies.keyIndex[key] = id;
-  persistCompanies();
+  if (!deferPersist) persistCompanies();
   return { id, isNew: true, record };
 }
 
+// Lowercased so the same worker never splits into two identities (e.g. a
+// login typed/stored as "Kate" in one place and "kate" in another used to
+// create two separate worker buckets - runs created under one casing would
+// then be invisible under the other, which is what caused the worker-facing
+// "0 zapytan" bug even though the runs existed in the shared history).
 export function normalizeWorkerId(workerId) {
-  return String(workerId || 'worker-default').trim().slice(0, 80) || 'worker-default';
+  return String(workerId || 'worker-default').trim().toLowerCase().slice(0, 80) || 'worker-default';
 }
 
 function normalizeLanguage(value) {
@@ -474,6 +668,63 @@ function normalizeLeadStatus(status) {
   return 'new';
 }
 
+// CRM work status: a separate axis from the pool/lead `status` above. The pool
+// status tracks whether a lead is available/reserved/processed in the parser
+// pool machinery; crm_status tracks the worker's actual sales-pipeline stage
+// for the company and must survive pool returns/reassignments untouched.
+const allowedCrmStatuses = new Set([
+  'nowy',
+  'do_kontaktu',
+  'proba_kontaktu',
+  'brak_odpowiedzi',
+  'oddzwonic',
+  'zainteresowany',
+  'oferta_wyslana',
+  'umowione_spotkanie',
+  'klient',
+  'odrzucony'
+]);
+
+function normalizeCrmStatus(status) {
+  const raw = String(status || '').trim().toLowerCase();
+  return allowedCrmStatuses.has(raw) ? raw : 'nowy';
+}
+
+function addCrmStatusHistory(record, entry = {}) {
+  if (!record) return;
+  const history = Array.isArray(record.crm_status_history) ? record.crm_status_history : [];
+  history.push({
+    status: entry.status || normalizeCrmStatus(record.crm_status),
+    workerId: entry.workerId || '',
+    authorRole: entry.authorRole || 'worker',
+    note: entry.note || '',
+    createdAt: entry.createdAt || new Date().toISOString()
+  });
+  record.crm_status_history = history.slice(-200);
+}
+
+export function setCompanyCrmStatus(id, { status, workerId, actorRole = 'worker', note } = {}) {
+  const record = state.companies.companies[String(id)];
+  if (!record) return null;
+  const normalized = normalizeCrmStatus(status);
+  record.crm_status = normalized;
+  record.crm_status_updated_at = new Date().toISOString();
+  record.crm_status_updated_by = workerId ? normalizeWorkerId(workerId) : '';
+  addCrmStatusHistory(record, {
+    status: normalized,
+    workerId: record.crm_status_updated_by,
+    authorRole: actorRole,
+    note: note || '',
+    createdAt: record.crm_status_updated_at
+  });
+  persistCompanies();
+  return serializeCompany(record);
+}
+
+export function listCrmStatuses() {
+  return [...allowedCrmStatuses];
+}
+
 const allowedPoolStates = new Set(['available', 'reserved', 'processed', 'reset', 'deleted']);
 
 function normalizePoolState(value) {
@@ -527,7 +778,10 @@ function serializeCompany(record) {
   return {
     ...record,
     status: normalizeLeadStatus(record?.status || record?.stage || 'new'),
-    pool_state: derivePoolState(record)
+    pool_state: derivePoolState(record),
+    crm_status: normalizeCrmStatus(record?.crm_status),
+    saved_links: listSavedLinksForCompany(record?.id),
+    last_comment: getLatestComment(record?.id)
   };
 }
 
@@ -555,8 +809,8 @@ function isClaimable(record, runId, workerId) {
   return false;
 }
 
-export function claimCompanyForRun(company, { runId, workerId, stage = 'reserved' } = {}) {
-  const { id, isNew, record } = upsertCompany(company, { runId, stage: 'discovered' });
+export function claimCompanyForRun(company, { runId, workerId, stage = 'reserved', deferPersist = false } = {}) {
+  const { id, isNew, record } = upsertCompany(company, { runId, stage: 'discovered', deferPersist });
   const normalizedWorkerId = normalizeWorkerId(workerId);
   const alreadyClaimedByRun = runId && Array.isArray(record.claimed_run_ids) && record.claimed_run_ids.includes(runId);
   const now = new Date().toISOString();
@@ -579,7 +833,7 @@ export function claimCompanyForRun(company, { runId, workerId, stage = 'reserved
     record.duplicate_count = (record.duplicate_count || 0) + 1;
     record.last_duplicate_at = now;
     record.last_seen_query_id = runId || record.last_seen_query_id || '';
-    persistCompanies();
+    if (!deferPersist) persistCompanies();
     return { id, isNew: false, isClaimed: false, record };
   }
 
@@ -593,7 +847,7 @@ export function claimCompanyForRun(company, { runId, workerId, stage = 'reserved
   if (runId && !record.claimed_run_ids.includes(runId)) record.claimed_run_ids.push(runId);
   if (!record.first_claimed_run_id && runId) record.first_claimed_run_id = runId;
   if (!record.first_assigned_worker_id) record.first_assigned_worker_id = normalizedWorkerId;
-  persistCompanies();
+  if (!deferPersist) persistCompanies();
 
   return {
     id,
@@ -610,9 +864,11 @@ export function claimCompaniesForRun(companies, { runId, workerId, limit = 100, 
   let newCount = 0;
   let duplicateCount = 0;
 
+  let touched = false;
   for (const company of companies || []) {
     if (claimed.length >= limit) break;
-    const result = claimCompanyForRun(company, { runId, workerId });
+    const result = claimCompanyForRun(company, { runId, workerId, deferPersist: true });
+    touched = true;
     if (!result.isClaimed) {
       duplicateCount += 1;
       if (includeDuplicates && result.id && !claimedIds.has(result.id)) {
@@ -639,6 +895,8 @@ export function claimCompaniesForRun(companies, { runId, workerId, limit = 100, 
       assigned_worker_id: result.record.assigned_worker_id || ''
     });
   }
+
+  if (touched) persistCompanies();
 
   return {
     companies: claimed,
@@ -695,6 +953,16 @@ export function createSiteLead(lead = {}, { source = 'aura-global-site' } = {}) 
     ? [...new Set(lead.selectedServices.map((item) => String(item || '').trim()).filter(Boolean))]
     : [];
 
+  const attribution = {
+    landingPage: String(lead.landingPage || '').trim(),
+    referrer: String(lead.referrer || '').trim(),
+    utmSource: String(lead.utmSource || '').trim(),
+    utmMedium: String(lead.utmMedium || '').trim(),
+    utmCampaign: String(lead.utmCampaign || '').trim(),
+    utmContent: String(lead.utmContent || '').trim(),
+    utmTerm: String(lead.utmTerm || '').trim()
+  };
+
   const company = {
     company: deriveInboundLeadName(lead),
     legal_name: String(lead.businessName || lead.companyName || '').trim(),
@@ -706,15 +974,21 @@ export function createSiteLead(lead = {}, { source = 'aura-global-site' } = {}) 
     services: selectedServices,
     notes: String(lead.message || '').trim(),
     source,
-    source_profile: '/site/',
+    source_profile: attribution.landingPage || '/site/',
     source_label: 'Aura inbound form',
     inbound: true,
     inbound_submitted_at: now,
     intake: {
       goal: String(lead.goal || '').trim(),
       budget: String(lead.budget || '').trim(),
-      hasWebsite: String(lead.hasWebsite || '').trim()
-    }
+      format: String(lead.format || '').trim(),
+      hasWebsite: String(lead.hasWebsite || '').trim(),
+      context: String(lead.context || '').trim(),
+      selectedService: String(lead.selectedService || '').trim(),
+      selectedPackage: String(lead.selectedPackage || '').trim(),
+      selectedProject: String(lead.selectedProject || '').trim()
+    },
+    attribution
   };
 
   const { id, record } = upsertCompany(company, { stage: 'site_inbound' });
@@ -1328,7 +1602,20 @@ export function createRun(meta) {
     duplicate_count: 0,
     analyzed_count: 0,
     warnings: [],
-    company_ids: []
+    company_ids: [],
+    // Archive/pool lifecycle for this history entry. 'active' means it still
+    // reflects a live worker assignment; 'returned_to_pool' means the whole
+    // query and its leads were sent back to the pool (see returnRunToPool);
+    // archived_at marks it as hidden from the default history view without
+    // ever deleting the record itself.
+    pool_status: 'active',
+    archived_at: '',
+    archived_by: '',
+    archived_reason: '',
+    returned_to_pool_at: '',
+    returned_to_pool_by: '',
+    previous_worker_id: '',
+    return_reason: ''
   };
   state.runs.runs.unshift(run);
   persistRuns();
@@ -1363,6 +1650,118 @@ export function listRuns({ limit = 50, workerId = '' } = {}) {
 
 export function getRun(runId) {
   return state.runs.runs.find((item) => item.id === runId) || null;
+}
+
+// Filtered view over query history. Never touches companies — history and the
+// master leads database are separate concerns.
+export function listRunsFiltered({
+  country = '',
+  city = '',
+  category = '',
+  workerId = '',
+  status = '',
+  source = '',
+  dateFrom = '',
+  dateTo = '',
+  only = '',
+  view = 'active',
+  limit = 100,
+  sort = 'newest'
+} = {}) {
+  const normCountry = normalizeSearchText(country);
+  const normCity = normalizeSearchText(city);
+  const normCategory = normalizeSearchText(category);
+  const normWorker = workerId ? normalizeWorkerId(workerId) : '';
+  const normStatus = String(status || '').trim().toLowerCase();
+  const normSource = String(source || '').trim().toLowerCase();
+  const normOnly = String(only || '').trim().toLowerCase();
+
+  const fromDate = dateFrom ? new Date(dateFrom) : null;
+  const fromTime = fromDate && !Number.isNaN(fromDate.getTime()) ? fromDate.getTime() : null;
+  const toDate = dateTo ? new Date(dateTo) : null;
+  let toTime = toDate && !Number.isNaN(toDate.getTime()) ? toDate.getTime() : null;
+  // A plain YYYY-MM-DD "to" date should be inclusive up to end of that day.
+  if (toTime !== null && String(dateTo).trim().length <= 10) toTime += 86_399_999;
+
+  const filtered = state.runs.runs.filter((run) => {
+    if (normCountry && normalizeSearchText(run.country || '') !== normCountry) return false;
+    if (normCity && normalizeSearchText(run.city || '') !== normCity) return false;
+    if (normCategory && !normalizeSearchText((run.niches || []).join(' ')).includes(normCategory)) return false;
+    if (normWorker && normalizeWorkerId(run.worker_id || '') !== normWorker) return false;
+    if (normStatus && String(run.status || '').toLowerCase() !== normStatus) return false;
+    if (normSource && String(run.sourceFocus || '').toLowerCase() !== normSource) return false;
+    if (fromTime !== null || toTime !== null) {
+      const startedAt = new Date(run.started_at || run.finished_at || '').getTime();
+      if (Number.isNaN(startedAt)) return false;
+      if (fromTime !== null && startedAt < fromTime) return false;
+      if (toTime !== null && startedAt > toTime) return false;
+    }
+    if (normOnly === 'duplicates' && !(Number(run.duplicate_count || 0) > 0)) return false;
+    if (normOnly === 'new' && !(Number(run.new_count || 0) > 0)) return false;
+    if (normOnly === 'exhausted' && !['exhausted', 'duplicates_only'].includes(String(run.status || ''))) return false;
+    if (normOnly === 'completed' && String(run.status || '') !== 'completed') return false;
+    if (normOnly === 'empty' && !(Number(run.new_count || 0) === 0 && Number(run.found_count || 0) === 0)) return false;
+    if (normOnly === 'errors' && !(Array.isArray(run.warnings) && run.warnings.length > 0)) return false;
+
+    // Archive/pool lifecycle view bucket. Every run starts 'active'; a return
+    // to pool (single or bulk) auto-archives it, and a manual archive action
+    // can archive it without touching the pool. Defaulting to 'active' keeps
+    // the default history list free of clutter without ever deleting anything.
+    const normView = String(view || 'active').trim().toLowerCase();
+    if (normView === 'archived') {
+      if (!run.archived_at) return false;
+    } else if (normView === 'returned') {
+      if (run.pool_status !== 'returned_to_pool') return false;
+    } else if (normView === 'completed_active') {
+      if (run.archived_at || String(run.status || '') !== 'completed') return false;
+    } else if (normView === 'all') {
+      // no additional filter
+    } else {
+      if (run.archived_at) return false;
+    }
+    return true;
+  });
+
+  // state.runs.runs is stored newest-first (unshift on create).
+  const sorted = String(sort || 'newest').toLowerCase() === 'oldest' ? [...filtered].reverse() : filtered;
+  const cappedLimit = Math.max(1, Math.min(100000, Number(limit) || 100));
+  return sorted.slice(0, cappedLimit);
+}
+
+// Deletes query-history entries ONLY. Companies, their statuses, pool state and
+// dedupe memory (keyIndex) are never touched here — we only unlink run references.
+export function deleteRunsBulk(runIds) {
+  const idSet = new Set((runIds || []).map(String).filter(Boolean));
+  if (!idSet.size) return [];
+  const deletedIds = [];
+  state.runs.runs = state.runs.runs.filter((run) => {
+    if (!idSet.has(String(run.id))) return true;
+    deletedIds.push(String(run.id));
+    return false;
+  });
+  if (!deletedIds.length) return [];
+  for (const record of Object.values(state.companies.companies)) {
+    if (Array.isArray(record.run_ids)) record.run_ids = record.run_ids.filter((value) => !idSet.has(String(value)));
+    if (Array.isArray(record.claimed_run_ids)) {
+      record.claimed_run_ids = record.claimed_run_ids.filter((value) => !idSet.has(String(value)));
+    }
+    if (record.first_claimed_run_id && idSet.has(String(record.first_claimed_run_id))) delete record.first_claimed_run_id;
+  }
+  persistRuns();
+  persistCompanies();
+  return deletedIds;
+}
+
+// Returns all leads referenced by the given runs back to the worker pool.
+// resetCompanies keeps dedupe memory intact, so these companies stay known
+// duplicates for future parser runs.
+export function resetRunsCompanies(runIds) {
+  const companyIds = new Set();
+  for (const runId of runIds || []) {
+    const run = getRun(String(runId));
+    for (const id of run?.company_ids || []) companyIds.add(String(id));
+  }
+  return resetCompanies([...companyIds]);
 }
 
 export function getStoreStats() {
@@ -1675,4 +2074,517 @@ export function summarizeAiUsage({ period = 'all' } = {}) {
     byWorker: Object.values(byWorker).sort((a, b) => b.cost - a.cost),
     byFeature: Object.values(byFeature).sort((a, b) => b.cost - a.cost)
   };
+}
+
+// =====================================================================
+// SAVED FOLDERS (worker_saved_folders)
+// =====================================================================
+
+export function listFolders(workerId) {
+  const id = normalizeWorkerId(workerId);
+  return Object.values(state.folders.folders)
+    .filter((folder) => folder.workerId === id)
+    .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+}
+
+export function getFolder(workerId, folderId) {
+  const folder = state.folders.folders[String(folderId)];
+  if (!folder) return null;
+  if (workerId && folder.workerId !== normalizeWorkerId(workerId)) return null;
+  return folder;
+}
+
+export function createFolder(workerId, name) {
+  const id = normalizeWorkerId(workerId);
+  const cleanName = String(name || '').trim().slice(0, 120);
+  if (!cleanName) throw new Error('Folder name is required.');
+  const duplicate = Object.values(state.folders.folders).find(
+    (folder) => folder.workerId === id && folder.name.toLowerCase() === cleanName.toLowerCase()
+  );
+  if (duplicate) return duplicate;
+  const folderId = String(state.folders.nextId++);
+  const now = new Date().toISOString();
+  const folder = { id: folderId, workerId: id, name: cleanName, createdAt: now, updatedAt: now };
+  state.folders.folders[folderId] = folder;
+  persistFolders();
+  return folder;
+}
+
+export function renameFolder(workerId, folderId, name) {
+  const folder = getFolder(workerId, folderId);
+  if (!folder) return null;
+  const cleanName = String(name || '').trim().slice(0, 120);
+  if (!cleanName) throw new Error('Folder name is required.');
+  folder.name = cleanName;
+  folder.updatedAt = new Date().toISOString();
+  persistFolders();
+  return folder;
+}
+
+// Deletes only the folder (and its links). moveToFolderId re-homes its saved
+// companies into another folder; omitting it just unassigns them (folderId
+// null = "saved, no folder"). Companies themselves are never touched.
+export function deleteFolder(workerId, folderId, { moveToFolderId = null } = {}) {
+  const folder = getFolder(workerId, folderId);
+  if (!folder) return null;
+  const id = normalizeWorkerId(workerId);
+  const targetFolderId = moveToFolderId ? String(moveToFolderId) : null;
+  if (targetFolderId && !getFolder(id, targetFolderId)) throw new Error('Target folder not found.');
+
+  let moved = 0;
+  let unassigned = 0;
+  for (const link of Object.values(state.saved.links)) {
+    if (link.workerId !== id || link.folderId !== String(folderId)) continue;
+    if (targetFolderId) {
+      const conflict = Object.values(state.saved.links).some(
+        (other) => other.id !== link.id && other.workerId === id && other.companyId === link.companyId && other.folderId === targetFolderId
+      );
+      if (conflict) {
+        delete state.saved.links[link.id];
+      } else {
+        link.folderId = targetFolderId;
+        moved += 1;
+      }
+    } else {
+      link.folderId = null;
+      unassigned += 1;
+    }
+  }
+  delete state.folders.folders[String(folderId)];
+  persistFolders();
+  persistSaved();
+  return { deletedFolderId: String(folderId), moved, unassigned };
+}
+
+// =====================================================================
+// SAVED COMPANIES (worker_saved_companies)
+// =====================================================================
+
+export function saveCompaniesForWorker(workerId, companyIds, folderId = null) {
+  const id = normalizeWorkerId(workerId);
+  const targetFolder = folderId ? String(folderId) : null;
+  if (targetFolder && !getFolder(id, targetFolder)) throw new Error('Folder not found.');
+  const saved = [];
+  const alreadySaved = [];
+  const now = new Date().toISOString();
+  for (const companyId of companyIds || []) {
+    const cid = String(companyId);
+    if (!state.companies.companies[cid]) continue;
+    const existing = Object.values(state.saved.links).find(
+      (link) => link.workerId === id && link.companyId === cid && (link.folderId || null) === targetFolder
+    );
+    if (existing) {
+      alreadySaved.push(cid);
+      continue;
+    }
+    const linkId = String(state.saved.nextId++);
+    state.saved.links[linkId] = { id: linkId, workerId: id, companyId: cid, folderId: targetFolder, createdAt: now };
+    saved.push(cid);
+  }
+  if (saved.length) persistSaved();
+  return { saved, alreadySaved };
+}
+
+export function removeCompaniesFromFolderForWorker(workerId, companyIds, folderId = null) {
+  const id = normalizeWorkerId(workerId);
+  const targetFolder = folderId ? String(folderId) : null;
+  const idSet = new Set((companyIds || []).map(String));
+  const removed = [];
+  for (const [linkId, link] of Object.entries(state.saved.links)) {
+    if (link.workerId !== id) continue;
+    if ((link.folderId || null) !== targetFolder) continue;
+    if (!idSet.has(link.companyId)) continue;
+    delete state.saved.links[linkId];
+    removed.push(link.companyId);
+  }
+  if (removed.length) persistSaved();
+  return removed;
+}
+
+// Unsaves entirely: removes every folder link and the unfoldered "saved" link
+// for this worker/company pair. Does not touch the company record itself.
+export function unsaveCompaniesForWorker(workerId, companyIds) {
+  const id = normalizeWorkerId(workerId);
+  const idSet = new Set((companyIds || []).map(String));
+  const removed = [];
+  for (const [linkId, link] of Object.entries(state.saved.links)) {
+    if (link.workerId !== id) continue;
+    if (!idSet.has(link.companyId)) continue;
+    delete state.saved.links[linkId];
+    removed.push(link.companyId);
+  }
+  if (removed.length) persistSaved();
+  return [...new Set(removed)];
+}
+
+export function moveCompaniesBetweenFolders(workerId, companyIds, fromFolderId, toFolderId) {
+  const id = normalizeWorkerId(workerId);
+  const from = fromFolderId ? String(fromFolderId) : null;
+  const to = toFolderId ? String(toFolderId) : null;
+  if (to && !getFolder(id, to)) throw new Error('Target folder not found.');
+  const idSet = new Set((companyIds || []).map(String));
+  const moved = [];
+  for (const link of Object.values(state.saved.links)) {
+    if (link.workerId !== id) continue;
+    if ((link.folderId || null) !== from) continue;
+    if (!idSet.has(link.companyId)) continue;
+    const conflict = Object.values(state.saved.links).some(
+      (other) => other.id !== link.id && other.workerId === id && other.companyId === link.companyId && (other.folderId || null) === to
+    );
+    if (conflict) continue;
+    link.folderId = to;
+    moved.push(link.companyId);
+  }
+  if (moved.length) persistSaved();
+  return moved;
+}
+
+function listSavedLinksForCompany(companyId) {
+  if (!companyId) return [];
+  return Object.values(state.saved.links)
+    .filter((link) => link.companyId === String(companyId))
+    .map((link) => ({ linkId: link.id, workerId: link.workerId, folderId: link.folderId || null }));
+}
+
+export function isCompanySavedByWorker(workerId, companyId) {
+  const id = normalizeWorkerId(workerId);
+  const cid = String(companyId);
+  return Object.values(state.saved.links).some((link) => link.workerId === id && link.companyId === cid);
+}
+
+export function listSavedCompaniesForWorker(
+  workerId,
+  { folderId = '', q = '', status = '', crmStatus = '', city = '', country = '', category = '', sort = 'newest', page = 1, pageSize = 50 } = {}
+) {
+  const id = normalizeWorkerId(workerId);
+  // folderId: '' = any folder (all saved), 'none' = unfoldered only, else a specific folder id.
+  const targetFolder = folderId === '' ? undefined : folderId === 'none' ? null : String(folderId);
+  const query = normalizeSearchText(q);
+  const normalizedCity = normalizeSearchText(city);
+  const normalizedCountry = normalizeSearchText(country);
+  const normalizedCategory = normalizeSearchText(category);
+
+  let links = Object.values(state.saved.links).filter((link) => link.workerId === id);
+  if (targetFolder !== undefined) links = links.filter((link) => (link.folderId || null) === targetFolder);
+
+  // A company can live in multiple folders; collapse to one row with the full
+  // folder-id list rather than one row per folder membership.
+  const byCompany = new Map();
+  for (const link of links) {
+    if (!byCompany.has(link.companyId)) {
+      byCompany.set(link.companyId, { companyId: link.companyId, createdAt: link.createdAt, folderIds: [] });
+    }
+    const entry = byCompany.get(link.companyId);
+    if (link.folderId) entry.folderIds.push(link.folderId);
+    if (link.createdAt < entry.createdAt) entry.createdAt = link.createdAt;
+  }
+
+  let rows = [...byCompany.values()]
+    .map((entry) => {
+      const record = state.companies.companies[entry.companyId];
+      return record ? { entry, record: serializeCompany(record) } : null;
+    })
+    .filter(Boolean)
+    .filter(({ record }) => !isDeletedRecord(record));
+
+  if (status) rows = rows.filter(({ record }) => record.status === status);
+  if (crmStatus) rows = rows.filter(({ record }) => record.crm_status === crmStatus);
+  if (normalizedCity) rows = rows.filter(({ record }) => normalizeSearchText(record.data?.city || '') === normalizedCity);
+  if (normalizedCountry) rows = rows.filter(({ record }) => normalizeSearchText(record.data?.country || '') === normalizedCountry);
+  if (normalizedCategory) rows = rows.filter(({ record }) => normalizeSearchText(record.data?.niche || '').includes(normalizedCategory));
+  if (query) {
+    rows = rows.filter(({ record }) =>
+      normalizeSearchText(
+        [record.data?.company, record.data?.legal_name, record.data?.phone, record.data?.email, record.data?.city].join(' ')
+      ).includes(query)
+    );
+  }
+
+  const sortKey = String(sort || 'newest').toLowerCase();
+  rows.sort((a, b) => {
+    if (sortKey === 'name') return String(a.record.data?.company || '').localeCompare(String(b.record.data?.company || ''));
+    if (sortKey === 'status') return String(a.record.crm_status || '').localeCompare(String(b.record.crm_status || ''));
+    if (sortKey === 'oldest') return a.entry.createdAt.localeCompare(b.entry.createdAt);
+    return b.entry.createdAt.localeCompare(a.entry.createdAt);
+  });
+
+  const total = rows.length;
+  const safePage = Math.max(1, Number(page) || 1);
+  const safePageSize = Math.max(1, Math.min(200, Number(pageSize) || 50));
+  const start = (safePage - 1) * safePageSize;
+  const pageRows = rows.slice(start, start + safePageSize);
+
+  return {
+    total,
+    page: safePage,
+    pageSize: safePageSize,
+    items: pageRows.map(({ entry, record }) => ({ ...record, saved_at: entry.createdAt, saved_folder_ids: entry.folderIds }))
+  };
+}
+
+// =====================================================================
+// COMMENTS (company_comments)
+// =====================================================================
+
+export function addComment(companyId, { authorId = '', authorRole = 'worker', text = '', source = '', parserQueryId = '' } = {}) {
+  const cid = String(companyId);
+  if (!state.companies.companies[cid]) return null;
+  const cleanCommentText = String(text || '').trim().slice(0, 3000);
+  if (!cleanCommentText) throw new Error('Comment text is required.');
+  const id = String(state.comments.nextId++);
+  const now = new Date().toISOString();
+  const isAdmin = authorRole === 'admin';
+  const comment = {
+    id,
+    companyId: cid,
+    authorId: isAdmin ? String(authorId || 'admin').slice(0, 120) : normalizeWorkerId(authorId),
+    authorRole: isAdmin ? 'admin' : 'worker',
+    text: cleanCommentText,
+    createdAt: now,
+    updatedAt: now,
+    archivedAt: '',
+    source: String(source || '').slice(0, 60),
+    parserQueryId: parserQueryId ? String(parserQueryId) : ''
+  };
+  state.comments.comments[id] = comment;
+  persistComments();
+  return comment;
+}
+
+export function editComment(commentId, { authorId = '', authorRole = 'worker', text = '' } = {}) {
+  const comment = state.comments.comments[String(commentId)];
+  if (!comment || comment.archivedAt) return null;
+  if (authorRole !== 'admin') {
+    const normalizedAuthor = normalizeWorkerId(authorId);
+    if (comment.authorRole !== 'worker' || comment.authorId !== normalizedAuthor) {
+      throw new Error('You can only edit your own comment.');
+    }
+  }
+  const cleanCommentText = String(text || '').trim().slice(0, 3000);
+  if (!cleanCommentText) throw new Error('Comment text is required.');
+  comment.text = cleanCommentText;
+  comment.updatedAt = new Date().toISOString();
+  persistComments();
+  return comment;
+}
+
+export function softDeleteComment(commentId, { authorId = '', authorRole = 'worker' } = {}) {
+  const comment = state.comments.comments[String(commentId)];
+  if (!comment || comment.archivedAt) return null;
+  if (authorRole !== 'admin') {
+    const normalizedAuthor = normalizeWorkerId(authorId);
+    if (comment.authorRole !== 'worker' || comment.authorId !== normalizedAuthor) {
+      throw new Error('You can only delete your own comment.');
+    }
+  }
+  comment.archivedAt = new Date().toISOString();
+  persistComments();
+  return comment;
+}
+
+export function listComments(companyId, { includeArchived = false } = {}) {
+  return Object.values(state.comments.comments)
+    .filter((comment) => comment.companyId === String(companyId) && (includeArchived || !comment.archivedAt))
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+function getLatestComment(companyId) {
+  if (!companyId) return null;
+  return listComments(companyId)[0] || null;
+}
+
+// =====================================================================
+// POOL RETURN (pool_action_logs behaviour lives in logAdminAction)
+// =====================================================================
+
+// Returns a set of companies to the pool. Idempotent per-company: a company
+// already available/unassigned is reported in alreadyInPool instead of being
+// touched again, so calling this twice never double-logs or creates dupes.
+// Comments, CRM status, folders and contact data are never modified here.
+export function returnLeadsToPool(companyIds, { actorId = '', actorRole = 'worker', reason = '' } = {}) {
+  const returned = [];
+  const alreadyInPool = [];
+  const skipped = [];
+  const now = new Date().toISOString();
+  for (const rawId of companyIds || []) {
+    const id = String(rawId);
+    const record = state.companies.companies[id];
+    if (!record) {
+      skipped.push({ id, reason: 'not_found' });
+      continue;
+    }
+    if (isDeletedRecord(record)) {
+      skipped.push({ id, reason: 'deleted' });
+      continue;
+    }
+    const poolState = derivePoolState(record);
+    if (['available', 'reset'].includes(poolState) && !record.assigned_worker_id) {
+      alreadyInPool.push(id);
+      continue;
+    }
+    const previousWorkerId = record.assigned_worker_id || '';
+    record.status = 'new';
+    record.pool_state = 'reset';
+    record.stage = 'reset';
+    record.assigned_worker_id = '';
+    record.reserved_at = '';
+    record.available_for_discovery = true;
+    record.reset_at = now;
+    record.previous_worker_id = previousWorkerId;
+    record.returned_to_pool_at = now;
+    record.returned_to_pool_by = actorId || '';
+    addStatusHistory(record, {
+      status: 'new',
+      workerId: previousWorkerId,
+      note: reason || 'returned_to_pool',
+      source: `${actorRole}_return_to_pool`,
+      createdAt: now
+    });
+    returned.push(id);
+  }
+  if (returned.length) persistCompanies();
+  return { returned, alreadyInPool, skipped };
+}
+
+// A. "Wroc query do puli" - returns the whole run + all of its leads, and
+// archives the old run entry (history is kept, never deleted). Idempotent:
+// calling twice on an already-returned run is a no-op that reports it.
+export function returnRunToPool(runId, { actorId = '', actorRole = 'admin', reason = '' } = {}) {
+  const run = getRun(String(runId));
+  if (!run) return null;
+  if (run.pool_status === 'returned_to_pool') {
+    return { run, alreadyReturned: true, result: { returned: [], alreadyInPool: [], skipped: [] } };
+  }
+  const result = returnLeadsToPool(run.company_ids || [], { actorId, actorRole, reason: reason || 'run_returned_to_pool' });
+  const now = new Date().toISOString();
+  run.pool_status = 'returned_to_pool';
+  run.previous_worker_id = run.worker_id || '';
+  run.returned_to_pool_at = now;
+  run.returned_to_pool_by = actorId || '';
+  run.return_reason = reason || '';
+  run.archived_at = run.archived_at || now;
+  run.archived_by = run.archived_by || actorId || '';
+  run.archived_reason = run.archived_reason || 'returned_to_pool';
+  persistRuns();
+  return { run, alreadyReturned: false, result };
+}
+
+// C. "Wroc wszystkie leady tego zapytania do puli" - frees the leads without
+// forcing the query itself into the archived/returned bucket.
+export function returnRunLeadsToPool(runId, { actorId = '', actorRole = 'admin', reason = '' } = {}) {
+  const run = getRun(String(runId));
+  if (!run) return null;
+  const result = returnLeadsToPool(run.company_ids || [], { actorId, actorRole, reason: reason || 'run_leads_returned_to_pool' });
+  return { run, result };
+}
+
+export function previewBulkReturn(filters = {}) {
+  const runs = listRunsFiltered({ ...filters, view: filters.view || 'all', limit: 100000 });
+  const companyIds = new Set();
+  let newCount = 0;
+  let duplicateCount = 0;
+  const workerIds = new Set();
+  for (const run of runs) {
+    for (const id of run.company_ids || []) companyIds.add(String(id));
+    newCount += Number(run.new_count || 0);
+    duplicateCount += Number(run.duplicate_count || 0);
+    if (run.worker_id) workerIds.add(run.worker_id);
+  }
+  return {
+    matchedRunCount: runs.length,
+    matchedCompanyCount: companyIds.size,
+    newCount,
+    duplicateCount,
+    workerCount: workerIds.size,
+    runs: runs.slice(0, 500)
+  };
+}
+
+// Guards against an accidental return-everything: caller must supply either
+// explicit runIds or at least one non-empty filter (enforced here, not just
+// in the UI, since worker_id/filters must never be trusted blindly).
+export function bulkReturnRunsToPool({ runIds = [], filters = null, actorId = '', actorRole = 'admin', reason = '' } = {}) {
+  let targetRunIds = [...new Set((runIds || []).map(String).filter(Boolean))];
+  if (!targetRunIds.length) {
+    if (!filters) throw new Error('Provide runIds or filters.');
+    const hasAnyFilter = ['country', 'city', 'category', 'workerId', 'status', 'source', 'dateFrom', 'dateTo', 'only'].some((key) =>
+      String(filters[key] || '').trim()
+    );
+    if (!hasAnyFilter) throw new Error('Set at least one filter before a bulk return.');
+    targetRunIds = listRunsFiltered({ ...filters, view: filters.view || 'all', limit: 100000 }).map((run) => String(run.id));
+  }
+  if (!targetRunIds.length) throw new Error('No history entries matched.');
+
+  const companyIdSet = new Set();
+  const touchedRuns = [];
+  const now = new Date().toISOString();
+  for (const runId of targetRunIds) {
+    const run = getRun(runId);
+    if (!run) continue;
+    touchedRuns.push(run);
+    if (run.pool_status !== 'returned_to_pool') {
+      for (const id of run.company_ids || []) companyIdSet.add(String(id));
+    }
+  }
+
+  const result = returnLeadsToPool([...companyIdSet], { actorId, actorRole, reason: reason || 'bulk_return_to_pool' });
+
+  let alreadyReturnedRunCount = 0;
+  for (const run of touchedRuns) {
+    if (run.pool_status === 'returned_to_pool') {
+      alreadyReturnedRunCount += 1;
+      continue;
+    }
+    run.pool_status = 'returned_to_pool';
+    run.previous_worker_id = run.worker_id || '';
+    run.returned_to_pool_at = now;
+    run.returned_to_pool_by = actorId || '';
+    run.return_reason = reason || '';
+    run.archived_at = run.archived_at || now;
+    run.archived_by = run.archived_by || actorId || '';
+    run.archived_reason = run.archived_reason || 'bulk_returned_to_pool';
+  }
+  if (touchedRuns.length) persistRuns();
+
+  return {
+    matchedRunCount: touchedRuns.length,
+    alreadyReturnedRunCount,
+    returnedRunCount: touchedRuns.length - alreadyReturnedRunCount,
+    uniqueCompanyCount: companyIdSet.size,
+    result
+  };
+}
+
+// =====================================================================
+// ARCHIVE / RESTORE (parser_query_archive)
+// =====================================================================
+
+export function archiveRun(runId, { actorId = '', reason = '' } = {}) {
+  const run = getRun(String(runId));
+  if (!run) return null;
+  if (run.archived_at) return run;
+  run.archived_at = new Date().toISOString();
+  run.archived_by = actorId || '';
+  run.archived_reason = reason || 'manual_archive';
+  persistRuns();
+  return run;
+}
+
+// Restoring only un-hides the history entry from the archive view; it never
+// re-creates a pool assignment or re-assigns leads to a worker.
+export function restoreRun(runId) {
+  const run = getRun(String(runId));
+  if (!run) return null;
+  run.archived_at = '';
+  run.archived_by = '';
+  run.archived_reason = '';
+  persistRuns();
+  return run;
+}
+
+export function listArchivedRuns({ workerId = '', limit = 200 } = {}) {
+  const normalizedWorkerId = workerId ? normalizeWorkerId(workerId) : '';
+  return state.runs.runs
+    .filter((run) => Boolean(run.archived_at) && (!normalizedWorkerId || normalizeWorkerId(run.worker_id || '') === normalizedWorkerId))
+    .slice(0, limit);
 }

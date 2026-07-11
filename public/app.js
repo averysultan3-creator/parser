@@ -16,7 +16,14 @@ const state = {
     size: 'all',
     priority: 'all',
     minScore: 0
-  }
+  },
+  folders: [],
+  foldersLoaded: false,
+  activeFolderId: '',
+  savedItems: [],
+  savedTotal: 0,
+  savedPage: 1,
+  crmStatuses: []
 };
 
 const leadStatusOptions = [
@@ -36,6 +43,25 @@ const leadStatusOptions = [
   { value: 'duplicate', ru: 'Дубль', pl: 'Duplikat' },
   { value: 'completed', ru: 'Закрыто', pl: 'Zamkniete' }
 ];
+
+// CRM work status - separate from the parser pool/lead status above. Kept in
+// this fixed order so the dropdown reads as a natural sales pipeline.
+const crmStatusOptions = [
+  { value: 'nowy', label: 'Nowy' },
+  { value: 'do_kontaktu', label: 'Do kontaktu' },
+  { value: 'proba_kontaktu', label: 'Próba kontaktu' },
+  { value: 'brak_odpowiedzi', label: 'Brak odpowiedzi' },
+  { value: 'oddzwonic', label: 'Oddzwonić' },
+  { value: 'zainteresowany', label: 'Zainteresowany' },
+  { value: 'oferta_wyslana', label: 'Oferta wysłana' },
+  { value: 'umowione_spotkanie', label: 'Umówione spotkanie' },
+  { value: 'klient', label: 'Klient' },
+  { value: 'odrzucony', label: 'Odrzucony' }
+];
+
+function crmStatusLabel(value) {
+  return crmStatusOptions.find((option) => option.value === value)?.label || value || 'Nowy';
+}
 
 const API_BASE_STORAGE_KEY = 'parserApiBase';
 const LANGUAGE_STORAGE_KEY = 'parserLanguage';
@@ -551,6 +577,14 @@ function apiUrl(path) {
   return `${getApiBase()}${path}`;
 }
 
+function debounce(fn, delayMs) {
+  let timer = null;
+  return (...args) => {
+    if (timer) window.clearTimeout(timer);
+    timer = window.setTimeout(() => fn(...args), delayMs);
+  };
+}
+
 function clearConfigBootstrapRetry() {
   if (configBootstrapTimer) {
     window.clearTimeout(configBootstrapTimer);
@@ -707,10 +741,20 @@ const els = {
   detailContent: document.querySelector('#detailContent'),
   viewTabResults: document.querySelector('#viewTabResults'),
   viewTabHistory: document.querySelector('#viewTabHistory'),
+  viewTabSaved: document.querySelector('#viewTabSaved'),
   resultsView: document.querySelector('#resultsView'),
   historyView: document.querySelector('#historyView'),
   historyBody: document.querySelector('#historyBody'),
-  refreshHistoryButton: document.querySelector('#refreshHistoryButton')
+  refreshHistoryButton: document.querySelector('#refreshHistoryButton'),
+  savedView: document.querySelector('#savedView'),
+  savedFoldersList: document.querySelector('#savedFoldersList'),
+  createFolderButton: document.querySelector('#createFolderButton'),
+  savedSearchInput: document.querySelector('#savedSearchInput'),
+  savedStatusFilter: document.querySelector('#savedStatusFilter'),
+  savedSortSelect: document.querySelector('#savedSortSelect'),
+  refreshSavedButton: document.querySelector('#refreshSavedButton'),
+  savedBody: document.querySelector('#savedBody'),
+  savedPagination: document.querySelector('#savedPagination')
 };
 
 const sampleCsv = `company,niche,district,phone,email,website_url,source_profile,instagram,review_count,rating,last_activity,services,portfolio_available,physical_location,team_size,notes
@@ -1147,6 +1191,7 @@ async function init() {
   ensureResultsContext();
   populateCitySuggestions(localCitySuggestions);
   populateCategoryPreset();
+  populateSavedStatusFilter();
   els.discoverCategoryPreset.value = 'cat:hvac';
   els.sidebarHasSocial.checked = false;
   els.sidebarHasPhone.checked = true;
@@ -1160,6 +1205,13 @@ async function init() {
   els.csvInput.value = sampleCsv;
   renderResultsContext();
   renderIcons();
+}
+
+function populateSavedStatusFilter() {
+  if (!els.savedStatusFilter) return;
+  els.savedStatusFilter.innerHTML =
+    `<option value="">Wszystkie statusy CRM</option>` +
+    crmStatusOptions.map((option) => `<option value="${escapeAttribute(option.value)}">${escapeHtml(option.label)}</option>`).join('');
 }
 
 function populateCitySuggestions(items) {
@@ -1391,7 +1443,13 @@ function bindEvents() {
   els.exportJsonButton.addEventListener('click', exportJson);
   els.viewTabResults.addEventListener('click', () => switchView('results'));
   els.viewTabHistory.addEventListener('click', () => switchView('history'));
+  els.viewTabSaved?.addEventListener('click', () => switchView('saved'));
   els.refreshHistoryButton.addEventListener('click', loadHistory);
+  els.createFolderButton?.addEventListener('click', handleCreateFolder);
+  els.refreshSavedButton?.addEventListener('click', () => loadSaved());
+  els.savedSearchInput?.addEventListener('input', debounce(() => loadSaved({ page: 1 }), 350));
+  els.savedStatusFilter?.addEventListener('change', () => loadSaved({ page: 1 }));
+  els.savedSortSelect?.addEventListener('change', () => loadSaved({ page: 1 }));
   els.languageToggle?.addEventListener('click', () => {
     applyLanguage(currentLanguage === 'pl' ? 'ru' : 'pl');
   });
@@ -1405,11 +1463,19 @@ function bindEvents() {
 
 function switchView(view) {
   const isHistory = view === 'history';
-  els.viewTabResults.classList.toggle('active', !isHistory);
+  const isSaved = view === 'saved';
+  const isResults = !isHistory && !isSaved;
+  els.viewTabResults.classList.toggle('active', isResults);
   els.viewTabHistory.classList.toggle('active', isHistory);
-  els.resultsView.classList.toggle('hidden-field', isHistory);
+  els.viewTabSaved?.classList.toggle('active', isSaved);
+  els.resultsView.classList.toggle('hidden-field', !isResults);
   els.historyView.classList.toggle('hidden-field', !isHistory);
+  els.savedView?.classList.toggle('hidden-field', !isSaved);
   if (isHistory && !state.historyLoaded) loadHistory();
+  if (isSaved) {
+    if (!state.foldersLoaded) loadFolders();
+    loadSaved();
+  }
 }
 
 async function loadHistory() {
@@ -1428,6 +1494,12 @@ async function loadHistory() {
     state.historyLoaded = false;
     els.historyBody.innerHTML = `<tr class="empty-row"><td colspan="8">${escapeHtml(error.message || 'Ошибка загрузки истории.')}</td></tr>`;
   }
+}
+
+function formatRunStatusLabel(status) {
+  if (status === 'duplicates_only') return 'Только дубли / новых нет';
+  if (status === 'cancelled') return 'Отменено';
+  return status || '-';
 }
 
 function renderHistory(runs) {
@@ -1457,7 +1529,7 @@ function renderHistory(runs) {
           <td>${escapeHtml(String(run.found_count ?? 0))}</td>
           <td>${escapeHtml(String(run.new_count ?? 0))}</td>
           <td>${escapeHtml(String(run.duplicate_count ?? 0))}</td>
-          <td><span class="history-row-status ${statusClassName}">${escapeHtml(run.status || '-')}</span></td>
+          <td><span class="history-row-status ${statusClassName}">${escapeHtml(formatRunStatusLabel(run.status))}</span></td>
         </tr>
       `;
     })
@@ -1532,6 +1604,354 @@ async function openHistoryRun(runId) {
     setStatus(error.message || 'Ошибка при открытии запуска.', 'warn');
   } finally {
     renderIcons();
+  }
+}
+
+// =====================================================================
+// Zapisane: folders + saved companies (worker-owned)
+// =====================================================================
+
+function savedAuthHeaders() {
+  return { 'content-type': 'application/json', 'x-worker-id': getWorkerId(), ...authHeaders() };
+}
+
+async function loadFolders() {
+  try {
+    const response = await fetch(apiUrl('/api/saved/folders'), { headers: savedAuthHeaders() });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Nie udało się załadować folderów.');
+    state.folders = Array.isArray(data.folders) ? data.folders : [];
+    state.foldersLoaded = true;
+    renderFolders();
+  } catch (error) {
+    setStatus(error.message || 'Błąd ładowania folderów.', 'warn');
+  }
+}
+
+function renderFolders() {
+  if (!els.savedFoldersList) return;
+  const items = [
+    `<li class="saved-folder-item ${state.activeFolderId === '' ? 'active' : ''}" data-folder-id="">
+      <span>Wszystkie zapisane</span>
+    </li>`,
+    `<li class="saved-folder-item ${state.activeFolderId === 'none' ? 'active' : ''}" data-folder-id="none">
+      <span>Bez folderu</span>
+    </li>`,
+    ...state.folders.map(
+      (folder) => `
+      <li class="saved-folder-item ${state.activeFolderId === folder.id ? 'active' : ''}" data-folder-id="${escapeAttribute(folder.id)}">
+        <span>${escapeHtml(folder.name)}</span>
+        <span class="folder-actions">
+          <button type="button" data-rename-folder="${escapeAttribute(folder.id)}" title="Zmień nazwę"><i data-lucide="pencil"></i></button>
+          <button type="button" data-delete-folder="${escapeAttribute(folder.id)}" title="Usuń folder"><i data-lucide="trash-2"></i></button>
+        </span>
+      </li>`
+    )
+  ];
+  els.savedFoldersList.innerHTML = items.join('');
+  els.savedFoldersList.querySelectorAll('[data-folder-id]').forEach((li) => {
+    li.addEventListener('click', (event) => {
+      if (event.target.closest('button')) return;
+      state.activeFolderId = li.dataset.folderId;
+      renderFolders();
+      loadSaved({ page: 1 });
+    });
+  });
+  els.savedFoldersList.querySelectorAll('[data-rename-folder]').forEach((button) => {
+    button.addEventListener('click', () => handleRenameFolder(button.dataset.renameFolder));
+  });
+  els.savedFoldersList.querySelectorAll('[data-delete-folder]').forEach((button) => {
+    button.addEventListener('click', () => handleDeleteFolder(button.dataset.deleteFolder));
+  });
+  renderIcons();
+}
+
+async function handleCreateFolder() {
+  const name = window.prompt(currentLanguage === 'pl' ? 'Nazwa nowego folderu:' : 'Название новой папки:');
+  if (!name || !name.trim()) return;
+  try {
+    const response = await fetch(apiUrl('/api/saved/folders'), {
+      method: 'POST',
+      headers: savedAuthHeaders(),
+      body: JSON.stringify({ name: name.trim() })
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Nie udało się utworzyć folderu.');
+    await loadFolders();
+    setStatus(`Folder "${data.folder.name}" utworzony.`, 'ok');
+  } catch (error) {
+    setStatus(error.message || 'Błąd tworzenia folderu.', 'warn');
+  }
+}
+
+async function handleRenameFolder(folderId) {
+  const folder = state.folders.find((item) => item.id === folderId);
+  const name = window.prompt(currentLanguage === 'pl' ? 'Nowa nazwa folderu:' : 'Новое название папки:', folder?.name || '');
+  if (!name || !name.trim()) return;
+  try {
+    const response = await fetch(apiUrl(`/api/saved/folders/${encodeURIComponent(folderId)}`), {
+      method: 'PATCH',
+      headers: savedAuthHeaders(),
+      body: JSON.stringify({ name: name.trim() })
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Nie udało się zmienić nazwy.');
+    await loadFolders();
+  } catch (error) {
+    setStatus(error.message || 'Błąd zmiany nazwy folderu.', 'warn');
+  }
+}
+
+async function handleDeleteFolder(folderId) {
+  const folder = state.folders.find((item) => item.id === folderId);
+  const confirmed = window.confirm(
+    currentLanguage === 'pl'
+      ? `Usunąć folder "${folder?.name || ''}"? Firmy w nim zostaną, tylko stracą przypisanie do tego folderu.`
+      : `Удалить папку "${folder?.name || ''}"? Компании останутся, только потеряют привязку к этой папке.`
+  );
+  if (!confirmed) return;
+  try {
+    const response = await fetch(apiUrl(`/api/saved/folders/${encodeURIComponent(folderId)}`), {
+      method: 'DELETE',
+      headers: savedAuthHeaders(),
+      body: JSON.stringify({})
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Nie udało się usunąć folderu.');
+    if (state.activeFolderId === folderId) state.activeFolderId = '';
+    await loadFolders();
+    loadSaved({ page: 1 });
+    setStatus(`Folder usunięty. Firmy (${data.unassigned || 0}) zostały bez folderu.`, 'ok');
+  } catch (error) {
+    setStatus(error.message || 'Błąd usuwania folderu.', 'warn');
+  }
+}
+
+async function loadSaved({ page } = {}) {
+  if (page) state.savedPage = page;
+  els.savedBody.innerHTML = `<tr class="empty-row"><td colspan="6">Ładowanie...</td></tr>`;
+  try {
+    const params = new URLSearchParams({
+      folderId: state.activeFolderId || '',
+      q: els.savedSearchInput?.value || '',
+      crmStatus: els.savedStatusFilter?.value || '',
+      sort: els.savedSortSelect?.value || 'newest',
+      page: String(state.savedPage || 1),
+      pageSize: '25'
+    });
+    const response = await fetch(apiUrl(`/api/saved?${params.toString()}`), { headers: savedAuthHeaders() });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Nie udało się załadować zapisanych firm.');
+    state.savedItems = Array.isArray(data.items) ? data.items : [];
+    state.savedTotal = data.total || 0;
+    state.savedPage = data.page || 1;
+    renderSaved();
+  } catch (error) {
+    els.savedBody.innerHTML = `<tr class="empty-row"><td colspan="6">${escapeHtml(error.message || 'Błąd ładowania.')}</td></tr>`;
+  }
+}
+
+function renderSaved() {
+  if (!state.savedItems.length) {
+    els.savedBody.innerHTML = `<tr class="empty-row"><td colspan="6">Brak zapisanych firm dla tego filtra.</td></tr>`;
+    els.savedPagination.innerHTML = '';
+    return;
+  }
+  els.savedBody.innerHTML = state.savedItems
+    .map((item) => {
+      const folderNames = (item.saved_folder_ids || [])
+        .map((id) => state.folders.find((folder) => folder.id === id)?.name)
+        .filter(Boolean);
+      return `
+        <tr data-saved-id="${escapeAttribute(item.id)}">
+          <td>
+            <strong>${escapeHtml(item.data?.company || '-')}</strong>
+            <div class="muted-text">${escapeHtml([item.data?.city, item.data?.niche].filter(Boolean).join(' · '))}</div>
+          </td>
+          <td><span class="status-tag">${escapeHtml(crmStatusLabel(item.crm_status))}</span></td>
+          <td>${folderNames.length ? folderNames.map((name) => `<span class="folder-chip">${escapeHtml(name)}</span>`).join('') : '<span class="muted-text">-</span>'}</td>
+          <td class="muted-text">${escapeHtml(item.last_comment?.text?.slice(0, 60) || '-')}</td>
+          <td class="muted-text">${escapeHtml(item.saved_at ? new Date(item.saved_at).toLocaleDateString() : '-')}</td>
+          <td><button class="secondary-button compact-button" type="button" data-open-saved="${escapeAttribute(item.id)}">Otwórz</button></td>
+        </tr>
+      `;
+    })
+    .join('');
+  els.savedBody.querySelectorAll('[data-open-saved]').forEach((button) => {
+    button.addEventListener('click', () => openSavedCompany(button.dataset.openSaved));
+  });
+
+  const totalPages = Math.max(1, Math.ceil(state.savedTotal / 25));
+  els.savedPagination.innerHTML = `
+    <span>${state.savedTotal} firm · strona ${state.savedPage}/${totalPages}</span>
+    <button type="button" ${state.savedPage <= 1 ? 'disabled' : ''} data-saved-page="prev">←</button>
+    <button type="button" ${state.savedPage >= totalPages ? 'disabled' : ''} data-saved-page="next">→</button>
+  `;
+  els.savedPagination.querySelector('[data-saved-page="prev"]')?.addEventListener('click', () => loadSaved({ page: state.savedPage - 1 }));
+  els.savedPagination.querySelector('[data-saved-page="next"]')?.addEventListener('click', () => loadSaved({ page: state.savedPage + 1 }));
+}
+
+function openSavedCompany(companyId) {
+  const item = state.savedItems.find((row) => row.id === companyId);
+  if (!item) return;
+  const fallback = buildPreviewResult({ ...(item.data || {}), _companyId: item.id }, 0, 'saved');
+  const existingIndex = state.results.findIndex((result) => leadCompanyId(result) === companyId);
+  if (existingIndex === -1) state.results = [...state.results, fallback];
+  state.selectedId = fallback.id;
+  state.detailTab = 'overview';
+  switchView('results');
+  renderResults();
+  renderDetail();
+}
+
+// =====================================================================
+// Save / folder / comment / CRM-status / pool-return actions on a lead
+// =====================================================================
+
+async function toggleSaveCompany(result) {
+  const companyId = leadCompanyId(result);
+  if (!companyId) return;
+  const saved = isCompanySaved(result);
+  try {
+    if (saved) {
+      await fetch(apiUrl('/api/saved'), {
+        method: 'DELETE',
+        headers: savedAuthHeaders(),
+        body: JSON.stringify({ companyIds: [companyId] })
+      });
+      result._savedFolderIds = [];
+    } else {
+      const response = await fetch(apiUrl('/api/saved'), {
+        method: 'POST',
+        headers: savedAuthHeaders(),
+        body: JSON.stringify({ companyIds: [companyId] })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Nie udało się zapisać firmy.');
+      result._savedFolderIds = [null];
+    }
+    renderTabbedDetail();
+    setStatus(saved ? 'Firma usunięta z zapisanych.' : 'Firma zapisana.', 'ok');
+  } catch (error) {
+    setStatus(error.message || 'Błąd zapisu.', 'warn');
+  }
+}
+
+function isCompanySaved(result) {
+  return Array.isArray(result._savedFolderIds) && result._savedFolderIds.length > 0;
+}
+
+async function addResultToFolder(result, folderId) {
+  const companyId = leadCompanyId(result);
+  if (!companyId) return;
+  try {
+    const response = await fetch(apiUrl('/api/saved'), {
+      method: 'POST',
+      headers: savedAuthHeaders(),
+      body: JSON.stringify({ companyIds: [companyId], folderId: folderId || null })
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Nie udało się dodać do folderu.');
+    result._savedFolderIds = [...new Set([...(result._savedFolderIds || []), folderId || null])];
+    renderTabbedDetail();
+    setStatus('Dodano do folderu.', 'ok');
+  } catch (error) {
+    setStatus(error.message || 'Błąd dodawania do folderu.', 'warn');
+  }
+}
+
+async function updateCrmStatus(result, status) {
+  const companyId = leadCompanyId(result);
+  if (!companyId) return;
+  try {
+    const response = await fetch(apiUrl(`/api/companies/${encodeURIComponent(companyId)}/crm-status`), {
+      method: 'POST',
+      headers: savedAuthHeaders(),
+      body: JSON.stringify({ status })
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Nie udało się zmienić statusu CRM.');
+    result._crmStatus = data.company.crm_status;
+    renderTabbedDetail();
+    setStatus(`Status CRM: ${crmStatusLabel(status)}`, 'ok');
+  } catch (error) {
+    setStatus(error.message || 'Błąd zmiany statusu CRM.', 'warn');
+  }
+}
+
+async function returnLeadToPoolAction(result) {
+  const companyId = leadCompanyId(result);
+  if (!companyId) return;
+  const confirmed = window.confirm(
+    currentLanguage === 'pl'
+      ? 'Wrócić tę firmę do puli? Komentarze, status CRM i folder zostaną zachowane.'
+      : 'Вернуть эту компанию в пул? Комментарии, CRM-статус и папка сохранятся.'
+  );
+  if (!confirmed) return;
+  try {
+    const response = await fetch(apiUrl(`/api/leads/${encodeURIComponent(companyId)}/return-to-pool`), {
+      method: 'POST',
+      headers: savedAuthHeaders()
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Nie udało się wrócić do puli.');
+    setStatus(
+      data.returned?.length ? 'Firma wróciła do puli.' : 'Firma była już w puli.',
+      'ok'
+    );
+    state.results = state.results.filter((item) => leadCompanyId(item) !== companyId);
+    if (state.selectedId && leadCompanyId(result) === companyId) state.selectedId = state.results[0]?.id || null;
+    renderResults();
+    renderDetail();
+  } catch (error) {
+    setStatus(error.message || 'Błąd zwrotu do puli.', 'warn');
+  }
+}
+
+async function loadCommentsForResult(result) {
+  const companyId = leadCompanyId(result);
+  if (!companyId) return [];
+  try {
+    const response = await fetch(apiUrl(`/api/companies/${encodeURIComponent(companyId)}/comments`), { headers: savedAuthHeaders() });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Nie udało się załadować komentarzy.');
+    result._comments = Array.isArray(data.comments) ? data.comments : [];
+    return result._comments;
+  } catch {
+    return result._comments || [];
+  }
+}
+
+async function submitComment(result, text) {
+  const companyId = leadCompanyId(result);
+  if (!companyId || !text.trim()) return;
+  try {
+    const response = await fetch(apiUrl(`/api/companies/${encodeURIComponent(companyId)}/comments`), {
+      method: 'POST',
+      headers: savedAuthHeaders(),
+      body: JSON.stringify({ text: text.trim() })
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Nie udało się dodać komentarza.');
+    result._comments = [data.comment, ...(result._comments || [])];
+    renderTabbedDetail();
+  } catch (error) {
+    setStatus(error.message || 'Błąd dodawania komentarza.', 'warn');
+  }
+}
+
+async function deleteCommentAction(result, commentId) {
+  try {
+    const response = await fetch(apiUrl(`/api/comments/${encodeURIComponent(commentId)}`), {
+      method: 'DELETE',
+      headers: savedAuthHeaders()
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Nie udało się usunąć komentarza.');
+    result._comments = (result._comments || []).filter((comment) => comment.id !== commentId);
+    renderTabbedDetail();
+  } catch (error) {
+    setStatus(error.message || 'Błąd usuwania komentarza.', 'warn');
   }
 }
 
@@ -2605,6 +3025,35 @@ function renderTabbedDetail() {
 
   bindDetailActions(result);
   renderIcons();
+  ensureResultExtras(result);
+}
+
+// Lazily fetches the live company record (CRM status, saved-folder links,
+// comments) the first time a lead with a real companyId is opened, then
+// re-renders once. Avoids refetching on every tab switch.
+async function ensureResultExtras(result) {
+  const companyId = leadCompanyId(result);
+  if (!companyId || result._extrasLoaded || result._extrasLoading) return;
+  result._extrasLoading = true;
+  try {
+    const [companyResponse] = await Promise.all([
+      fetch(apiUrl(`/api/leads/${encodeURIComponent(companyId)}`), { headers: savedAuthHeaders() }),
+      loadCommentsForResult(result)
+    ]);
+    if (companyResponse.ok) {
+      const data = await companyResponse.json();
+      result._crmStatus = data.company?.crm_status || 'nowy';
+      result._savedFolderIds = (data.company?.saved_links || [])
+        .filter((link) => link.workerId === getWorkerId())
+        .map((link) => link.folderId);
+    }
+    result._extrasLoaded = true;
+  } catch {
+    // Non-fatal: workflow card falls back to defaults (Nowy, not saved).
+  } finally {
+    result._extrasLoading = false;
+  }
+  if (state.selectedId === result.id) renderTabbedDetail();
 }
 
 function detailTabButton(id, label) {
@@ -2637,6 +3086,8 @@ function renderLeadWorkflowCard(result) {
     currentLanguage === 'pl'
       ? 'Status mozna zapisac dla leadow z parsera/historii. Dla czystego CSV najpierw uruchom sprawdzenie.'
       : 'Статус можно сохранить для лидов из парсера/истории. Для чистого CSV сначала запустите проверку.';
+  const crmStatus = result._crmStatus || 'nowy';
+  const saved = isCompanySaved(result);
 
   return `
     <section class="detail-card lead-workflow-card">
@@ -2647,6 +3098,56 @@ function renderLeadWorkflowCard(result) {
           .join('')}
       </select>
       <p class="muted-text">${escapeHtml(companyId ? helper : missing)}</p>
+
+      <h3 style="margin-top:14px">Status CRM</h3>
+      <select id="leadCrmStatus" ${companyId ? '' : 'disabled'}>
+        ${crmStatusOptions.map((option) => `<option value="${escapeAttribute(option.value)}" ${option.value === crmStatus ? 'selected' : ''}>${escapeHtml(option.label)}</option>`).join('')}
+      </select>
+
+      <div class="lead-workflow-actions">
+        <button id="leadSaveToggle" class="secondary-button compact-button save-toggle ${saved ? 'saved-active' : ''}" type="button" ${companyId ? '' : 'disabled'}>
+          <i data-lucide="${saved ? 'bookmark-check' : 'bookmark-plus'}"></i>
+          ${saved ? 'Zapisano' : 'Zapisz'}
+        </button>
+        <button id="leadAddToFolder" class="secondary-button compact-button" type="button" ${companyId ? '' : 'disabled'}>
+          <i data-lucide="folder-plus"></i>
+          Dodaj do folderu
+        </button>
+        <button id="leadReturnToPool" class="secondary-button compact-button" type="button" ${companyId ? '' : 'disabled'}>
+          <i data-lucide="undo-2"></i>
+          Wróć do puli
+        </button>
+      </div>
+      ${saved ? `<div class="folder-chip-list">${(result._savedFolderIds || []).filter(Boolean).map((id) => `<span class="folder-chip">${escapeHtml(state.folders.find((f) => f.id === id)?.name || id)}</span>`).join('') || '<span class="folder-chip">Bez folderu</span>'}</div>` : ''}
+    </section>
+
+    <section class="detail-card comments-card">
+      <h3>Komentarze</h3>
+      <div class="comment-form">
+        <textarea id="leadCommentInput" placeholder="np. dodzwonić się jutro, właściciel zainteresowany..." ${companyId ? '' : 'disabled'}></textarea>
+        <button id="leadCommentSubmit" class="secondary-button compact-button" type="button" ${companyId ? '' : 'disabled'}>Dodaj komentarz</button>
+      </div>
+      <div class="comment-list">
+        ${
+          (result._comments || [])
+            .map(
+              (comment) => `
+          <div class="comment-item" data-comment-id="${escapeAttribute(comment.id)}">
+            <div class="comment-item-head">
+              <span>${escapeHtml(comment.authorRole === 'admin' ? `admin (${comment.authorId})` : comment.authorId)}</span>
+              <span>${escapeHtml(new Date(comment.createdAt).toLocaleString())}</span>
+            </div>
+            <p>${escapeHtml(comment.text)}</p>
+            ${
+              comment.authorRole === 'worker' && comment.authorId === getWorkerId()
+                ? `<div class="comment-item-actions"><button type="button" data-delete-comment="${escapeAttribute(comment.id)}">Usuń</button></div>`
+                : ''
+            }
+          </div>`
+            )
+            .join('') || `<p class="muted-text">${companyId ? 'Brak komentarzy.' : 'Komentarze dostępne po zapisaniu firmy z parsera/historii.'}</p>`
+        }
+      </div>
     </section>
   `;
 }
@@ -2904,6 +3405,32 @@ function bindDetailActions(result) {
   els.detailContent.querySelector('#siteAiButton')?.addEventListener('click', () => runSiteAiAnalysis(result.id));
   els.detailContent.querySelector('#leadWorkflowStatus')?.addEventListener('change', (event) => {
     updateLeadWorkflowStatus(result, event.target.value);
+  });
+  els.detailContent.querySelector('#leadCrmStatus')?.addEventListener('change', (event) => {
+    updateCrmStatus(result, event.target.value);
+  });
+  els.detailContent.querySelector('#leadSaveToggle')?.addEventListener('click', () => toggleSaveCompany(result));
+  els.detailContent.querySelector('#leadAddToFolder')?.addEventListener('click', async () => {
+    if (!state.foldersLoaded) await loadFolders();
+    const names = state.folders.map((folder) => `${folder.name} [${folder.id}]`).join('\n');
+    const prompt =
+      currentLanguage === 'pl'
+        ? `Wpisz ID folderu (zostaw puste dla "bez folderu"):\n${names || '(brak folderów - utwórz w zakładce Zapisane)'}`
+        : `Введите ID папки (пусто = без папки):\n${names || '(папок пока нет - создайте их во вкладке Zapisane)'}`;
+    const folderId = window.prompt(prompt, '');
+    if (folderId === null) return;
+    addResultToFolder(result, folderId.trim());
+  });
+  els.detailContent.querySelector('#leadReturnToPool')?.addEventListener('click', () => returnLeadToPoolAction(result));
+  els.detailContent.querySelector('#leadCommentSubmit')?.addEventListener('click', () => {
+    const input = els.detailContent.querySelector('#leadCommentInput');
+    if (!input) return;
+    const text = input.value;
+    input.value = '';
+    submitComment(result, text);
+  });
+  els.detailContent.querySelectorAll('[data-delete-comment]').forEach((button) => {
+    button.addEventListener('click', () => deleteCommentAction(result, button.dataset.deleteComment));
   });
 
   els.detailContent.querySelectorAll('[data-copy]').forEach((button) => {

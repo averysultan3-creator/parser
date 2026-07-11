@@ -4,9 +4,9 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Aura Admin</title>
-    <link rel="stylesheet" href="./styles.css?v=20260708-2" />
+    <link rel="stylesheet" href="./styles.css?v=20260711-1" />
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js" defer></script>
-    <script src="./app.js?v=20260708-6" defer></script>
+    <script src="./app.js?v=20260711-1" defer></script>
   </head>
   <body>
     <main class="admin-shell">
@@ -36,10 +36,18 @@
             <input id="workerSearchInput" placeholder="Szukaj worker ID..." />
           </div>
         </div>
+        <div id="workersBulkBar" class="bulk-actions">
+          <span id="workersSelectedCount" class="muted">0 selected</span>
+          <button id="workersBulkActivate" class="button secondary" type="button">Aktywuj</button>
+          <button id="workersBulkDeactivate" class="button secondary" type="button">Dezaktywuj</button>
+          <button id="workersBulkResetLeads" class="button secondary" type="button">Leady do puli</button>
+          <button id="workersBulkDelete" class="button danger" type="button">Usuń zaznaczone</button>
+        </div>
         <div class="table-wrap compact-table">
           <table>
             <thead>
               <tr>
+                <th><input type="checkbox" id="workersSelectAll" aria-label="Zaznacz wszystkich workerów" /></th>
                 <th>Worker</th>
                 <th>Leady</th>
                 <th>Zapytania</th>
@@ -85,6 +93,15 @@
 
         <div class="sub-panel">
           <div class="sub-panel-top">
+            <h3>Foldery i zapisane firmy</h3>
+            <span id="workerSavedCount" class="muted"></span>
+          </div>
+          <div id="workerFoldersList" class="chips"></div>
+          <div id="workerSavedList" class="list"></div>
+        </div>
+
+        <div class="sub-panel">
+          <div class="sub-panel-top">
             <h3>Leady pracownika</h3>
             <span id="workerLeadsCount" class="muted"></span>
           </div>
@@ -111,10 +128,57 @@
           <div class="panel-top">
             <div>
               <h2>Historia parsera</h2>
-              <p>Tu mozesz otworzyc cale zapytanie, zresetowac jego leady albo usunac sam wpis historii.</p>
+              <p>Zadne leady, komentarze, statusy ani foldery nie sa tu nigdy usuwane. "Wroc do puli" oddaje zapytanie/leady do ponownego przetworzenia i archiwizuje wpis historii - nic nie znika na stale.</p>
             </div>
           </div>
+
+          <div id="historyViewTabs" class="history-view-tabs">
+            <button class="button secondary history-view-tab active" type="button" data-history-view="active">Aktywne</button>
+            <button class="button secondary history-view-tab" type="button" data-history-view="completed_active">Zakończone</button>
+            <button class="button secondary history-view-tab" type="button" data-history-view="returned">Zwrócone do puli</button>
+            <button class="button secondary history-view-tab" type="button" data-history-view="archived">Archiwum</button>
+          </div>
+
+          <button id="historyFiltersToggle" class="button secondary mobile-filters-toggle" type="button">Filtry i akcje zbiorcze</button>
+
+          <div id="historyFiltersPanel" class="history-filters-panel">
+            <form id="historyFiltersForm" class="filters history-filters">
+              <input name="country" placeholder="Kraj" autocomplete="off" />
+              <input name="city" placeholder="Miasto" autocomplete="off" />
+              <input name="category" placeholder="Kategoria / nisza" autocomplete="off" />
+              <input name="workerId" placeholder="Worker ID" autocomplete="off" />
+              <select name="status">
+                <option value="">Status: wszystkie</option>
+                <option value="completed">completed</option>
+                <option value="exhausted">exhausted</option>
+                <option value="duplicates_only">duplicates_only</option>
+                <option value="cancelled">cancelled</option>
+                <option value="failed">failed</option>
+                <option value="running">running</option>
+              </select>
+              <input name="dateFrom" type="date" title="Data od" />
+              <input name="dateTo" type="date" title="Data do" />
+              <button class="button secondary" type="submit">Filtruj</button>
+              <button id="historyFiltersClear" class="button secondary" type="button">Wyczyść filtry</button>
+              <button id="historyPreviewByFilter" class="button secondary" type="button">Pokaż pasujące zapytania</button>
+            </form>
+
+            <div id="historyBulkBar" class="bulk-actions">
+              <label class="toggle-row">
+                <input type="checkbox" id="runsSelectAll" />
+                zaznacz wszystko na tej stronie
+              </label>
+              <span id="runsSelectedCount" class="muted">Nic nie zaznaczono</span>
+              <button id="historyBulkReset" class="button secondary" type="button">Wróć leady zaznaczonych do puli</button>
+              <button id="historyBulkDelete" class="button danger" type="button">Wróć zaznaczone zapytania do puli</button>
+            </div>
+          </div>
+
+          <div id="historyPreviewPanel" class="history-preview-panel hidden-panel"></div>
+
+          <div id="historyStateMessage" class="history-state-message hidden-panel"></div>
           <div id="runsList" class="list"></div>
+          <div id="archiveList" class="list hidden-panel"></div>
           <div id="runDetail" class="run-detail"></div>
         </div>
 
@@ -128,7 +192,7 @@
         <div class="panel-top">
           <div>
             <h2>Globalny lead pool</h2>
-            <p>Reset przywraca lead do ponownego uzycia. Delete usuwa lead globalnie.</p>
+            <p>"Wróć do puli" zwalnia przypisanie do workera. Firma, jej kontakty, komentarze, status CRM i foldery nigdy nie są usuwane.</p>
           </div>
           <div class="filters">
             <input id="searchInput" placeholder="Szukaj firmy, telefonu, miasta, worker..." />
@@ -148,9 +212,8 @@
           </div>
         </div>
         <div class="bulk-actions">
-          <button id="resetSelected" class="button secondary">Reset selected</button>
-          <button id="deleteSelected" class="button danger">Delete selected</button>
-          <span id="selectedCount" class="muted">0 selected</span>
+          <button id="resetSelected" class="button secondary">Wróć zaznaczone do puli</button>
+          <span id="selectedCount" class="muted">Nic nie zaznaczono</span>
         </div>
         <div class="table-wrap">
           <table>

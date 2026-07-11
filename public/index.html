@@ -7,10 +7,10 @@
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
     <title>Aura Parser</title>
-    <link rel="stylesheet" href="./styles.css?v=20260707-9" />
+    <link rel="stylesheet" href="./styles.css?v=20260711-1" />
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js" defer></script>
     <script src="./patch.js?v=20260707-4" defer></script>
-    <script src="./app.js?v=20260708-3" defer></script>
+    <script src="./app.js?v=20260711-1" defer></script>
   </head>
   <body>
     <div id="authOverlay" class="auth-overlay hidden-field"></div>
@@ -233,6 +233,10 @@
               <i data-lucide="history"></i>
               История парсов
             </button>
+            <button id="viewTabSaved" class="view-tab" type="button" data-view-tab="saved">
+              <i data-lucide="bookmark"></i>
+              Zapisane
+            </button>
           </div>
 
           <div id="historyView" class="history-view hidden-field">
@@ -263,6 +267,58 @@
                   </tr>
                 </tbody>
               </table>
+            </div>
+          </div>
+
+          <div id="savedView" class="saved-view hidden-field">
+            <div class="saved-layout">
+              <aside class="saved-folders" aria-label="Foldery">
+                <div class="saved-folders-head">
+                  <h3>Foldery</h3>
+                  <button id="createFolderButton" class="icon-button" type="button" title="Nowy folder">
+                    <i data-lucide="folder-plus"></i>
+                  </button>
+                </div>
+                <ul id="savedFoldersList" class="saved-folders-list">
+                  <li class="list-item muted">Ładowanie...</li>
+                </ul>
+              </aside>
+              <div class="saved-main">
+                <div class="saved-toolbar">
+                  <input id="savedSearchInput" type="text" placeholder="Szukaj zapisanych firm..." autocomplete="off" />
+                  <select id="savedStatusFilter">
+                    <option value="">Wszystkie statusy CRM</option>
+                  </select>
+                  <select id="savedSortSelect">
+                    <option value="newest">Najpierw nowe</option>
+                    <option value="oldest">Najpierw stare</option>
+                    <option value="name">Nazwa A-Z</option>
+                    <option value="status">Status</option>
+                  </select>
+                  <button id="refreshSavedButton" class="secondary-button compact-button" type="button">
+                    <i data-lucide="refresh-cw"></i>
+                    Odśwież
+                  </button>
+                </div>
+                <div class="table-wrap">
+                  <table id="savedTable">
+                    <thead>
+                      <tr>
+                        <th>Firma</th>
+                        <th>Status CRM</th>
+                        <th>Folder</th>
+                        <th>Ostatni komentarz</th>
+                        <th>Zapisano</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody id="savedBody">
+                      <tr class="empty-row"><td colspan="6">Brak zapisanych firm.</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+                <div id="savedPagination" class="saved-pagination"></div>
+              </div>
             </div>
           </div>
 
