@@ -11,10 +11,16 @@ const jsFiles = [
   'public/shared/i18n.js',
   'public/site/app.js',
   'public/site/data/content.js',
+  'public/site/data/portfolio.js',
+  'public/site/data/site-copy.js',
   'public/site/data/services.js',
   'scripts/build-check.mjs',
+  'scripts/audit-references.mjs',
   'scripts/smoke-test.mjs',
   'scripts/usability-test.mjs',
+  'scripts/aura-site-e2e.mjs',
+  'scripts/capture-aura-site.mjs',
+  'scripts/capture-portfolio-media.mjs',
   'scripts/pages-smoke.mjs',
   'scripts/pages-mobile-smoke.mjs'
 ];

@@ -252,6 +252,21 @@ const baseServiceCategories = [
           priceFactors: 'Liczba etapów, integracje i automatyzacje.',
           process: 'Mapa lejka → strony → automatyzacje → pomiar.'
         }
+      },
+      {
+        id: 'geoai',
+        icon: 'sparkles',
+        name: 'GEO / AI visibility',
+        short: 'Porządkujemy treści i sygnały marki, aby wyszukiwarki i systemy AI lepiej rozumiały firmę.',
+        price: 'indywidualnie',
+        details: {
+          what: 'Audyt widoczności oraz uporządkowanie encji, treści, danych strukturalnych i źródeł potwierdzających ofertę firmy.',
+          forWho: 'Firmy eksperckie, B2B, SaaS i marki działające na kilku rynkach lub w kilku językach.',
+          problem: 'Firma ma stronę i treści, ale jej oferta jest niespójnie opisana albo słabo rozumiana w wynikach wyszukiwania i odpowiedziach AI.',
+          gives: 'Czytelniejszą obecność marki i techniczną bazę, która ułatwia wyszukiwarkom oraz systemom AI interpretację firmy — bez gwarancji konkretnych wzmianek.',
+          priceFactors: 'Liczba rynków i języków, stan serwisu, zakres treści, dane strukturalne oraz monitoring.',
+          process: 'Audyt → mapa encji i tematów → treści i schema → wdrożenie → monitoring.'
+        }
       }
     ]
   },
@@ -716,6 +731,18 @@ const serviceTranslations = {
         process: 'Funnel map → pages → automations → measurement.'
       }
     },
+    geoai: {
+      name: 'GEO / AI visibility',
+      short: 'We structure brand content and signals so search engines and AI systems can understand the company more clearly.',
+      details: {
+        what: 'A visibility audit plus structured entities, content, schema and corroborating sources around the company offer.',
+        forWho: 'Expert businesses, B2B, SaaS and brands operating across several markets or languages.',
+        problem: 'The company has a website and content, but its offer is described inconsistently or poorly understood in search results and AI answers.',
+        gives: 'A clearer brand presence and a technical base that helps search engines and AI systems interpret the company — without guaranteed mentions.',
+        priceFactors: 'Number of markets and languages, current website state, content scope, structured data and monitoring.',
+        process: 'Audit → entity and topic map → content and schema → implementation → monitoring.'
+      }
+    },
     aichatbot: {
       name: 'AI Chatbot',
       short: 'An assistant that answers clients 24/7.',
@@ -1100,6 +1127,18 @@ const serviceTranslations = {
         process: 'Карта воронки → страницы → автоматизации → замеры.'
       }
     },
+    geoai: {
+      name: 'GEO / AI visibility',
+      short: 'Упорядочиваем контент и сигналы бренда, чтобы поисковые и AI-системы точнее понимали компанию.',
+      details: {
+        what: 'Аудит видимости и систематизация сущностей, контента, структурированных данных и источников, подтверждающих предложение компании.',
+        forWho: 'Экспертные компании, B2B, SaaS и бренды, работающие на нескольких рынках или языках.',
+        problem: 'У компании есть сайт и контент, но предложение описано непоследовательно или плохо распознаётся в поисковой выдаче и AI-ответах.',
+        gives: 'Более ясное присутствие бренда и техническую основу, которая помогает поисковым и AI-системам интерпретировать компанию — без гарантии конкретных упоминаний.',
+        priceFactors: 'Количество рынков и языков, состояние сайта, объём контента, структурированные данные и мониторинг.',
+        process: 'Аудит → карта сущностей и тем → контент и schema → внедрение → мониторинг.'
+      }
+    },
     aichatbot: {
       name: 'AI Chatbot',
       short: 'Ассистент, который отвечает клиентам 24/7.',
@@ -1295,6 +1334,289 @@ const serviceTranslations = {
   }
 };
 
+const serviceSlugs = {
+  websites: 'websites',
+  landing: 'landing-page',
+  ecommerce: 'ecommerce',
+  copywriting: 'copywriting',
+  branding: 'branding',
+  uiux: 'ui-ux-design',
+  anim3d: '3d-animation',
+  cro: 'conversion-optimization',
+  googleads: 'google-ads',
+  metaads: 'meta-ads',
+  tiktokads: 'tiktok-ads',
+  seo: 'seo',
+  gbp: 'google-business-profile',
+  remarketing: 'remarketing',
+  analytics: 'analytics',
+  funnels: 'sales-funnels',
+  geoai: 'geo-ai-visibility',
+  aichatbot: 'ai-chatbot',
+  aiauto: 'inquiry-automation',
+  aiqualify: 'ai-lead-qualification',
+  aifollowup: 'ai-follow-up',
+  crmauto: 'crm-automations',
+  aireports: 'ai-reports',
+  apiint: 'api-integrations',
+  automsg: 'automated-messages',
+  leadforms: 'lead-forms',
+  calculators: 'quote-calculators',
+  adminpanels: 'admin-panels',
+  booking: 'booking-systems',
+  dashboards: 'dashboards',
+  emailint: 'email-integrations',
+  messengers: 'messenger-integrations',
+  customtools: 'custom-business-tools'
+};
+
+const serviceDurationProfiles = {
+  websites: { min: 4, max: 8 },
+  landing: { min: 2, max: 4 },
+  ecommerce: { min: 6, max: 12 },
+  copywriting: { min: 1, max: 3 },
+  branding: { min: 3, max: 6 },
+  uiux: { min: 3, max: 8 },
+  anim3d: { min: 2, max: 6 },
+  cro: { min: 2, max: 4, mode: 'iterative' },
+  googleads: { min: 1, max: 2, mode: 'recurring' },
+  metaads: { min: 1, max: 2, mode: 'recurring' },
+  tiktokads: { min: 2, max: 3, mode: 'recurring' },
+  seo: { min: 2, max: 4, mode: 'recurring' },
+  gbp: { min: 1, max: 2 },
+  remarketing: { min: 1, max: 2, mode: 'recurring' },
+  analytics: { min: 1, max: 3 },
+  funnels: { min: 4, max: 8 },
+  geoai: { min: 3, max: 6, mode: 'monitoring' },
+  aichatbot: { min: 3, max: 6 },
+  aiauto: { min: 2, max: 4 },
+  aiqualify: { min: 3, max: 6 },
+  aifollowup: { min: 2, max: 4 },
+  crmauto: { min: 3, max: 8 },
+  aireports: { min: 2, max: 4 },
+  apiint: { min: 3, max: 10 },
+  automsg: { min: 1, max: 3 },
+  leadforms: { min: 1, max: 3 },
+  calculators: { min: 2, max: 5 },
+  adminpanels: { min: 6, max: 14 },
+  booking: { min: 2, max: 5 },
+  dashboards: { min: 3, max: 8 },
+  emailint: { min: 1, max: 3 },
+  messengers: { min: 1, max: 3 },
+  customtools: { min: 6, max: 16 }
+};
+
+const relatedProjectSlugs = {
+  websites: ['climatech', 'mont-fort', 'depo-studio'],
+  landing: ['all-inn-home-of-students', 'climatech'],
+  ecommerce: ['evanlite', 'mukko'],
+  copywriting: ['flowty', 'climatech'],
+  branding: ['unabyss', 'montone-studio'],
+  uiux: ['flowty', 'agentura'],
+  anim3d: ['unabyss', 'let-it-rip-pictures'],
+  cro: ['flowty', 'climatech'],
+  googleads: ['climatech'],
+  metaads: ['climatech'],
+  tiktokads: ['evanlite'],
+  seo: ['climatech', 'oknoplast'],
+  gbp: ['climatech'],
+  remarketing: ['climatech', 'evanlite'],
+  analytics: ['flowty', 'climatech'],
+  funnels: ['climatech', 'all-inn-home-of-students'],
+  geoai: ['polar-signals', 'langbase', 'exa-ai'],
+  aichatbot: ['langbase', 'exa-ai'],
+  aiauto: ['flowty', 'climatech'],
+  aiqualify: ['flowty'],
+  aifollowup: ['climatech'],
+  crmauto: ['flowty'],
+  aireports: ['polar-signals'],
+  apiint: ['langbase', 'exa-ai'],
+  automsg: ['all-inn-home-of-students', 'climatech'],
+  leadforms: ['climatech'],
+  calculators: ['oknoplast'],
+  adminpanels: ['flowty'],
+  booking: ['all-inn-home-of-students'],
+  dashboards: ['flowty', 'polar-signals'],
+  emailint: ['climatech'],
+  messengers: ['climatech'],
+  customtools: ['langbase', 'exa-ai']
+};
+
+const serviceDeliverables = {
+  pl: {
+    websites: ['Architektura informacji i układ kluczowych podstron', 'Responsywny projekt UI oraz wdrożenie strony', 'Formularze, testy jakości i publikacja na docelowym środowisku'],
+    landing: ['Struktura jednej strony podporządkowana jednemu celowi', 'Copy hierarchy, responsywny design i wdrożenie landing page', 'Formularz lub rezerwacja oraz konfiguracja pomiaru konwersji'],
+    ecommerce: ['Architektura katalogu, kart produktu, koszyka i checkoutu', 'Responsywny sklep z panelem zarządzania', 'Integracje płatności, dostawy i niezbędnych systemów sprzedażowych'],
+    copywriting: ['Kierunek komunikacji i hierarchia najważniejszych argumentów', 'Nagłówki, teksty oferty, opisy usług oraz CTA', 'Finalne teksty po uzgodnionej rundzie poprawek, gotowe do wdrożenia'],
+    branding: ['Kierunek wizualny i moodboard', 'Logo, paleta kolorów oraz system typografii', 'Podstawowe zasady użycia i uporządkowana paczka plików'],
+    uiux: ['Mapa flow i wireframes kluczowych ekranów', 'Projekt UI oraz system powtarzalnych komponentów', 'Klikalny prototyp i materiały do przekazania zespołowi wdrożeniowemu'],
+    anim3d: ['Koncepcja sceny i storyboard ruchu', 'Zoptymalizowane obiekty 3D lub sekwencje motion', 'Integracja sceny z interakcją, scrollem albo wskazanym miejscem strony'],
+    cro: ['Audyt istniejącej ścieżki, CTA i formularzy', 'Lista hipotez uporządkowana według wpływu i kosztu wdrożenia', 'Zmiany w istniejącym flow oraz plan pomiaru kolejnych iteracji'],
+    googleads: ['Struktura konta, kampanii, słów kluczowych i wykluczeń', 'Teksty reklam oraz konfiguracja mierzalnych konwersji', 'Regularna optymalizacja stawek, zapytań i budżetu kampanii'],
+    metaads: ['Struktura kampanii i segmenty odbiorców', 'Kierunek kreacji oraz warianty komunikatów reklamowych', 'Pixel, testy zestawów reklam i cykliczna optymalizacja'],
+    tiktokads: ['Koncepcje i scenariusze krótkich materiałów wideo', 'Natywne kreacje oraz konfiguracja kampanii TikTok Ads', 'Testy hooków, grup odbiorców i kosztu pozyskania'],
+    seo: ['Audyt techniczny i lista priorytetów wdrożeniowych', 'Mapa fraz, architektura treści i optymalizacja on-page', 'Monitoring widoczności oraz plan publikacji i linkowania'],
+    gbp: ['Audyt i kompletna konfiguracja profilu firmy', 'Kategorie, usługi, opisy, zdjęcia i plan publikacji', 'Proces pozyskiwania i obsługi opinii zgodny z zasadami platformy'],
+    remarketing: ['Konfiguracja pomiaru i segmentów odbiorców', 'Scenariusze wykluczeń, częstotliwości oraz powrotu użytkownika', 'Kampanie, kreacje i pomiar konwersji remarketingowych'],
+    analytics: ['Plan pomiaru powiązany z celami biznesowymi', 'Konfiguracja GA4, zdarzeń, celów i konwersji', 'Raport kontrolny oraz dokumentacja wdrożonego pomiaru'],
+    funnels: ['Mapa całej ścieżki od źródła ruchu do follow-upu', 'Specyfikacja stron, formularzy, komunikacji i automatyzacji', 'Plan integracji oraz pomiaru przejść między etapami lejka'],
+    geoai: ['Audyt obecności marki w wyszukiwarce i wybranych odpowiedziach AI', 'Mapa encji, tematów, źródeł oraz priorytetów contentowych', 'Rekomendacje schema i treści, wdrożenie uzgodnionego zakresu oraz baseline monitoringu'],
+    aichatbot: ['Uporządkowana baza wiedzy i granice odpowiedzi asystenta', 'Scenariusze rozmów, zbierania danych i przekazania kontaktu', 'Chatbot osadzony na stronie, testy oraz instrukcja obsługi'],
+    aiauto: ['Mapa źródeł zapytań i docelowych miejsc w systemie', 'Mapowanie pól, routing leadów oraz reguły tworzenia zadań', 'Alerty wewnętrzne, obsługa błędów i testy całego przepływu'],
+    aiqualify: ['Kryteria jakości leada uzgodnione z zespołem sprzedaży', 'Model punktacji, tagowania i priorytetyzacji zapytań', 'Integracja z CRM oraz kalibracja na przykładowych leadach'],
+    aifollowup: ['Sekwencje dla leadów, które nie odpowiedziały', 'Reguły czasu, kanału, wyjścia z sekwencji i przekazania człowiekowi', 'Automatyczne uruchomienie z CRM oraz pomiar odpowiedzi'],
+    crmauto: ['Pipeline, pola i statusy dopasowane do procesu sprzedaży', 'Automatyczne zadania, zmiany statusów i przypomnienia w CRM', 'Dokumentacja konfiguracji oraz krótkie wdrożenie zespołu'],
+    aireports: ['Połączenie uzgodnionych źródeł danych', 'Szablon zrozumiałego podsumowania leadów, kampanii lub sprzedaży', 'Automatyczny harmonogram generowania i dostarczania raportu'],
+    apiint: ['Mapa danych i odpowiedzialności każdego integrowanego systemu', 'Integracja API z autoryzacją, walidacją i obsługą błędów', 'Logi, monitoring oraz techniczna dokumentacja przepływu'],
+    automsg: ['Treści wiadomości transakcyjnych: potwierdzeń, przypomnień i podziękowań', 'Reguły zdarzeń uruchamiających każdą wiadomość', 'Integracja wybranych kanałów, testy dostarczania i logowanie statusów'],
+    leadforms: ['Architektura pytań i logika warunkowa formularza', 'Responsywny interfejs, walidacja i stany błędów', 'Przekazanie danych do CRM, e-maila albo wskazanego systemu'],
+    calculators: ['Model kalkulacji i reguły prezentowania orientacyjnej ceny', 'Responsywny interfejs kalkulatora', 'Zapis wyniku oraz integracja z formularzem leadowym lub CRM'],
+    adminpanels: ['Zakres modułów, role użytkowników i prototyp kluczowych widoków', 'Dedykowany panel do obsługi uzgodnionych procesów', 'Testy uprawnień, wdrożenie i dokumentacja podstawowej obsługi'],
+    booking: ['Reguły dostępności, zasobów, czasu i anulowania wizyt', 'Responsywny flow wyboru terminu i potwierdzenia rezerwacji', 'Integracja kalendarza oraz automatyczne potwierdzenia i przypomnienia'],
+    dashboards: ['Model KPI oraz definicje prezentowanych wskaźników', 'Połączenie uzgodnionych źródeł i ujednolicenie danych', 'Dashboard z filtrami, odświeżaniem i instrukcją interpretacji'],
+    emailint: ['Szablony e-maili i segmenty odbiorców', 'Konfiguracja dostawcy wysyłki oraz wymaganych integracji', 'Automatyczne flow e-mailowe wraz z testami uruchomienia i wypisu'],
+    messengers: ['Konfiguracja botów lub kanałów Telegram i WhatsApp', 'Mapowanie danych leadów, alertów i raportów do wiadomości', 'Integracja, testy dostarczania oraz reguły dostępu zespołu'],
+    customtools: ['Analiza procesu i prototyp najważniejszego scenariusza', 'Dedykowana aplikacja obejmująca uzgodniony zakres funkcjonalny', 'Integracje, wdrożenie oraz plan dalszego utrzymania i rozwoju']
+  },
+  en: {
+    websites: ['Information architecture and layouts for the key pages', 'Responsive UI design and website implementation', 'Forms, quality assurance and launch on the target environment'],
+    landing: ['A single-page structure built around one conversion goal', 'Copy hierarchy, responsive design and landing-page implementation', 'Form or booking flow plus conversion measurement setup'],
+    ecommerce: ['Catalogue, product page, cart and checkout architecture', 'Responsive store with a management panel', 'Payment, delivery and essential sales-system integrations'],
+    copywriting: ['Messaging direction and hierarchy of the strongest arguments', 'Headlines, offer copy, service descriptions and CTAs', 'Final copy after the agreed revision round, ready for implementation'],
+    branding: ['Visual direction and moodboard', 'Logo, colour palette and typography system', 'Core usage rules and an organised asset package'],
+    uiux: ['Flow map and wireframes for the key screens', 'UI design and a system of reusable components', 'Clickable prototype and implementation handoff materials'],
+    anim3d: ['Scene concept and motion storyboard', 'Optimised 3D objects or motion sequences', 'Scene integration with interaction, scroll or the selected website area'],
+    cro: ['Audit of the existing journey, CTAs and forms', 'Hypotheses prioritised by expected impact and implementation effort', 'Changes to the existing flow and a measurement plan for later iterations'],
+    googleads: ['Account, campaign, keyword and negative-keyword structure', 'Ad copy and measurable conversion setup', 'Ongoing optimisation of bids, search terms and campaign budget'],
+    metaads: ['Campaign structure and audience segments', 'Creative direction and message variants', 'Pixel setup, ad-set tests and recurring optimisation'],
+    tiktokads: ['Concepts and scripts for short-form video', 'Native creative and TikTok Ads campaign setup', 'Tests of hooks, audiences and acquisition cost'],
+    seo: ['Technical audit and prioritised implementation list', 'Keyword map, content architecture and on-page optimisation', 'Visibility monitoring plus a publishing and linking plan'],
+    gbp: ['Audit and complete company-profile setup', 'Categories, services, descriptions, images and a posting plan', 'A platform-compliant review collection and response process'],
+    remarketing: ['Measurement setup and audience segments', 'Exclusion, frequency and return-journey scenarios', 'Campaigns, creative and remarketing conversion measurement'],
+    analytics: ['Measurement plan tied to business goals', 'GA4, event, goal and conversion configuration', 'Control report and documentation of the tracking setup'],
+    funnels: ['Map of the full journey from traffic source to follow-up', 'Specification for pages, forms, communication and automations', 'Integration and stage-to-stage measurement plan'],
+    geoai: ['Baseline audit across search and selected AI answers', 'Entity, topic, source and content-priority map', 'Schema and content recommendations, agreed implementation and monitoring baseline'],
+    aichatbot: ['Structured knowledge base and clear answer boundaries', 'Conversation, data-capture and human-handoff scenarios', 'Embedded website chatbot, tests and operating instructions'],
+    aiauto: ['Map of enquiry sources and destination systems', 'Field mapping, lead routing and task-creation rules', 'Internal alerts, error handling and end-to-end flow testing'],
+    aiqualify: ['Lead-quality criteria agreed with the sales team', 'Scoring, tagging and enquiry-prioritisation model', 'CRM integration and calibration on sample leads'],
+    aifollowup: ['Sequences for leads that have not responded', 'Timing, channel, exit and human-handoff rules', 'CRM-triggered automation and response measurement'],
+    crmauto: ['Pipeline, fields and statuses aligned with the sales process', 'Automated CRM tasks, status changes and reminders', 'Configuration documentation and a short team onboarding'],
+    aireports: ['Connection of the agreed data sources', 'Plain-language summary template for leads, campaigns or sales', 'Automated report generation and delivery schedule'],
+    apiint: ['Data map and ownership of every integrated system', 'API integration with authentication, validation and error handling', 'Logs, monitoring and technical flow documentation'],
+    automsg: ['Transactional copy for confirmations, reminders and thank-you messages', 'Event rules that trigger each message', 'Selected-channel integration, delivery tests and status logging'],
+    leadforms: ['Question architecture and conditional form logic', 'Responsive interface, validation and error states', 'Data delivery to the CRM, email or selected system'],
+    calculators: ['Calculation model and rules for presenting an indicative price', 'Responsive calculator interface', 'Result storage and integration with a lead form or CRM'],
+    adminpanels: ['Module scope, user roles and prototype of the key views', 'Dedicated panel for the agreed business processes', 'Permission tests, deployment and basic operating documentation'],
+    booking: ['Availability, resource, timing and cancellation rules', 'Responsive date-selection and booking-confirmation flow', 'Calendar integration plus automated confirmations and reminders'],
+    dashboards: ['KPI model and definitions of the displayed metrics', 'Connection and normalisation of agreed data sources', 'Dashboard with filters, refresh rules and interpretation notes'],
+    emailint: ['Email templates and audience segments', 'Sending-provider configuration and required integrations', 'Automated email flows with launch and unsubscribe testing'],
+    messengers: ['Telegram and WhatsApp bot or channel setup', 'Mapping of lead, alert and report data into messages', 'Integration, delivery testing and team-access rules'],
+    customtools: ['Process discovery and prototype of the core scenario', 'Dedicated application covering the agreed functional scope', 'Integrations, deployment and a maintenance and growth plan']
+  },
+  ru: {
+    websites: ['Информационная архитектура и макеты ключевых страниц', 'Адаптивный UI-дизайн и разработка сайта', 'Формы, проверка качества и публикация в целевой среде'],
+    landing: ['Структура одной страницы вокруг одной конверсионной цели', 'Иерархия текста, адаптивный дизайн и разработка лендинга', 'Форма или бронирование и настройка измерения конверсий'],
+    ecommerce: ['Архитектура каталога, карточки товара, корзины и checkout', 'Адаптивный магазин с панелью управления', 'Интеграции оплаты, доставки и необходимых систем продаж'],
+    copywriting: ['Направление коммуникации и иерархия сильных аргументов', 'Заголовки, оффер, описания услуг и CTA', 'Финальные тексты после согласованного раунда правок, готовые к внедрению'],
+    branding: ['Визуальное направление и moodboard', 'Логотип, цветовая палитра и система типографики', 'Базовые правила использования и упорядоченный пакет файлов'],
+    uiux: ['Карта flow и wireframes ключевых экранов', 'UI-дизайн и система повторно используемых компонентов', 'Кликабельный прототип и материалы для передачи в разработку'],
+    anim3d: ['Концепция сцены и storyboard движения', 'Оптимизированные 3D-объекты или motion-последовательности', 'Интеграция сцены с интеракцией, скроллом или выбранной зоной сайта'],
+    cro: ['Аудит существующего пути, CTA и форм', 'Гипотезы, расставленные по ожидаемому влиянию и стоимости внедрения', 'Изменения текущего flow и план измерения следующих итераций'],
+    googleads: ['Структура аккаунта, кампаний, ключевых слов и исключений', 'Тексты объявлений и настройка измеримых конверсий', 'Регулярная оптимизация ставок, поисковых запросов и бюджета'],
+    metaads: ['Структура кампаний и сегменты аудиторий', 'Направление креативов и варианты рекламных сообщений', 'Pixel, тесты групп объявлений и регулярная оптимизация'],
+    tiktokads: ['Концепции и сценарии коротких видео', 'Нативные креативы и настройка кампаний TikTok Ads', 'Тесты hook, аудиторий и стоимости привлечения'],
+    seo: ['Технический аудит и приоритетный список внедрений', 'Карта запросов, архитектура контента и on-page оптимизация', 'Мониторинг видимости и план публикаций и ссылок'],
+    gbp: ['Аудит и полная настройка профиля компании', 'Категории, услуги, описания, изображения и план публикаций', 'Соответствующий правилам платформы процесс сбора и обработки отзывов'],
+    remarketing: ['Настройка измерения и сегментов аудиторий', 'Сценарии исключений, частоты и возврата пользователя', 'Кампании, креативы и измерение remarketing-конверсий'],
+    analytics: ['План измерения, связанный с бизнес-целями', 'Настройка GA4, событий, целей и конверсий', 'Контрольный отчёт и документация внедрённого трекинга'],
+    funnels: ['Карта полного пути от источника трафика до follow-up', 'Спецификация страниц, форм, коммуникации и автоматизаций', 'План интеграций и измерения переходов между этапами'],
+    geoai: ['Базовый аудит присутствия в поиске и выбранных AI-ответах', 'Карта сущностей, тем, источников и контентных приоритетов', 'Рекомендации по schema и контенту, согласованное внедрение и baseline мониторинга'],
+    aichatbot: ['Структурированная база знаний и границы ответов ассистента', 'Сценарии диалога, сбора данных и передачи человеку', 'Чатбот на сайте, тесты и инструкция по эксплуатации'],
+    aiauto: ['Карта источников заявок и целевых систем', 'Маппинг полей, маршрутизация лидов и правила создания задач', 'Внутренние уведомления, обработка ошибок и сквозное тестирование flow'],
+    aiqualify: ['Критерии качества лида, согласованные с отделом продаж', 'Модель скоринга, тегирования и приоритизации заявок', 'Интеграция с CRM и калибровка на примерах лидов'],
+    aifollowup: ['Последовательности для лидов, которые не ответили', 'Правила времени, канала, выхода и передачи человеку', 'Автозапуск из CRM и измерение ответов'],
+    crmauto: ['Pipeline, поля и статусы под процесс продаж', 'Автоматические задачи, изменения статусов и напоминания в CRM', 'Документация настройки и короткий onboarding команды'],
+    aireports: ['Подключение согласованных источников данных', 'Понятный шаблон сводки по лидам, кампаниям или продажам', 'Автоматический график формирования и доставки отчёта'],
+    apiint: ['Карта данных и ответственности каждой интегрируемой системы', 'API-интеграция с авторизацией, валидацией и обработкой ошибок', 'Логи, мониторинг и техническая документация потока'],
+    automsg: ['Тексты транзакционных подтверждений, напоминаний и благодарностей', 'Событийные правила запуска каждого сообщения', 'Интеграция выбранных каналов, тесты доставки и логирование статусов'],
+    leadforms: ['Архитектура вопросов и условная логика формы', 'Адаптивный интерфейс, валидация и состояния ошибок', 'Передача данных в CRM, email или выбранную систему'],
+    calculators: ['Модель расчёта и правила показа ориентировочной цены', 'Адаптивный интерфейс калькулятора', 'Сохранение результата и интеграция с lead-формой или CRM'],
+    adminpanels: ['Состав модулей, роли и прототип ключевых экранов', 'Выделенная панель для согласованных бизнес-процессов', 'Тесты прав, развёртывание и базовая документация'],
+    booking: ['Правила доступности, ресурсов, времени и отмены', 'Адаптивный flow выбора даты и подтверждения записи', 'Интеграция календаря и автоматические подтверждения и напоминания'],
+    dashboards: ['Модель KPI и определения отображаемых метрик', 'Подключение и нормализация согласованных источников', 'Дашборд с фильтрами, обновлением и пояснениями по интерпретации'],
+    emailint: ['Email-шаблоны и сегменты аудитории', 'Настройка провайдера отправки и необходимых интеграций', 'Автоматические email-flow с тестами запуска и отписки'],
+    messengers: ['Настройка ботов или каналов Telegram и WhatsApp', 'Маппинг данных лидов, уведомлений и отчётов в сообщения', 'Интеграция, тесты доставки и правила доступа команды'],
+    customtools: ['Разбор процесса и прототип главного сценария', 'Выделенное приложение в согласованном функциональном объёме', 'Интеграции, развёртывание и план поддержки и развития']
+  }
+};
+
+const durationCopy = {
+  pl: {
+    project: ({ min, max }) => `Orientacyjnie ${min}–${max} tygodni, zależnie od zakresu i dostępności materiałów.`,
+    recurring: ({ min, max }) => `Uruchomienie orientacyjnie w ${min}–${max} tygodni; dalsza optymalizacja odbywa się miesięcznie.`,
+    iterative: ({ min, max }) => `Pierwszy cykl orientacyjnie ${min}–${max} tygodni; kolejne iteracje ustalamy na podstawie danych.`,
+    monitoring: ({ min, max }) => `Pierwszy etap orientacyjnie ${min}–${max} tygodni; monitoring i aktualizacje ustalamy osobno.`
+  },
+  en: {
+    project: ({ min, max }) => `Estimated ${min}–${max} weeks, depending on scope and asset availability.`,
+    recurring: ({ min, max }) => `Estimated launch in ${min}–${max} weeks; ongoing optimisation continues monthly.`,
+    iterative: ({ min, max }) => `The first cycle is estimated at ${min}–${max} weeks; later iterations are planned from the data.`,
+    monitoring: ({ min, max }) => `The first stage is estimated at ${min}–${max} weeks; monitoring and updates are scoped separately.`
+  },
+  ru: {
+    project: ({ min, max }) => `Ориентировочно ${min}–${max} недель, в зависимости от объёма и готовности материалов.`,
+    recurring: ({ min, max }) => `Запуск ориентировочно за ${min}–${max} недель; дальнейшая оптимизация ведётся ежемесячно.`,
+    iterative: ({ min, max }) => `Первый цикл — ориентировочно ${min}–${max} недель; следующие итерации планируются по данным.`,
+    monitoring: ({ min, max }) => `Первый этап — ориентировочно ${min}–${max} недель; мониторинг и обновления оцениваются отдельно.`
+  }
+};
+
+const faqCopy = {
+  pl: {
+    scope: (name) => `Co dokładnie obejmuje usługa ${name}?`,
+    fit: 'Dla kogo ta usługa ma największy sens?',
+    duration: 'Ile orientacyjnie trwa realizacja?',
+    price: 'Co wpływa na końcową wycenę?'
+  },
+  en: {
+    scope: (name) => `What exactly is included in ${name}?`,
+    fit: 'Who is this service best suited to?',
+    duration: 'What is the estimated delivery time?',
+    price: 'What affects the final quote?'
+  },
+  ru: {
+    scope: (name) => `Что именно входит в услугу «${name}»?`,
+    fit: 'Кому лучше всего подходит эта услуга?',
+    duration: 'Какой ориентировочный срок реализации?',
+    price: 'Что влияет на итоговую стоимость?'
+  }
+};
+
+function formatServiceDuration(serviceId, language) {
+  const profile = serviceDurationProfiles[serviceId];
+  if (!profile) return '';
+  const mode = profile.mode || 'project';
+  const formatter = durationCopy[language]?.[mode] || durationCopy.pl[mode];
+  return formatter(profile);
+}
+
+function splitServiceStages(process) {
+  return String(process || '')
+    .split(/\s*(?:→|->)\s*/u)
+    .map((stage) => stage.trim().replace(/[.\s]+$/u, ''))
+    .filter(Boolean);
+}
+
+function buildServiceFaq(service, language) {
+  const copy = faqCopy[language] || faqCopy.pl;
+  return [
+    { question: copy.scope(service.name), answer: service.details.what },
+    { question: copy.fit, answer: service.details.forWho },
+    { question: copy.duration, answer: service.duration },
+    { question: copy.price, answer: service.details.priceFactors }
+  ];
+}
+
 function translatePrice(price, language) {
   if (language === 'pl') return price;
   if (language === 'en') {
@@ -1311,22 +1633,27 @@ function translatePrice(price, language) {
 
 export function getServiceCategories(language = FALLBACK_LANGUAGE) {
   const activeLanguage = ['pl', 'en', 'ru'].includes(language) ? language : FALLBACK_LANGUAGE;
-  if (activeLanguage === 'pl') return baseServiceCategories;
-
   return baseServiceCategories.map((category) => ({
     ...category,
-    label: categoryTranslations[activeLanguage]?.[category.id] || category.label,
+    label: activeLanguage === 'pl' ? category.label : categoryTranslations[activeLanguage]?.[category.id] || category.label,
     services: category.services.map((service) => {
-      const translated = serviceTranslations[activeLanguage]?.[service.id] || {};
-      return {
+      const translated = activeLanguage === 'pl' ? {} : serviceTranslations[activeLanguage]?.[service.id] || {};
+      const localizedService = {
         ...service,
         ...translated,
-        price: translated.price || translatePrice(service.price, activeLanguage),
+        slug: serviceSlugs[service.id] || service.id,
+        price: activeLanguage === 'pl' ? service.price : translated.price || translatePrice(service.price, activeLanguage),
         details: {
           ...service.details,
           ...(translated.details || {})
-        }
+        },
+        duration: formatServiceDuration(service.id, activeLanguage),
+        deliverables: [...(serviceDeliverables[activeLanguage]?.[service.id] || [])],
+        relatedProjectSlugs: [...(relatedProjectSlugs[service.id] || [])]
       };
+      localizedService.stages = splitServiceStages(localizedService.details.process);
+      localizedService.faq = buildServiceFaq(localizedService, activeLanguage);
+      return localizedService;
     })
   }));
 }

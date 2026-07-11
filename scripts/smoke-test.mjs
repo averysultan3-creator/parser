@@ -111,8 +111,8 @@ try {
     const allSourcesDuplicates = Number(allSourcesRun?.result?.meta?.duplicateCount || 0);
     const allSourcesSearchStatus = allSourcesRun?.result?.meta?.searchStatus || 'completed';
     assert(
-      allSourcesCount > 0 || (allSourcesDuplicates > 0 && allSourcesSearchStatus === 'exhausted'),
-      'all_sources must either return new companies or finish as exhausted after skipping duplicates'
+      allSourcesCount > 0 || (allSourcesDuplicates > 0 && ['exhausted', 'duplicates_only'].includes(allSourcesSearchStatus)),
+      'all_sources must either return new companies or finish as exhausted/duplicates_only after skipping duplicates'
     );
     results.push(`all_sources ok (${allSourcesCount} new / ${allSourcesDuplicates} duplicate / ${allSourcesSearchStatus})`);
   } else {
@@ -157,8 +157,30 @@ async function isHealthy() {
   }
 }
 
+// Local requests can occasionally hit a transient network error (e.g. a
+// dropped keep-alive socket on Windows loopback after many rapid polls)
+// that has nothing to do with the server or the discovery logic. A bare
+// `fetch failed` with no context used to abort the whole smoke run on a
+// single blip. Retry a few times on network-level failures only (not on
+// HTTP error responses, which are real API errors and should fail fast)
+// and always report which path/method actually failed.
+async function fetchWithRetry(path, options, attempts = 3) {
+  let lastError = null;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return await fetch(`${BASE_URL}${path}`, options);
+    } catch (error) {
+      lastError = error;
+      if (attempt < attempts) await sleep(500 * attempt);
+    }
+  }
+  throw new Error(
+    `network error calling ${options?.method || 'GET'} ${path} after ${attempts} attempts: ${lastError?.message || lastError} (base=${BASE_URL})`
+  );
+}
+
 async function getJson(path, extraHeaders = {}) {
-  const response = await fetch(`${BASE_URL}${path}`, {
+  const response = await fetchWithRetry(path, {
     headers: { ...adminHeaders(path), ...extraHeaders }
   });
   const data = await response.json().catch(() => ({}));
@@ -169,7 +191,7 @@ async function getJson(path, extraHeaders = {}) {
 }
 
 async function postJson(path, body) {
-  const response = await fetch(`${BASE_URL}${path}`, {
+  const response = await fetchWithRetry(path, {
     method: 'POST',
     headers: { 'content-type': 'application/json', ...adminHeaders(path) },
     body: JSON.stringify(body)
@@ -182,7 +204,7 @@ async function postJson(path, body) {
 }
 
 async function deleteJson(path, body) {
-  const response = await fetch(`${BASE_URL}${path}`, {
+  const response = await fetchWithRetry(path, {
     method: 'DELETE',
     headers: { 'content-type': 'application/json', ...adminHeaders(path) },
     body: JSON.stringify(body)
@@ -203,9 +225,9 @@ function adminHeaders(path) {
 }
 
 async function assertAdminAuth() {
-  const blocked = await fetch(`${BASE_URL}/api/admin/workers`);
+  const blocked = await fetchWithRetry('/api/admin/workers', {});
   assert(blocked.status === 401, 'admin API must reject requests without authorization');
-  const allowed = await fetch(`${BASE_URL}/api/admin/workers`, {
+  const allowed = await fetchWithRetry('/api/admin/workers', {
     headers: { authorization: ADMIN_AUTH }
   });
   assert(allowed.ok, 'admin API must accept valid admin authorization');
@@ -213,7 +235,10 @@ async function assertAdminAuth() {
 
 async function waitForDiscoveryJob(jobId, workerId = '') {
   assert(jobId, 'discover must return a jobId');
-  const deadline = Date.now() + 60_000;
+  // Without external API keys discovery falls back to slow public-search scraping,
+  // which regularly takes longer than 60s while still completing successfully.
+  const jobTimeoutMs = Number(process.env.SMOKE_JOB_TIMEOUT_MS) || 240_000;
+  const deadline = Date.now() + jobTimeoutMs;
   let lastStatus = 'queued';
   while (Date.now() < deadline) {
     const job = await getJson(

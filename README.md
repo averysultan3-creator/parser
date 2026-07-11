@@ -58,7 +58,7 @@ stop-parser.bat
 ```
 
 ```powershell
-cd C:\Users\user\Documents\Codex\2026-06-26\new-chat\outputs\warsaw-site-parser
+cd C:\Users\Sasha\Desktop\new-chat\new-chat\outputs\warsaw-site-parser
 npm install
 Copy-Item .env.example .env
 notepad .env
