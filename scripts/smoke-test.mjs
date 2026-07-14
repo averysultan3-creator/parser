@@ -3,7 +3,15 @@ import { spawn } from 'node:child_process';
 
 const cliBaseArgIndex = process.argv.indexOf('--base');
 const cliBaseArg = cliBaseArgIndex >= 0 ? process.argv[cliBaseArgIndex + 1] : '';
-const BASE_URL = normalizeBaseUrl(cliBaseArg || process.env.PARSER_BASE_URL || 'http://127.0.0.1:4317');
+// Falls back to the same PORT server.js itself resolves to (process.env.PORT,
+// same as this repo's .env), not a hardcoded 4317 - on a machine that also
+// runs a live pm2 instance of this app on 4317 (this repo's .env even ships
+// PORT=4317 by default), a hardcoded fallback here means an unqualified
+// `npm run smoke` silently fires real discovery calls at the LIVE production
+// server the moment it's already healthy, instead of the disposable local
+// instance the smoke suite is meant to exercise. Only 4317 remains as the
+// last-resort default when nothing else is configured at all.
+const BASE_URL = normalizeBaseUrl(cliBaseArg || process.env.PARSER_BASE_URL || `http://127.0.0.1:${process.env.PORT || 4317}`);
 const SHOULD_BOOT = process.argv.includes('--boot');
 const ADMIN_AUTH = `Basic ${Buffer.from(`${process.env.ADMIN_LOGIN || 'admin'}:${process.env.ADMIN_PASSWORD || 'Parol159'}`).toString('base64')}`;
 

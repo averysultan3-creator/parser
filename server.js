@@ -37,6 +37,33 @@ process.on('uncaughtException', (error) => {
   // like this one) for actual uptime under real concurrent load.
 });
 
+// Graceful shutdown: pm2 restart/stop (and Ctrl+C locally) send SIGTERM/SIGINT.
+// Without handling them, Node's default behavior kills the process immediately,
+// abruptly cutting off any HTTP request that happens to be mid-flight at that
+// exact instant. Session/progress state itself is fine either way - it's
+// file-persisted in store.js and reloads at boot - but in-flight requests
+// deserve to finish. httpServer.close() stops accepting new connections while
+// letting existing keep-alive connections and in-flight requests drain, then
+// fires its callback once everything is done.
+function gracefulShutdown(signal) {
+  console.log(`[shutdown] ${new Date().toISOString()}: ${signal} received, closing HTTP server gracefully...`);
+  httpServer.close(() => {
+    console.log(`[shutdown] ${new Date().toISOString()}: HTTP server closed, exiting.`);
+    process.exit(0);
+  });
+  // Fallback in case a stuck/leaked connection never lets close() finish -
+  // pm2's own kill_timeout would eventually SIGKILL us anyway, but exiting
+  // ourselves first logs a clean reason instead of a silent hard kill.
+  // unref() so this timer never itself keeps the process alive if close()
+  // finishes first.
+  setTimeout(() => {
+    console.error(`[shutdown] ${new Date().toISOString()}: graceful close timed out, forcing exit.`);
+    process.exit(1);
+  }, 9000).unref();
+}
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
 const app = express();
 const PORT = Number(process.env.PORT || 4317);
 const HOST = String(process.env.HOST || '0.0.0.0');
@@ -89,7 +116,12 @@ const OPENAI_TIMEOUT_MS = Number(process.env.OPENAI_TIMEOUT_MS || 30_000);
 // new - stop early instead of burning through every remaining district/niche
 // combination.
 const MAX_DUPLICATE_STREAK = Number(process.env.MAX_DUPLICATE_STREAK || 3);
-const MAX_DISCOVERY_JOB_MS = Number(process.env.MAX_DISCOVERY_JOB_MS || 5 * 60_000);
+// "Maximum reach" mode: discovery jobs (crawling multiple niches/districts
+// across several sources) legitimately need more than 5 minutes to cover
+// everything. Give them real headroom before we cut the search short - a
+// timeout now returns whatever was already found (see the DISCOVERY_TIMEOUT
+// handling in runDiscoveryJob's catch block) instead of discarding the run.
+const MAX_DISCOVERY_JOB_MS = Number(process.env.MAX_DISCOVERY_JOB_MS || 10 * 60_000);
 
 // DuckDuckGo HTML search starts returning an "anomaly detected" interstitial
 // (HTTP 202, no .result nodes, contains an img-form/captcha shell) after a
@@ -355,10 +387,12 @@ function evaluateCategoryRelevance(company, selectedNiche) {
   if (negatives.some((term) => /samochod|warsztat|mechanik|opony|wulkanizacja|hamulc|rozrząd|sprzęg/i.test(normalizeSearchText(term)))) {
     score -= 20;
   }
-  if (!positives.length && category.categoryId === 'hvac') score -= 18;
   score = clamp(Math.round(score), 0, 100);
 
-  const categoryMatch = score >= 70 ? 'match' : score >= 40 ? 'partial' : 'mismatch';
+  // "Maximum reach" mode: only very clearly negative-signal companies should
+  // be classified as a mismatch. Lack of an explicit positive keyword match is
+  // no longer treated as strong evidence of a wrong category on its own.
+  const categoryMatch = score >= 70 ? 'match' : score >= 25 ? 'partial' : 'mismatch';
   return {
     categoryId: category.categoryId,
     selectedCategoryLabel: categoryLabel(category, 'pl'),
@@ -396,7 +430,7 @@ function applyCategoryRelevance(companies, selectedNiches) {
       should_call: relevance.categoryMatch !== 'mismatch',
       category_relevance_reason: relevance.categoryRelevanceReason
     };
-    if (strictNiche && relevance.categoryMatch === 'mismatch' && relevance.categoryRelevanceScore < 40) {
+    if (strictNiche && relevance.categoryMatch === 'mismatch' && relevance.categoryRelevanceScore < 25) {
       skippedWrongCategory += 1;
       continue;
     }
@@ -614,8 +648,10 @@ function paginateCompanyList(records, query = {}, { savedByWorkerId = '' } = {})
   const category = String(query.category || '').trim().toLowerCase();
   const savedOnly = String(query.savedOnly || '') === 'true';
   const sort = String(query.sort || 'newest').trim().toLowerCase();
+  const includeHidden = String(query.includeHidden || '') === 'true';
 
   let rows = records;
+  if (!includeHidden) rows = rows.filter((record) => record.hidden_from_lists !== true);
   if (status) rows = rows.filter((record) => record.status === status);
   if (hasWebsite === 'yes') rows = rows.filter((record) => Boolean(String(record.data?.website_url || '').trim()));
   if (hasWebsite === 'no') rows = rows.filter((record) => !String(record.data?.website_url || '').trim());
@@ -697,7 +733,9 @@ function createDiscoveryJob(meta) {
       minScore: meta.minScore || 0,
       hasSocial: Boolean(meta.hasSocial),
       hasPhone: Boolean(meta.hasPhone),
-      hasEmail: Boolean(meta.hasEmail)
+      hasEmail: Boolean(meta.hasEmail),
+      useAi: Boolean(meta.useAi),
+      useWebSearch: Boolean(meta.useWebSearch)
     },
     progress: {
       message: 'Ожидание запуска...',
@@ -886,14 +924,12 @@ const AI_MODEL_RATES = {
 AI_MODEL_RATES[AI_TRAINING_MODEL] = AI_MODEL_RATES[AI_TRAINING_MODEL] || AI_MODEL_RATES['gpt-5.4-mini'];
 
 const AI_TRAINING_ROLEPLAY_RULES = [
-  'To jest trening rozmowy telefonicznej dla callera Aura Global Merchants — studia oferującego strony, e-commerce, branding, copywriting, reklamy Google/Meta/TikTok, SEO, Google Business Profile, AI-automatyzacje, CRM, chatboty i systemy biznesowe (formularze, kalkulatory, panele, rezerwacje, dashboardy).',
-  'Grasz tylko klienta, nigdy trenera ani sprzedawcy.',
-  'Odpowiadasz po polsku, naturalnie, jak przez telefon: 1-3 krotkie zdania.',
-  'Nie pomagaj workerowi wprost. Reaguj na jakosc jego pytan i argumentow.',
-  'Jesli worker recytuje oferte, jest nachalny albo obiecuje dokladna cene, badz bardziej sceptyczny.',
-  'Jesli worker pyta o realny problem, mowi konkretnie i proponuje krotka konsultacje, stopniowo sie otwieraj.',
-  'Celem worker-a nie jest sprzedaz przez telefon, tylko umowienie konkretnej konsultacji/spotkania.',
-  'Nie akceptuj spotkania za latwo, chyba ze persona mowi inaczej.'
+  'Trening rozmowy telefonicznej dla callera Aura Global Merchants (strony, e-commerce, marketing, AI-automatyzacje, CRM, systemy biznesowe).',
+  'Grasz tylko klienta (nigdy trenera/sprzedawcy), po polsku, naturalnie, 1-3 krotkie zdania jak przez telefon.',
+  'Nie pomagaj workerowi - reaguj na jakosc jego pytan i argumentow.',
+  'Recytowana oferta, nachalnosc lub dokladna cena -> badz bardziej sceptyczny.',
+  'Konkret + realny problem + propozycja krotkiej konsultacji -> stopniowo sie otwieraj.',
+  'Cel workera: umowic konsultacje, nie sprzedac przez telefon - nie zgadzaj sie zbyt latwo, chyba ze persona mowi inaczej.'
 ].join('\n');
 
 // Extra runtime instruction layered on top of a persona's base prompt, tuned by
@@ -1846,8 +1882,8 @@ app.post('/api/analyze', async (req, res) => {
     // responses and preserved by normalizeItems) so we can save analysis results
     // back onto the same persisted company record.
     const companyIds = items.map((item) => item?._companyId || '');
-    const useAi = false;
-    const useWebSearch = false;
+    const useAi = Boolean(req.body?.useAi);
+    const useWebSearch = Boolean(req.body?.useWebSearch);
     const model = String(req.body?.model || DEFAULT_MODEL).trim() || DEFAULT_MODEL;
     const searchModel = String(req.body?.searchModel || SEARCH_MODEL).trim() || SEARCH_MODEL;
     const language = cleanText(req.body?.language || req.body?.uiLanguage || 'ru');
@@ -1948,6 +1984,8 @@ app.post('/api/discover', async (req, res) => {
     const hasPhone = Boolean(req.body?.hasPhone);
     const hasEmail = Boolean(req.body?.hasEmail);
     const language = cleanText(req.body?.language || req.body?.uiLanguage || 'ru');
+    const useAi = Boolean(req.body?.useAi);
+    const useWebSearch = Boolean(req.body?.useWebSearch);
 
     if (!niches.length) {
       return res.status(400).json({ error: 'Укажите категорию или нишу для поиска.' });
@@ -1969,7 +2007,9 @@ app.post('/api/discover', async (req, res) => {
       minScore,
       hasSocial,
       hasPhone,
-      hasEmail
+      hasEmail,
+      useAi,
+      useWebSearch
     });
 
     void runDiscoveryJob(job.id, {
@@ -1986,7 +2026,9 @@ app.post('/api/discover', async (req, res) => {
       hasSocial,
       hasPhone,
       hasEmail,
-      language
+      language,
+      useAi,
+      useWebSearch
     });
 
     res.json({
@@ -2180,8 +2222,7 @@ app.delete('/api/admin/workers/:workerId', (req, res) => {
       deletedRunCount: result.deletedRunIds.length,
       resetLeadCount: result.resetLeadIds.length,
       deletedTrainingSessionCount: result.deletedTrainingSessionIds.length,
-      deletedSessionCount: result.deletedSessionCount,
-      deletedAiUsageCount: result.deletedAiUsageCount
+      deletedSessionCount: result.deletedSessionCount
     }
   });
   res.json({ ok: true, result, stats: store.getStoreStats() });
@@ -2936,7 +2977,10 @@ app.post('/api/academy/ai-training/:sessionId/message', async (req, res) => {
           role: 'system',
           content: `${AI_TRAINING_ROLEPLAY_RULES}\n\nPersona klienta:\n${personaSystemPrompt(persona)}\n\nKontynuuj rozmowe. Odpowiadaj tylko jako klient.`
         },
-        ...updated.messages.map((message) => ({
+        // Only the recent tail is resent to the API each turn (full history
+        // stays persisted in the session) - the model needs local context,
+        // not the entire transcript replayed and re-billed on every message.
+        ...updated.messages.slice(-14).map((message) => ({
           role: message.role === 'worker' ? 'user' : 'assistant',
           content: message.text
         }))
@@ -3170,6 +3214,14 @@ app.get('/api/admin/ai-usage', (req, res) => {
   res.json(store.summarizeAiUsage({ period: req.query.period || 'all' }));
 });
 
+app.get('/api/admin/ai-usage/run/:runId', (req, res) => {
+  res.json(store.getAiUsageForRun(req.params.runId));
+});
+
+app.get('/api/admin/ai-usage/company/:companyId', (req, res) => {
+  res.json(store.getAiUsageForCompany(req.params.companyId));
+});
+
 app.get('/api/admin/audit', (req, res) => {
   res.json({ actions: store.listAuditLog({ limit: Number.parseInt(req.query.limit, 10) || 200 }) });
 });
@@ -3234,7 +3286,8 @@ app.post('/api/ai/site-analysis', async (req, res) => {
       heuristic,
       model,
       language: cleanText(req.body?.language || req.body?.uiLanguage || 'ru'),
-      workerId: requestWorkerId(req)
+      workerId: requestWorkerId(req),
+      companyId
     });
 
     if (companyId) {
@@ -3340,7 +3393,7 @@ app.use((err, req, res, _next) => {
   res.status(500).json({ error: 'Internal server error.' });
 });
 
-app.listen(PORT, HOST, () => {
+const httpServer = app.listen(PORT, HOST, () => {
   const displayHost = HOST === '0.0.0.0' ? 'localhost' : HOST;
   console.log(`Aura Parser running at http://${displayHost}:${PORT}`);
   if (HOST === '0.0.0.0') {
@@ -3516,10 +3569,23 @@ async function runDiscoveryJob(jobId, params) {
     });
     updateDiscoveryJob(jobId, { runId: run.id });
 
-    const guard = { stopped: false, reason: '' };
+    // `guard.stopped` is a true job-wide stop (user cancel via the /cancel
+    // endpoint, or the whole-job timeout below) and must keep aborting every
+    // remaining niche/source. Per-niche duplicate exhaustion is a *much*
+    // weaker signal - it only means THIS niche/source combo has stopped
+    // turning up new companies, not that the whole search is done - so it is
+    // tracked separately in `guard.stoppedNiches` (a Set of niche names) and
+    // only that specific niche's remaining district/query-variant loops
+    // check it (see discoverCompaniesFromAmazonLocationExpanded/
+    // discoverCompaniesFromGooglePlacesExpanded/
+    // discoverCompaniesFromPublicSearchExpanded below). This replaces the old
+    // single job-wide `duplicateStreak` counter, which used to abort every
+    // other, never-yet-searched niche the moment any one niche/source ran
+    // dry.
+    const guard = { stopped: false, reason: '', stoppedNiches: new Set() };
     const jobRef = getDiscoveryJob(jobId);
     if (jobRef) jobRef.guard = guard;
-    let duplicateStreak = 0;
+    const duplicateStreakByNiche = new Map();
     let progressAttempts = 0;
 
     const discovery = await Promise.race([
@@ -3529,6 +3595,8 @@ async function runDiscoveryJob(jobId, params) {
         district: params.district,
         limit: candidateLimit,
         sourceFocus: params.sourceFocus,
+        workerId: params.workerId,
+        runId: run.id,
         guard,
         onProgress(event) {
           progressAttempts += 1;
@@ -3542,14 +3610,22 @@ async function runDiscoveryJob(jobId, params) {
           progressNewCount += claimedPreview.newCount;
           progressDuplicateCount += claimedPreview.duplicateCount;
 
-          if (claimedPreview.newCount === 0 && claimedPreview.duplicateCount > 0) {
-            duplicateStreak += 1;
-          } else if (claimedPreview.newCount > 0) {
-            duplicateStreak = 0;
-          }
-          if (duplicateStreak >= MAX_DUPLICATE_STREAK && !guard.stopped) {
-            guard.stopped = true;
-            guard.reason = 'duplicate_streak';
+          // Scope the duplicate streak to the niche this particular progress
+          // event came from, not to the job as a whole - a niche whose
+          // sources have run dry should stop wasting time on itself, but
+          // must never abort niches that have not been searched yet.
+          const nicheKey = event.niche || '';
+          const previousStreak = duplicateStreakByNiche.get(nicheKey) || 0;
+          const nextStreak =
+            claimedPreview.newCount === 0 && claimedPreview.duplicateCount > 0
+              ? previousStreak + 1
+              : claimedPreview.newCount > 0
+                ? 0
+                : previousStreak;
+          duplicateStreakByNiche.set(nicheKey, nextStreak);
+          const nicheJustExhausted = nextStreak >= MAX_DUPLICATE_STREAK && !guard.stoppedNiches.has(nicheKey);
+          if (nicheJustExhausted) {
+            guard.stoppedNiches.add(nicheKey);
           }
 
           updateDiscoveryJob(jobId, {
@@ -3557,9 +3633,9 @@ async function runDiscoveryJob(jobId, params) {
             appendQueries: event.queries || [],
             appendWarnings: event.warnings || [],
             progress: {
-              message: guard.stopped
-                ? '�?сточник исчерпан: несколько подряд результатов оказались уже известными компаниями.'
-                : event.message || '�?щу компании...',
+              message: guard.stoppedNiches.has(nicheKey)
+                ? `Источник исчерпан для категории "${nicheKey}": несколько подряд результатов оказались уже известными компаниями. Продолжаю с другими категориями.`
+                : event.message || 'Ищу компании...',
               currentNiche: event.niche || '',
               currentSource: event.source || '',
               processedNiches: event.processedNiches ?? 0,
@@ -3646,8 +3722,8 @@ async function runDiscoveryJob(jobId, params) {
       let analyzed;
       try {
         analyzed = await analyzeLead(candidate, {
-          useAi: false,
-          useWebSearch: false,
+          useAi: Boolean(params.useAi),
+          useWebSearch: Boolean(params.useWebSearch),
           model: DEFAULT_MODEL,
           searchModel: SEARCH_MODEL,
           language: params.language
@@ -3673,40 +3749,62 @@ async function runDiscoveryJob(jobId, params) {
         });
       }
 
+      // Reuse guard: a company returned to the pool (hidden_from_lists) can
+      // resurface in a later discovery run and reach this exact point again.
+      // If it already has a completed AI analysis for the same resolved
+      // website, reuse that result instead of paying for another OpenAI
+      // call - this closes the gap that let a re-discovered lead trigger a
+      // second full paid analysis despite already having a good stored one.
+      const existingCompanyForReuse = companyId ? store.getCompany(companyId) : null;
+      const existingAiAnalysis = existingCompanyForReuse?.aiSiteAnalysis;
+      const existingAiCompleted = Boolean(existingAiAnalysis?.status === 'COMPLETED' && existingAiAnalysis?.data);
+      const existingAnalyzedUrl =
+        existingCompanyForReuse?.website?.resolution?.selectedUrl || existingCompanyForReuse?.website?.normalizedUrl || '';
+      const currentAnalyzedUrl = analyzed.websiteResolution?.selectedUrl || analyzed.parsed?.normalizedUrl || '';
+      const canReuseAiAnalysis = Boolean(
+        existingAiCompleted && existingAnalyzedUrl && currentAnalyzedUrl && existingAnalyzedUrl === currentAnalyzedUrl
+      );
+
       // Automatic per-card AI write-up, generated right here from this one
       // company's own freshly-collected facts (never from a shared/global
       // variable - see analyzeSiteCardWithOpenAI's explicit argument list),
       // so the card is already complete with its personalized analysis the
       // moment it reaches the dashboard, with no separate manual AI click.
-      try {
-        const aiAnalysis = await analyzeSiteCardWithOpenAI({
-          item: analyzed.input,
-          parsed: analyzed.parsed,
-          websiteResolution: analyzed.websiteResolution,
-          heuristic: analyzed.analysis,
-          model: DEFAULT_MODEL,
-          language: params.language || 'ru',
-          workerId: params.workerId
-        });
-        if (aiAnalysis) {
+      if (canReuseAiAnalysis) {
+        analyzed.aiSiteAnalysis = existingAiAnalysis;
+      } else {
+        try {
+          const aiAnalysis = await analyzeSiteCardWithOpenAI({
+            item: analyzed.input,
+            parsed: analyzed.parsed,
+            websiteResolution: analyzed.websiteResolution,
+            heuristic: analyzed.analysis,
+            model: DEFAULT_MODEL,
+            language: params.language || 'ru',
+            workerId: params.workerId,
+            companyId,
+            runId: run.id
+          });
+          if (aiAnalysis) {
+            analyzed.aiSiteAnalysis = {
+              status: 'COMPLETED',
+              version: aiAnalysis.ai_analysis_version || 1,
+              analyzed_at: aiAnalysis.ai_analyzed_at || new Date().toISOString(),
+              company_data_version: aiAnalysis.company_data_version || 1,
+              data: aiAnalysis
+            };
+            if (companyId) store.updateCompanyAiAnalysis(companyId, analyzed.aiSiteAnalysis);
+          }
+        } catch (error) {
+          console.error(`[discover-job] id=${jobId} AI card analysis failed for "${candidate.company || companyId}":`, error);
           analyzed.aiSiteAnalysis = {
-            status: 'COMPLETED',
-            version: aiAnalysis.ai_analysis_version || 1,
-            analyzed_at: aiAnalysis.ai_analyzed_at || new Date().toISOString(),
-            company_data_version: aiAnalysis.company_data_version || 1,
-            data: aiAnalysis
+            status: 'FAILED',
+            version: 1,
+            analyzed_at: new Date().toISOString(),
+            company_data_version: 1,
+            error: error.message || 'AI analysis failed'
           };
-          if (companyId) store.updateCompanyAiAnalysis(companyId, analyzed.aiSiteAnalysis);
         }
-      } catch (error) {
-        console.error(`[discover-job] id=${jobId} AI card analysis failed for "${candidate.company || companyId}":`, error);
-        analyzed.aiSiteAnalysis = {
-          status: 'FAILED',
-          version: 1,
-          analyzed_at: new Date().toISOString(),
-          company_data_version: 1,
-          error: error.message || 'AI analysis failed'
-        };
       }
 
       if (matchesDiscoveryFilters(analyzed, discoveryFilters)) {
@@ -3806,9 +3904,16 @@ async function runDiscoveryJob(jobId, params) {
 
     let message = error.message || 'Ошибка поиска компаний.';
     let runStatus = 'failed';
-    if (error?.code === 'DISCOVERY_TIMEOUT' || error?.name === 'AbortError') {
-      message = 'Поиск прерван по тайм-ауту.';
-      runStatus = 'timeout';
+    // "Maximum reach": a timeout is not a failure - the job already found
+    // and persisted some real companies (progressively, via
+    // store.addCompanyIdsToRun below, as they streamed in through
+    // onProgress). Finish the job as a partial success and surface
+    // whatever was accumulated instead of discarding it behind a bare
+    // error status.
+    const isTimeout = error?.code === 'DISCOVERY_TIMEOUT' || error?.name === 'AbortError';
+    if (isTimeout) {
+      message = 'Поиск прерван по тайм-ауту, показаны частичные результаты.';
+      runStatus = 'completed_partial';
     } else if (error?.code === 'ECONNRESET' || error?.cause?.code === 'ECONNRESET' || /ECONNRESET|network/i.test(message)) {
       message = 'Сетевая ошибка: соединение с внешним источником прервано. Попробуйте запустить поиск еще раз.';
     } else if (/GOOGLE_PLACES_API_KEY|CEIDG_API_TOKEN|AWS_LOCATION_API_KEY|OPENAI_API_KEY/.test(message)) {
@@ -3826,12 +3931,47 @@ async function runDiscoveryJob(jobId, params) {
         warnings: [message]
       });
     }
+    // job.status only drives the frontend's live poll loop, which recognizes
+    // 'completed'/'failed'/'cancelled' as terminal - it has no notion of a
+    // finer-grained 'completed_partial' state. So on timeout we still finish
+    // the job as 'completed' (matching the same fields the success path sets,
+    // see ~server.js:3799-3838) so the UI stops polling and renders the
+    // partial companies already sitting in job.partialCompanies; the
+    // distinct "partial" outcome is carried in result.meta.searchStatus and
+    // in the run's own status/warnings above, same as how 'exhausted' and
+    // 'duplicates_only' are surfaced on the success path.
     updateDiscoveryJob(jobId, {
-      status: runStatus,
-      error: message,
+      status: isTimeout ? 'completed' : 'failed',
+      error: isTimeout ? '' : message,
       appendWarnings: [message],
+      result: isTimeout
+        ? {
+            runId: run?.id || '',
+            queries: [],
+            warnings: [message],
+            meta: {
+              count: progressCompanyIds.length,
+              requestedNewCount: params.limit,
+              rawFoundCount: progressCompanyIds.length,
+              newCount: progressNewCount,
+              duplicateCount: progressDuplicateCount,
+              analyzedCount: 0,
+              skippedWrongCategory: 0,
+              usedAi: false,
+              sourceFocus: params.sourceFocus,
+              searchStatus: 'completed_partial',
+              workerId: params.workerId,
+              categories: params.niches,
+              city: params.city,
+              country: params.country,
+              radiusKm: params.radiusKm,
+              elapsedMs: Math.round(performance.now() - runStartedAt)
+            }
+          }
+        : undefined,
       progress: {
-        message
+        message,
+        foundCount: progressCompanyIds.length
       }
     });
   }
@@ -3839,7 +3979,7 @@ async function runDiscoveryJob(jobId, params) {
   );
 }
 
-async function discoverCompaniesBatchWithoutAI({ niches, city, district, limit, sourceFocus, onProgress, guard }) {
+async function discoverCompaniesBatchWithoutAI({ niches, city, district, limit, sourceFocus, onProgress, guard, workerId, runId }) {
   if (sourceFocus === 'amazon_location') {
     if (!AWS_LOCATION_API_KEY) {
       throw new Error('Для Amazon Location нужен AWS_LOCATION_API_KEY в .env.');
@@ -3952,6 +4092,8 @@ async function discoverCompaniesBatchWithoutAI({ niches, city, district, limit, 
         district,
         limit: Math.max(perNicheLimit, remaining),
         sourceFocus,
+        workerId,
+        runId,
         guard,
         onProgress: (event) => {
           if (typeof onProgress !== 'function') return;
@@ -4008,32 +4150,38 @@ function discoveryPriority(discovery) {
   return 9;
 }
 
-async function discoverCompaniesWithoutAI({ niche, city, district, limit, sourceFocus, onProgress, guard }) {
+async function discoverCompaniesWithoutAI({ niche, city, district, limit, sourceFocus, onProgress, guard, workerId, runId }) {
   if (sourceFocus === 'all_sources') {
-    // Smart pipeline: one source finds the primary list of companies (up to
-    // the requested limit), then every other configured source is used only
-    // to CONFIRM and FILL IN missing data (phone, email, website, NIP/REGON)
-    // on those same companies - matched by name/address similarity - instead
-    // of blindly adding more "new" companies from each source in parallel.
-    // This keeps the list accurate: Google Places (or Amazon Location as a
-    // fallback) decides which companies exist, the other sources cross-check
-    // and enrich them.
+    // "Maximum reach" pipeline: query every configured/available source for
+    // this niche - Google Places, Amazon Location, CEIDG, public search - and
+    // MERGE all of their raw candidate lists together, instead of stopping at
+    // the first source that returned any results at all. The previous
+    // behaviour treated the first non-empty source as "the" primary list and
+    // only used the remaining sources to cross-check/enrich those same
+    // companies, which meant a source that returned just 1-2 low-quality
+    // matches silently starved every other (possibly much richer) source of
+    // a chance to contribute its own companies. The merged list still goes
+    // through the existing enrichment/cross-verification step below, and
+    // duplicate companies across sources are still handled by the existing
+    // uniqueCompanies()/findExistingCompanyId()/upsertCompany() dedup - no
+    // new dedup logic needed here.
     const warnings = [];
-    let primary = null;
+    const discoveries = [];
 
-    if (GOOGLE_PLACES_API_KEY && !guard?.stopped) {
+    if (GOOGLE_PLACES_API_KEY && !guard?.stopped && !guard?.stoppedNiches?.has(niche)) {
       try {
-        primary = await discoverCompaniesFromGooglePlacesExpanded({ niche, city, district, limit, sourceFocus, onProgress, guard });
+        const googleDiscovery = await discoverCompaniesFromGooglePlacesExpanded({ niche, city, district, limit, sourceFocus, onProgress, guard });
+        discoveries.push(googleDiscovery);
         if (typeof onProgress === 'function') {
           onProgress({
             niche,
             source: 'google_places_api',
-            companies: primary.companies || [],
-            queries: primary.queries || [],
-            warnings: primary.warnings || [],
-            foundSoFar: primary.companies.length,
-            count: primary.companies.length,
-            message: `Google Places: найдено ${primary.companies.length}`
+            companies: googleDiscovery.companies || [],
+            queries: googleDiscovery.queries || [],
+            warnings: googleDiscovery.warnings || [],
+            foundSoFar: googleDiscovery.companies.length,
+            count: googleDiscovery.companies.length,
+            message: `Google Places: найдено ${googleDiscovery.companies.length}`
           });
         }
       } catch (error) {
@@ -4041,19 +4189,20 @@ async function discoverCompaniesWithoutAI({ niche, city, district, limit, source
       }
     }
 
-    if (!primary?.companies?.length && AWS_LOCATION_API_KEY && !guard?.stopped) {
+    if (AWS_LOCATION_API_KEY && !guard?.stopped && !guard?.stoppedNiches?.has(niche)) {
       try {
-        primary = await discoverCompaniesFromAmazonLocationExpanded({ niche, city, district, limit, sourceFocus, onProgress, guard });
+        const amazonDiscovery = await discoverCompaniesFromAmazonLocationExpanded({ niche, city, district, limit, sourceFocus, onProgress, guard });
+        discoveries.push(amazonDiscovery);
         if (typeof onProgress === 'function') {
           onProgress({
             niche,
             source: 'amazon_location',
-            companies: primary.companies || [],
-            queries: primary.queries || [],
-            warnings: primary.warnings || [],
-            foundSoFar: primary.companies.length,
-            count: primary.companies.length,
-            message: `Amazon Location: найдено ${primary.companies.length}`
+            companies: amazonDiscovery.companies || [],
+            queries: amazonDiscovery.queries || [],
+            warnings: amazonDiscovery.warnings || [],
+            foundSoFar: amazonDiscovery.companies.length,
+            count: amazonDiscovery.companies.length,
+            message: `Amazon Location: найдено ${amazonDiscovery.companies.length}`
           });
         }
       } catch (error) {
@@ -4061,28 +4210,56 @@ async function discoverCompaniesWithoutAI({ niche, city, district, limit, source
       }
     }
 
-    if (!primary?.companies?.length && CEIDG_TOKEN && isPolandDiscoveryRegion(city) && !guard?.stopped) {
+    if (CEIDG_TOKEN && isPolandDiscoveryRegion(city) && !guard?.stopped && !guard?.stoppedNiches?.has(niche)) {
       try {
-        primary = await discoverCompaniesFromCeidg({ niche, city, district, limit });
+        const ceidgDiscovery = await discoverCompaniesFromCeidg({ niche, city, district, limit });
+        discoveries.push(ceidgDiscovery);
+        if (typeof onProgress === 'function') {
+          onProgress({
+            niche,
+            source: 'ceidg_registry',
+            companies: ceidgDiscovery.companies || [],
+            queries: ceidgDiscovery.queries || [],
+            warnings: ceidgDiscovery.warnings || [],
+            foundSoFar: ceidgDiscovery.companies.length,
+            count: ceidgDiscovery.companies.length,
+            message: `CEIDG: найдено ${ceidgDiscovery.companies.length}`
+          });
+        }
       } catch (error) {
         warnings.push(`CEIDG skipped: ${error.message || 'unknown error'}`);
       }
     }
 
-    if (!primary?.companies?.length && !guard?.stopped) {
+    if (!guard?.stopped && !guard?.stoppedNiches?.has(niche)) {
       try {
-        primary = await discoverCompaniesFromPublicSearchExpanded({ niche, city, district, limit, sourceFocus, onProgress, guard });
+        const publicDiscovery = await discoverCompaniesFromPublicSearchExpanded({ niche, city, district, limit, sourceFocus, onProgress, guard });
+        discoveries.push(publicDiscovery);
+        if (typeof onProgress === 'function') {
+          onProgress({
+            niche,
+            source: publicDiscovery.source || 'public_search',
+            companies: publicDiscovery.companies || [],
+            queries: publicDiscovery.queries || [],
+            warnings: publicDiscovery.warnings || [],
+            foundSoFar: publicDiscovery.companies.length,
+            count: publicDiscovery.companies.length,
+            message: `Публичный поиск: найдено ${publicDiscovery.companies.length}`
+          });
+        }
       } catch (error) {
         warnings.push(`Public search skipped: ${error.message || 'unknown error'}`);
       }
     }
+
+    const primary = mergeDiscoveries(discoveries, Math.max(limit, discoveries.reduce((sum, d) => sum + (d.companies?.length || 0), 0)));
 
     if (!primary?.companies?.length) {
       throw new Error(`No companies found in configured non-AI sources. ${warnings.join(' ')}`);
     }
 
     console.log(
-      `[all_sources] niche="${niche}" primary_source=${primary.source} primary_count=${primary.companies.length}; running cross-source verification (Amazon Location / CEIDG / public search) to fill missing contact data on the same companies...`
+      `[all_sources] niche="${niche}" merged_sources=${primary.source} merged_count=${primary.companies.length}; running cross-source verification/enrichment on the merged candidate list...`
     );
 
     const enrichedCompanies = await enrichPrimaryCompaniesSmart(primary.companies, { warnings });
@@ -4106,6 +4283,25 @@ async function discoverCompaniesWithoutAI({ niche, city, district, limit, source
   }
 
   if (['internet', 'directories', 'booking', 'social'].includes(sourceFocus)) {
+    // For the "internet" focus, the real OpenAI web-search discovery
+    // (Responses API + built-in web_search tool) is the primary source: it
+    // asks a live model to find real, active companies straight from the
+    // public internet instead of scraping Bing/DuckDuckGo result pages. The
+    // scraping-based discoverCompaniesFromPublicSearchExpanded is kept as a
+    // graceful fallback only - used when the OpenAI client isn't configured,
+    // when the AI search throws (quota, network, schema errors), or when it
+    // comes back with zero usable companies.
+    if (sourceFocus === 'internet' && openai) {
+      try {
+        const aiDiscovery = await discoverCompaniesFromOpenAIInternet({ niche, city, district, limit, sourceFocus, workerId, runId });
+        if (aiDiscovery?.companies?.length) {
+          return aiDiscovery;
+        }
+        console.warn(`[internet] discoverCompaniesFromOpenAIInternet found no usable companies for niche="${niche}"; falling back to public search scraping.`);
+      } catch (error) {
+        console.error(`[internet] discoverCompaniesFromOpenAIInternet failed for niche="${niche}": ${error.message || error}; falling back to public search scraping.`);
+      }
+    }
     const shouldExpandPublicSearch = ['internet'].includes(sourceFocus);
     const publicDiscovery = shouldExpandPublicSearch
       ? await discoverCompaniesFromPublicSearchExpanded({ niche, city, district, limit, sourceFocus, guard })
@@ -4184,7 +4380,9 @@ async function discoverCompaniesFromAmazonLocationExpanded({ niche, city, distri
   const warnings = [];
 
   for (const { queryNiche, districtName } of queryPlans) {
-    if (guard?.stopped) break;
+    // Global stop (cancel/timeout) always applies; a per-niche duplicate
+    // streak only stops searching further districts/variants for THIS niche.
+    if (guard?.stopped || guard?.stoppedNiches?.has(niche)) break;
     const collectedCount = uniqueCompanies(discoveries.flatMap((item) => item.companies || [])).length;
     if (collectedCount >= limit) break;
 
@@ -4370,7 +4568,9 @@ async function discoverCompaniesFromGooglePlacesExpanded({ niche, city, district
   const warnings = [];
 
   for (const { queryNiche, districtName } of queryPlans) {
-    if (guard?.stopped) break;
+    // Global stop (cancel/timeout) always applies; a per-niche duplicate
+    // streak only stops searching further districts/variants for THIS niche.
+    if (guard?.stopped || guard?.stoppedNiches?.has(niche)) break;
     const collectedCount = uniqueCompanies(discoveries.flatMap((item) => item.companies || [])).length;
     if (collectedCount >= limit) break;
 
@@ -4571,7 +4771,9 @@ async function discoverCompaniesFromPublicSearchExpanded({ niche, city, district
   const perDistrictLimit = Math.min(24, Math.max(8, Math.ceil(limit / Math.min(queryPlans.length, 8))));
 
   for (const { queryNiche, districtName } of queryPlans) {
-    if (guard?.stopped) break;
+    // Global stop (cancel/timeout) always applies; a per-niche duplicate
+    // streak only stops searching further districts/variants for THIS niche.
+    if (guard?.stopped || guard?.stoppedNiches?.has(niche)) break;
     const collectedCount = uniqueCompanies(discoveries.flatMap((item) => item.companies || [])).length;
     if (collectedCount >= limit) break;
 
@@ -4612,7 +4814,12 @@ async function discoverCompaniesFromPublicSearchExpanded({ niche, city, district
 }
 
 async function discoverCompaniesFromPublicSearch({ niche, city, district, limit, sourceFocus }) {
-  const maxResults = Math.min(limit, 20);
+  // "Maximum reach": the old 20-result ceiling cut off real candidates well
+  // before the caller's actual requested `limit` (which can be much higher,
+  // see MAX_DISCOVERY_ITEMS/computeDiscoveryCandidateLimit upstream). Raise
+  // it substantially so public search can contribute as many candidates as
+  // the rest of the pipeline is prepared to handle.
+  const maxResults = Math.min(limit, 50);
   const focusTerms = {
     internet: 'firma kontakt strona telefon email -allegro -olx -castorama -mediaexpert -obi -blog',
     all_sources: 'firma kontakt strona telefon email opinie -allegro -olx -castorama -mediaexpert -obi -blog',
@@ -4642,7 +4849,7 @@ async function discoverCompaniesFromPublicSearch({ niche, city, district, limit,
           [niche, district, city, 'каталог компаній контакти сайт'].filter(Boolean).join(' '),
           ['site:.ua', niche, district, city, 'контакти'].filter(Boolean).join(' ')
         ]
-  ).slice(0, sourceFocus === 'all_sources' || sourceFocus === 'internet' ? 7 : 2);
+  ).slice(0, sourceFocus === 'all_sources' || sourceFocus === 'internet' ? 7 : 5);
   const ddgUrl = `https://duckduckgo.com/html/?${new URLSearchParams({ q: queryVariants[0] })}`;
   const bingUrls = queryVariants.map((variant) => buildBingSearchUrl(variant, { count: maxResults, city }));
   const searchUrls = unique([ddgUrl, ...bingUrls]);
@@ -4690,9 +4897,13 @@ async function discoverCompaniesFromPublicSearch({ niche, city, district, limit,
             : $(element).find('.b_caption p, .b_snippet').first().text()
         );
         const evidence = cleanText(`${title} ${snippet}`);
-        const hasExplicitCityEvidence = isSearchEvidenceLocalToCity(`${evidence} ${href}`, city);
+        // "Maximum reach": a company explicitly tied to a different city is a
+        // real negative signal and stays a hard exclusion. But requiring the
+        // city name to be spelled out literally in the snippet/title (on top
+        // of that) rejected plenty of genuine local businesses whose page
+        // just didn't happen to repeat the city - so that no longer blocks a
+        // result on its own; only an actual conflicting-city signal does.
         if (hasConflictingCityEvidence(`${evidence} ${href}`, city)) continue;
-        if (!hasExplicitCityEvidence && !['directory', 'social'].includes(type)) continue;
         const company = inferCompanyNameFromSearchTitle(title, niche, city, href);
         if (!company) continue;
 
@@ -5381,7 +5592,19 @@ function isAllowedPublicSearchResult(url, title, sourceFocus, type) {
     return false;
   }
   if (/ranking|najlepsz|top\s*\d+|cennik|praca|forum|youtube|wikipedia|blog|poradnik|rodzaje|kategoria|sprawdź|samochody osobowe|oferty|używane|sprzedam|praktyczna|wydział|uniwersytet|\btv\b/i.test(title)) return false;
-  if (/cena|koszt|ile kosztuje|produkty|sklep|hurtownia/i.test(title)) return false;
+  // "Maximum reach": the old bare-substring check (cena/koszt/produkty/
+  // sklep/hurtownia) rejected completely ordinary local-business titles like
+  // "Cennik usług klimatyzacji" or "Serwis i sklep AGD Kowalski" just for
+  // mentioning a price or having "sklep"/"hurtownia" in the name. Only
+  // reject titles that read as actual large-retail/price-comparison pages -
+  // explicit price-comparison phrasing, or e-commerce-catalog language
+  // combined with a shop/wholesale term - not any small business page that
+  // happens to touch on price or stock.
+  const looksLikePriceComparison = /porównanie cen|porownanie cen|ranking cen|zestawienie cen|najtaniej w polsce/i.test(title);
+  const looksLikeRetailCatalog =
+    /sklep internetowy|hurtownia internetowa|hurtownia online/i.test(title) &&
+    /produkt|katalog|kategori|koszyk|asortyment/i.test(title);
+  if (looksLikePriceComparison || looksLikeRetailCatalog) return false;
   if (sourceFocus === 'social') return type === 'social';
   if (sourceFocus === 'directories') return type === 'directory';
   if (sourceFocus === 'booking') {
@@ -5478,7 +5701,7 @@ function inferNicheFromSearchResult(text, fallback) {
   return hints.find(([needle]) => normalized.includes(needle))?.[1] || String(fallback || '').split(',')[0].trim();
 }
 
-async function discoverCompaniesFromOpenAIInternet({ niche, city, district, limit, sourceFocus }) {
+async function discoverCompaniesFromOpenAIInternet({ niche, city, district, limit, sourceFocus, workerId = '', runId = '' }) {
   if (!openai) {
     throw new Error('OPENAI_API_KEY не настроен.');
   }
@@ -5608,6 +5831,18 @@ async function discoverCompaniesFromOpenAIInternet({ niche, city, district, limi
     }
   });
 
+  const usage = response.usage || {};
+  store.logAiUsage({
+    workerId,
+    feature: 'web_search_discovery',
+    model: SEARCH_MODEL,
+    promptTokens: usage.input_tokens || 0,
+    completionTokens: usage.output_tokens || 0,
+    totalTokens: usage.total_tokens || 0,
+    estimatedCost: estimateAiCost(SEARCH_MODEL, usage.input_tokens || 0, usage.output_tokens || 0),
+    runId
+  });
+
   let parsed;
   try {
     parsed = parseLooseJson(response.output_text);
@@ -5633,6 +5868,17 @@ async function discoverCompaniesFromOpenAIInternet({ niche, city, district, limi
           schema
         }
       }
+    });
+    const repairedUsage = repaired.usage || {};
+    store.logAiUsage({
+      workerId,
+      feature: 'web_search_discovery_repair',
+      model: DEFAULT_MODEL,
+      promptTokens: repairedUsage.input_tokens || 0,
+      completionTokens: repairedUsage.output_tokens || 0,
+      totalTokens: repairedUsage.total_tokens || 0,
+      estimatedCost: estimateAiCost(DEFAULT_MODEL, repairedUsage.input_tokens || 0, repairedUsage.output_tokens || 0),
+      runId
     });
     parsed = parseLooseJson(repaired.output_text);
   }
@@ -6583,7 +6829,7 @@ async function analyzeWithOpenAI(item, parsed, heuristic, resolution, model) {
   }
 }
 
-async function analyzeSiteCardWithOpenAI({ item, parsed, websiteResolution, heuristic, model, language = 'ru', workerId = '' }) {
+async function analyzeSiteCardWithOpenAI({ item, parsed, websiteResolution, heuristic, model, language = 'ru', workerId = '', companyId = '', runId = '' }) {
   if (!openai) return null;
   const outputLanguage = ['ru', 'pl', 'en'].includes(String(language || '').toLowerCase()) ? String(language).toLowerCase() : 'ru';
   const outputLanguageName = { ru: 'Russian', pl: 'Polish', en: 'English' }[outputLanguage];
@@ -6786,7 +7032,9 @@ If there is category/company/site mismatch risk, put it in risks_or_skip_reasons
     promptTokens: usage.input_tokens || 0,
     completionTokens: usage.output_tokens || 0,
     totalTokens: usage.total_tokens || 0,
-    estimatedCost: estimateAiCost(model, usage.input_tokens || 0, usage.output_tokens || 0)
+    estimatedCost: estimateAiCost(model, usage.input_tokens || 0, usage.output_tokens || 0),
+    companyId,
+    runId
   });
   return {
     ...result,

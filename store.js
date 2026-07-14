@@ -546,9 +546,9 @@ export function getCompaniesByIds(ids, { includeDeleted = false } = {}) {
     .map(serializeCompany);
 }
 
-export function getAllCompanies({ includeDeleted = false } = {}) {
+export function getAllCompanies({ includeDeleted = false, includeHidden = false } = {}) {
   return Object.values(state.companies.companies)
-    .filter((record) => includeDeleted || !isDeletedRecord(record))
+    .filter((record) => (includeDeleted || !isDeletedRecord(record)) && (includeHidden || record.hidden_from_lists !== true))
     .sort((a, b) => (b.last_seen_at || '').localeCompare(a.last_seen_at || ''))
     .map(serializeCompany);
 }
@@ -899,6 +899,11 @@ export function claimCompanyForRun(company, { runId, workerId, stage = 'reserved
   record.assigned_worker_id = record.assigned_worker_id || normalizedWorkerId;
   record.reserved_at = record.reserved_at || now;
   record.available_for_discovery = false;
+  // A previously returned-to-pool lead was hidden from list views; now that
+  // it's live and claimed again it must become visible again, otherwise it
+  // would stay invisible forever after its very first return-to-pool.
+  record.hidden_from_lists = false;
+  record.hidden_from_lists_at = '';
   if (!Array.isArray(record.claimed_run_ids)) record.claimed_run_ids = [];
   if (runId && !record.claimed_run_ids.includes(runId)) record.claimed_run_ids.push(runId);
   if (!record.first_claimed_run_id && runId) record.first_claimed_run_id = runId;
@@ -968,7 +973,18 @@ export function updateCompanyStatus(id, { status, workerId, note } = {}) {
   const normalizedStatus = normalizeLeadStatus(status);
   const normalizedWorker = workerId ? normalizeWorkerId(workerId) : '';
   if (allowedLeadStatuses.has(normalizedStatus)) record.status = normalizedStatus;
-  if (normalizedWorker) record.assigned_worker_id = normalizedWorker;
+  if (normalizedWorker) {
+    record.assigned_worker_id = normalizedWorker;
+    // Mirrors claimCompanyForRun's own reclaim handling: a company can only
+    // reach here with a fresh assigned_worker_id after having been returned
+    // to the pool (which sets hidden_from_lists) if this endpoint - not just
+    // the discovery claim path - is what reassigns it. Without this, a lead
+    // reassigned this way would stay assigned to a worker yet permanently
+    // invisible in every default list view (getAllCompanies/listLeadPool),
+    // which is a contradictory state: owned by someone but unfindable.
+    record.hidden_from_lists = false;
+    record.hidden_from_lists_at = '';
+  }
   if (note !== undefined) {
     record.notes = String(note || '').slice(0, 3000);
   }
@@ -1102,13 +1118,13 @@ export function deleteCompanies(ids) {
   return deletedIds;
 }
 
-export function listLeadPool({ q = '', status = '', workerId = '', poolState = '', city = '', category = '', includeDeleted = false, limit = 500 } = {}) {
+export function listLeadPool({ q = '', status = '', workerId = '', poolState = '', city = '', category = '', includeDeleted = false, includeHidden = false, limit = 500 } = {}) {
   const query = normalizeSearchText(q);
   const normalizedWorkerId = workerId ? normalizeWorkerId(workerId) : '';
   const normalizedPoolState = normalizePoolState(poolState);
   const normalizedCity = normalizeSearchText(city);
   const normalizedCategory = normalizeSearchText(category);
-  return getAllCompanies({ includeDeleted })
+  return getAllCompanies({ includeDeleted, includeHidden })
     .filter((record) => {
       if (status && normalizeLeadStatus(record.status || record.stage) !== status) return false;
       if (normalizedPoolState && derivePoolState(record) !== normalizedPoolState) return false;
@@ -1205,7 +1221,9 @@ function academySummary(user) {
       aiTrainingStagePercent: 0,
       currentStage: 'Usługi',
       weakSpots: [],
-      quizScores: {}
+      quizScores: {},
+      aiUsageCount: 0,
+      aiUsageCost: 0
     };
   }
   const completed = Array.isArray(user.completedModules) ? user.completedModules.length : 0;
@@ -1232,6 +1250,11 @@ function academySummary(user) {
     .map(([key, score]) => ({ key, score: Number(score) || 0 }))
     .sort((a, b) => a.score - b.score);
 
+  const normalizedUserId = normalizeWorkerId(user.userId || '');
+  const aiUsageEntries = state.aiUsage.entries.filter((entry) => entry.workerId === normalizedUserId);
+  const aiUsageCount = aiUsageEntries.length;
+  const aiUsageCost = aiUsageEntries.reduce((sum, entry) => sum + entry.estimatedCost, 0);
+
   return {
     completedModules: completed,
     totalModules: total,
@@ -1251,7 +1274,9 @@ function academySummary(user) {
     aiTrainingStagePercent,
     currentStage,
     weakSpots,
-    quizScores
+    quizScores,
+    aiUsageCount,
+    aiUsageCost
   };
 }
 
@@ -1619,18 +1644,17 @@ export function deleteWorkerAccount(workerId) {
   }
   if (deletedTrainingSessionIds.length) persistAiTraining();
 
-  const beforeAiUsage = state.aiUsage.entries.length;
-  state.aiUsage.entries = state.aiUsage.entries.filter((entry) => normalizeWorkerId(entry.workerId || '') !== id);
-  const deletedAiUsageCount = beforeAiUsage - state.aiUsage.entries.length;
-  if (deletedAiUsageCount > 0) persistAiUsage();
+  // AI usage log entries are intentionally NOT deleted here: they are cost
+  // history independent of whether the worker account still exists, and
+  // erasing them on account deletion is what previously hid evidence of
+  // past cost spikes from the admin usage panel.
 
   return {
     workerId: id,
     deletedRunIds,
     resetLeadIds,
     deletedTrainingSessionIds,
-    deletedSessionCount,
-    deletedAiUsageCount
+    deletedSessionCount
   };
 }
 
@@ -2188,7 +2212,9 @@ export function logAiUsage({
   promptTokens = 0,
   completionTokens = 0,
   totalTokens = 0,
-  estimatedCost = 0
+  estimatedCost = 0,
+  companyId = '',
+  runId = ''
 } = {}) {
   const entry = {
     requestId: String(requestId || `ai-${state.aiUsage.nextId++}`).slice(0, 120),
@@ -2199,6 +2225,8 @@ export function logAiUsage({
     completionTokens: Number(completionTokens) || 0,
     totalTokens: Number(totalTokens) || 0,
     estimatedCost: Number(estimatedCost) || 0,
+    companyId: companyId ? String(companyId).slice(0, 80) : '',
+    runId: runId ? String(runId).slice(0, 80) : '',
     createdAt: new Date().toISOString()
   };
   state.aiUsage.entries.unshift(entry);
@@ -2233,6 +2261,26 @@ export function summarizeAiUsage({ period = 'all' } = {}) {
     totalRequests: entries.length,
     byWorker: Object.values(byWorker).sort((a, b) => b.cost - a.cost),
     byFeature: Object.values(byFeature).sort((a, b) => b.cost - a.cost)
+  };
+}
+
+export function getAiUsageForRun(runId) {
+  const id = String(runId || '');
+  const entries = state.aiUsage.entries.filter((entry) => entry.runId === id);
+  return {
+    totalCost: entries.reduce((sum, entry) => sum + entry.estimatedCost, 0),
+    totalTokens: entries.reduce((sum, entry) => sum + entry.totalTokens, 0),
+    requestCount: entries.length
+  };
+}
+
+export function getAiUsageForCompany(companyId) {
+  const id = String(companyId || '');
+  const entries = state.aiUsage.entries.filter((entry) => entry.companyId === id);
+  return {
+    totalCost: entries.reduce((sum, entry) => sum + entry.estimatedCost, 0),
+    totalTokens: entries.reduce((sum, entry) => sum + entry.totalTokens, 0),
+    requestCount: entries.length
   };
 }
 
@@ -2593,6 +2641,12 @@ export function returnLeadsToPool(companyIds, { actorId = '', actorRole = 'worke
     record.previous_worker_id = previousWorkerId;
     record.returned_to_pool_at = now;
     record.returned_to_pool_by = actorId || '';
+    // Visibility-only flag: hides the reset lead from list/query surfaces
+    // (getAllCompanies/listLeadPool/paginateCompanyList) without affecting
+    // reclaimability - claimCompanyForRun's isClaimable/isReclaimablePoolLead
+    // logic keys off pool_state alone and never looks at this field.
+    record.hidden_from_lists = true;
+    record.hidden_from_lists_at = now;
     addStatusHistory(record, {
       status: 'new',
       workerId: previousWorkerId,

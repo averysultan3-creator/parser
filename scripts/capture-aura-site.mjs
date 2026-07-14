@@ -7,7 +7,9 @@ for (const item of [
 ]) {
   const context = await browser.newContext({ viewport: item.viewport, isMobile: item.mobile, hasTouch: item.mobile, reducedMotion: 'reduce' });
   const page = await context.newPage();
-  await page.goto('http://127.0.0.1:4317/site/?lang=ru', { waitUntil: 'networkidle' });
+  // See scripts/smoke-test.mjs for why this prefers process.env.PORT over a
+  // hardcoded 4317 - avoids pointing this capture at a co-located production instance.
+  await page.goto(`http://127.0.0.1:${process.env.PORT || 4317}/site/?lang=ru`, { waitUntil: 'networkidle' });
   await page.screenshot({ path: `tmp/${item.name}`, fullPage: true });
   await context.close();
 }

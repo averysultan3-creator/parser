@@ -461,6 +461,10 @@
     admin_value_yes_check: { pl: 'Tak / sprawdzić', ru: 'Да / проверить', en: 'Yes / check' },
     admin_label_ai_score: { pl: 'Wynik AI:', ru: 'Оценка AI:', en: 'AI score:' },
     admin_label_opening: { pl: 'Otwarcie:', ru: 'Открытие разговора:', en: 'Opening:' },
+    // AI usage/cost badges (run list, run detail, lead row/modal, Academy overview).
+    admin_label_ai_usage_colon: { pl: 'Koszt AI:', ru: 'Расход AI:', en: 'AI cost:' },
+    admin_ai_cost_label: { pl: 'Koszt AI:', ru: 'Расход AI:', en: 'AI cost:' },
+    admin_value_no_ai_usage: { pl: 'brak zapytań AI', ru: 'нет обращений к AI', en: 'no AI usage' },
     admin_lead_history_heading: { pl: 'Historia', ru: 'История', en: 'History' },
     admin_no_status_history: { pl: 'Brak historii statusów.', ru: 'Нет истории статусов.', en: 'No status history.' },
     admin_lead_management_heading: { pl: 'Zarządzanie', ru: 'Управление', en: 'Management' },
@@ -517,6 +521,14 @@
     admin_run_worker_colon: { pl: 'worker:', ru: 'воркер:', en: 'worker:' },
     admin_run_radius_label: { pl: 'promień', ru: 'радиус', en: 'radius' },
     admin_lead_category_score_label: { pl: 'kategoria', ru: 'категория', en: 'category' },
+    // Per-run status breakdown shown in the worker profile's run list (item 1
+    // of the batch-fixes round) - lets an admin see at a glance whether a
+    // query still needs attention without opening it.
+    admin_run_status_summary_template: {
+      pl: 'nieobsłużone: {notProcessed} · obsłużone: {processed} · z komentarzami: {comments}',
+      ru: 'не обработано: {notProcessed} · обработано: {processed} · есть комментарии: {comments}',
+      en: 'not processed: {notProcessed} · processed: {processed} · with comments: {comments}'
+    },
     admin_run_status_duplicates_only: { pl: 'Tylko duplikaty / brak nowych', ru: 'Только дубли / новых нет', en: 'Duplicates only / no new' },
     admin_run_status_cancelled: { pl: 'Anulowano', ru: 'Отменено', en: 'Cancelled' },
     admin_run_status_completed: { pl: 'Zakończone', ru: 'Завершено', en: 'Completed' },
@@ -555,9 +567,11 @@
     admin_th_ai_trainings: { pl: 'Treningi AI', ru: 'AI-тренировки', en: 'AI trainings' },
     admin_th_avg_ai_score: { pl: 'Śr. wynik AI', ru: 'Ср. результат AI', en: 'Avg. AI score' },
     admin_th_sim_meeting: { pl: 'Spotkanie w symulacji', ru: 'Встреча в симуляции', en: 'Simulated meeting' },
+    admin_th_ai_usage: { pl: 'Zużycie AI', ru: 'Расход AI', en: 'AI usage' },
     admin_th_last_activity: { pl: 'Ostatnia aktywność', ru: 'Последняя активность', en: 'Last activity' },
     admin_weak_spots_count_template: { pl: '{n} obszarów', ru: '{n} областей', en: '{n} areas' },
     admin_weak_spots_none: { pl: 'brak', ru: 'нет', en: 'none' },
+    admin_academy_ai_usage_template: { pl: '{count}x / ${cost}', ru: '{count} раз / ${cost}', en: '{count}x / ${cost}' },
     admin_no_workers: { pl: 'Brak workerów.', ru: 'Нет сотрудников.', en: 'No workers.' },
     admin_ai_costs_eyebrow: { pl: 'Koszty AI', ru: 'Расходы на AI', en: 'AI costs' },
     admin_ai_costs_title: { pl: 'Zużycie i koszty AI-treningu', ru: 'Использование и стоимость AI-тренировок', en: 'AI training usage & costs' },
