@@ -641,8 +641,27 @@ export function upsertCompany(company, { runId, stage = 'discovered', deferPersi
 // create two separate worker buckets - runs created under one casing would
 // then be invisible under the other, which is what caused the worker-facing
 // "0 zapytan" bug even though the runs existed in the shared history).
+// Phone numbers pasted from WhatsApp/Telegram contact lists often carry
+// invisible Unicode bidi-formatting marks (LRE/PDF/RLE/isolates, zero-width
+// spaces, BOM) around the digits. Left in place, the stored login silently
+// stops matching whatever the worker actually types to sign in - strip them
+// before trimming/lowercasing so a pasted "U+202A797662056U+202C" and a
+// typed "797662056" resolve to the same account.
+
+// Phone numbers/passwords pasted from WhatsApp/Telegram/notes apps often
+// carry invisible Unicode bidi-formatting marks (LRE/PDF/RLE/isolates,
+// zero-width spaces, BOM). Left in place, a stored login or password
+// silently stops matching whatever gets typed later - strip them from
+// every login/password we ever store. Function declaration (not const)
+// so it's fully hoisted and safe to call from this module's synchronous
+// top-level migration code, which runs before any const initializer would.
+function stripInvisibleFormatting(value) {
+  return String(value || '').replace(/[\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g, '');
+}
+
 export function normalizeWorkerId(workerId) {
-  return String(workerId || 'worker-default').trim().toLowerCase().slice(0, 80) || 'worker-default';
+  const cleaned = stripInvisibleFormatting(workerId).trim().toLowerCase().slice(0, 80);
+  return cleaned || 'worker-default';
 }
 
 function normalizeLanguage(value) {
@@ -1306,7 +1325,7 @@ export function createWorkerAccount({ displayName = '', login = '', password = '
     workerId: normalizedLogin,
     login: normalizedLogin,
     displayName: String(displayName || normalizedLogin).trim().slice(0, 120),
-    password: hashPassword(String(password).slice(0, 200)),
+    password: hashPassword(stripInvisibleFormatting(password).slice(0, 200)),
     language: normalizeLanguage(language),
     active: normalizeBool(active, true),
     createdAt: now,
@@ -1338,7 +1357,7 @@ export function updateWorkerAccount(workerId, patch = {}) {
   if (!current) return null;
   if (patch.displayName !== undefined) current.displayName = String(patch.displayName || id).trim().slice(0, 120);
   if (patch.password !== undefined && String(patch.password || '').trim()) {
-    current.password = hashPassword(String(patch.password).slice(0, 200));
+    current.password = hashPassword(stripInvisibleFormatting(patch.password).slice(0, 200));
   }
   if (patch.language !== undefined) current.language = normalizeLanguage(patch.language);
   if (patch.active !== undefined) current.active = normalizeBool(patch.active, true);
@@ -1349,12 +1368,13 @@ export function updateWorkerAccount(workerId, patch = {}) {
 
 export function authenticateWorker(login, password) {
   const id = normalizeWorkerId(login);
+  const cleanPassword = stripInvisibleFormatting(password);
   const account = state.workers.workers[id];
   if (!account || account.active === false) return null;
-  if (!verifyPassword(password, account.password)) return null;
+  if (!verifyPassword(cleanPassword, account.password)) return null;
   if (!String(account.password || '').startsWith('scrypt$')) {
     // Upgrade a legacy plaintext password to a hash now that we know it's correct.
-    account.password = hashPassword(String(password));
+    account.password = hashPassword(cleanPassword);
   }
   account.lastActiveAt = new Date().toISOString();
   persistWorkers();

@@ -1708,12 +1708,21 @@ function openWorkerDialog() {
   `;
 }
 
+// Phone numbers/passwords pasted from WhatsApp/Telegram contact lists or
+// notes apps often carry invisible Unicode bidi-formatting marks around the
+// visible text. Left in, the stored login/password silently stops matching
+// whatever the worker actually types to sign in - strip them before this
+// ever reaches the server, so the admin sees (and sends) the clean value.
+function stripInvisibleFormatting(value) {
+  return String(value || '').replace(/[\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g, '');
+}
+
 async function createWorkerFromForm(form) {
   const formData = new FormData(form);
   const worker = {
     displayName: formData.get('displayName'),
-    login: formData.get('login'),
-    password: formData.get('password'),
+    login: stripInvisibleFormatting(formData.get('login')),
+    password: stripInvisibleFormatting(formData.get('password')),
     language: formData.get('language'),
     active: formData.get('active') === 'on',
     adminId: 'admin'
@@ -1728,7 +1737,7 @@ async function createWorkerFromForm(form) {
 }
 
 async function changeWorkerPassword(workerId) {
-  const password = window.prompt(tr('admin_prompt_new_password_template', { workerId }));
+  const password = stripInvisibleFormatting(window.prompt(tr('admin_prompt_new_password_template', { workerId })));
   if (!password) return;
   await api(`/api/admin/workers/${encodeURIComponent(workerId)}`, {
     method: 'PATCH',
