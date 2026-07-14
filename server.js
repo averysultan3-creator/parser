@@ -1844,12 +1844,23 @@ app.post('/api/auth/login', (req, res) => {
 app.get('/api/auth/me', (req, res) => {
   const session = currentSession(req);
   if (!session) return res.status(401).json({ error: 'Not authenticated.' });
-  res.json({
+  const payload = {
     role: session.role,
     workerId: session.workerId,
     displayName: session.displayName,
     language: session.language
-  });
+  };
+  // Let the worker frontend show "leads today: X/Y" before even attempting a
+  // search - resolve the same way POST /api/discover does (requestWorkerId),
+  // and treat a missing account or 0/unset limit as unlimited.
+  if (session.role === 'worker') {
+    const workerId = requestWorkerId(req);
+    const workerAccount = workerId ? store.getWorkerAccount(workerId) : null;
+    const dailyLeadLimit = workerAccount ? Number(workerAccount.dailyLeadLimit) || 0 : 0;
+    payload.dailyLeadLimit = dailyLeadLimit;
+    payload.usedToday = workerId ? store.getWorkerLeadsClaimedToday(workerId) : 0;
+  }
+  res.json(payload);
 });
 
 app.post('/api/auth/logout', (req, res) => {
@@ -1992,6 +2003,25 @@ app.post('/api/discover', async (req, res) => {
     }
     if (!city && !country) {
       return res.status(400).json({ error: 'Укажите город или страну для поиска.' });
+    }
+
+    // Per-worker daily lead quota: block the search entirely, before any
+    // job/run record is created. Admins acting as themselves (no worker
+    // session) are never subject to this - same bypass pattern already used
+    // by requireWorkerLeadAccess/requireWorkerRunAccess etc. in this file.
+    // A missing account (e.g. workerId === 'worker-default' for anonymous/
+    // admin-initiated calls) or dailyLeadLimit of 0/unset means unlimited.
+    if (!isAdminAuthorized(req)) {
+      const workerAccount = store.getWorkerAccount(workerId);
+      const dailyLeadLimit = workerAccount ? Number(workerAccount.dailyLeadLimit) || 0 : 0;
+      if (dailyLeadLimit > 0) {
+        const usedToday = store.getWorkerLeadsClaimedToday(workerId);
+        if (usedToday >= dailyLeadLimit) {
+          return res.status(429).json({
+            error: `Дневной лимит лидов исчерпан (${usedToday}/${dailyLeadLimit}). Новые лиды будут доступны с полуночи.`
+          });
+        }
+      }
     }
 
     const job = createDiscoveryJob({
@@ -2160,14 +2190,15 @@ app.post('/api/admin/workers', (req, res) => {
       login: cleanText(req.body?.login || ''),
       password: String(req.body?.password || ''),
       language: cleanText(req.body?.language || 'ru'),
-      active: req.body?.active !== false
+      active: req.body?.active !== false,
+      dailyLeadLimit: req.body?.dailyLeadLimit
     });
     store.logAdminAction({
       adminId: cleanText(req.body?.adminId || 'admin'),
       action: 'create_worker',
       targetType: 'worker',
       targetId: worker.workerId,
-      details: { displayName: worker.displayName, language: worker.language, active: worker.active }
+      details: { displayName: worker.displayName, language: worker.language, active: worker.active, dailyLeadLimit: worker.dailyLeadLimit }
     });
     res.status(201).json({ ok: true, worker });
   } catch (error) {

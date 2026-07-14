@@ -1288,6 +1288,7 @@ function buildWorkerRecord(workerId, seed = {}) {
     login: seed.login || id,
     active: seed.active !== undefined ? Boolean(seed.active) : true,
     language: normalizeLanguage(seed.language || 'ru'),
+    dailyLeadLimit: Math.max(0, Number.parseInt(seed.dailyLeadLimit, 10) || 0),
     createdAt: seed.createdAt || '',
     leadsAssigned: 0,
     visibleLeads: 0,
@@ -1339,7 +1340,7 @@ function verifyPassword(password, stored) {
   return value === String(password || '');
 }
 
-export function createWorkerAccount({ displayName = '', login = '', password = '', language = 'ru', active = true } = {}) {
+export function createWorkerAccount({ displayName = '', login = '', password = '', language = 'ru', active = true, dailyLeadLimit = 0 } = {}) {
   const normalizedLogin = normalizeWorkerId(login || displayName);
   if (!normalizedLogin) throw new Error('Worker login is required.');
   if (!password) throw new Error('Worker password is required.');
@@ -1353,6 +1354,7 @@ export function createWorkerAccount({ displayName = '', login = '', password = '
     password: hashPassword(stripInvisibleFormatting(password).slice(0, 200)),
     language: normalizeLanguage(language),
     active: normalizeBool(active, true),
+    dailyLeadLimit: Math.max(0, Number.parseInt(dailyLeadLimit, 10) || 0),
     createdAt: now,
     updatedAt: now,
     lastActiveAt: ''
@@ -1386,9 +1388,18 @@ export function updateWorkerAccount(workerId, patch = {}) {
   }
   if (patch.language !== undefined) current.language = normalizeLanguage(patch.language);
   if (patch.active !== undefined) current.active = normalizeBool(patch.active, true);
+  if (patch.dailyLeadLimit !== undefined) current.dailyLeadLimit = Math.max(0, Number.parseInt(patch.dailyLeadLimit, 10) || 0);
   current.updatedAt = new Date().toISOString();
   persistWorkers();
   return current;
+}
+
+// Simple single-account accessor used where callers need the raw stored
+// worker account (e.g. dailyLeadLimit) without the aggregated listWorkers()
+// scan across runs/companies/academy.
+export function getWorkerAccount(workerId) {
+  const id = normalizeWorkerId(workerId);
+  return state.workers.workers[id] || null;
 }
 
 export function authenticateWorker(login, password) {
@@ -1416,6 +1427,7 @@ export function listWorkers() {
     if (seed.login) worker.login = seed.login;
     if (seed.active !== undefined) worker.active = Boolean(seed.active);
     if (seed.language) worker.language = normalizeLanguage(seed.language);
+    if (seed.dailyLeadLimit !== undefined) worker.dailyLeadLimit = Math.max(0, Number.parseInt(seed.dailyLeadLimit, 10) || 0);
     if (seed.createdAt && !worker.createdAt) worker.createdAt = seed.createdAt;
     if (seed.academy) worker.academy = academySummary(seed.academy);
     if (seed.sourceTags?.length) seed.sourceTags.forEach((tag) => worker.sourceTags.add(tag));
@@ -1429,6 +1441,7 @@ export function listWorkers() {
       login: account.login,
       active: account.active !== false,
       language: account.language,
+      dailyLeadLimit: account.dailyLeadLimit,
       createdAt: account.createdAt || '',
       lastActiveAt: account.lastActiveAt || account.createdAt || '',
       sourceTags: ['account']
@@ -1961,6 +1974,24 @@ function isAfterPeriod(value, start) {
   if (!start) return true;
   const date = new Date(value || '');
   return !Number.isNaN(date.getTime()) && date >= start;
+}
+
+// Counts leads claimed by this worker since local midnight, for daily lead
+// quota enforcement. A lead "counts" once it's reserved (assigned_worker_id
+// set + reserved_at stamped), matching how discovery assigns leads to a
+// worker. No caching/index - a plain scan matching the scale of the other
+// scans in this file (e.g. inside listWorkers()).
+export function getWorkerLeadsClaimedToday(workerId) {
+  const id = normalizeWorkerId(workerId);
+  const start = periodStart('today');
+  let count = 0;
+  for (const record of Object.values(state.companies.companies)) {
+    if (normalizeWorkerId(record.assigned_worker_id || '') !== id) continue;
+    if (!record.reserved_at) continue;
+    if (!isAfterPeriod(record.reserved_at, start)) continue;
+    count += 1;
+  }
+  return count;
 }
 
 export function getAdminSummary({ period = 'all' } = {}) {
