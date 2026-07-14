@@ -1,6 +1,9 @@
 import { chromium } from 'playwright';
 
-const baseUrl = (process.env.AURA_SITE_URL || 'http://127.0.0.1:4317').replace(/\/$/, '');
+// See scripts/smoke-test.mjs for why this prefers process.env.PORT over a
+// hardcoded 4317 - avoids silently pointing this Playwright session at a
+// co-located live production instance on the default port.
+const baseUrl = (process.env.AURA_SITE_URL || `http://127.0.0.1:${process.env.PORT || 4317}`).replace(/\/$/, '');
 const chromePath = process.env.CHROME_PATH || 'C:/Program Files/Google/Chrome/Application/chrome.exe';
 const viewports = [
   { name: 'desktop-full-hd', width: 1920, height: 1080, mobile: false },

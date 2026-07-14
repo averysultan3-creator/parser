@@ -1314,11 +1314,15 @@ async function loadConfig() {
     clearConfigBootstrapRetry();
     els.modelInput.value = state.config.defaultModel || '';
     els.searchModelInput.value = state.config.searchModel || '';
-    els.useAi.checked = false;
-    els.useWebSearch.checked = false;
-    els.useAi.disabled = true;
-    els.useWebSearch.disabled = true;
     const openaiReady = Boolean(state.config.hasOpenAiKey);
+    els.useAi.checked = false;
+    els.useAi.disabled = true;
+    // Unlike the still-disabled bulk-AI toggle above, the web-search toggle
+    // gates on hasOpenAiKey the same way the other AI-dependent controls
+    // (apiStatus pill, config diagnostics) do below - it only stays force-off
+    // when no OpenAI key is configured, not unconditionally.
+    els.useWebSearch.checked = false;
+    els.useWebSearch.disabled = !openaiReady;
     const amazonReady = Boolean(state.config.registry?.amazonLocationConfigured);
     const googleReady = Boolean(state.config.registry?.googlePlacesConfigured);
     const ceidgReady = Boolean(state.config.registry?.ceidgConfigured);
@@ -1575,7 +1579,8 @@ function formatRunStatusLabel(status) {
     duplicates_only: { pl: 'Tylko duplikaty / brak nowych', ru: 'Только дубли / новых нет' },
     cancelled: { pl: 'Anulowano', ru: 'Отменено' },
     failed: { pl: 'Błąd', ru: 'Ошибка' },
-    timeout: { pl: 'Przekroczono czas', ru: 'Превышено время ожидания' }
+    timeout: { pl: 'Przekroczono czas', ru: 'Превышено время ожидания' },
+    completed_partial: { pl: 'Częściowe (przekroczono czas)', ru: 'Частично (тайм-аут)' }
   };
   const entry = labels[status];
   if (!entry) return status || '-';
@@ -1592,7 +1597,11 @@ function renderHistory(runs) {
     .map((run) => {
       const date = run.started_at ? new Date(run.started_at).toLocaleString() : '-';
       const location = [run.city, run.district].filter(Boolean).join(' · ') || '-';
-      const statusClassName = ['completed', 'failed', 'discovering'].includes(run.status) ? run.status : 'discovering';
+      const statusClassName = ['completed', 'failed', 'discovering'].includes(run.status)
+        ? run.status
+        : run.status === 'completed_partial'
+          ? 'completed'
+          : 'discovering';
       const rowStateClass = [
         'history-row',
         state.activeHistoryRun?.id === run.id ? 'active' : '',
@@ -2281,6 +2290,8 @@ async function runDiscovery() {
         hasSocial: els.sidebarHasSocial.checked,
         hasPhone: els.sidebarHasPhone.checked,
         hasEmail: els.sidebarHasEmail.checked,
+        useAi: els.useAi.checked,
+        useWebSearch: els.useWebSearch.checked,
         language: currentLanguage
       })
     });
@@ -2360,8 +2371,8 @@ async function runAnalysis() {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         items,
-        useAi: false,
-        useWebSearch: false,
+        useAi: els.useAi.checked,
+        useWebSearch: els.useWebSearch.checked,
         model: els.modelInput.value.trim(),
         searchModel: els.searchModelInput.value.trim(),
         language: currentLanguage
@@ -3131,11 +3142,11 @@ function renderTabbedDetail() {
 
   els.detailContent.innerHTML = `
     <div class="detail-tabs">
-      ${detailTabButton('overview', tr('overview'))}
-      ${detailTabButton('sources', tr('sources'))}
-      ${detailTabButton('site', tr('site'))}
-      ${detailTabButton('ai', tr('aiAnalysis'))}
-      ${detailTabButton('history', tr('history'))}
+      ${detailTabButton('overview', tr('overview'), 'layout-dashboard')}
+      ${detailTabButton('sources', tr('sources'), 'link')}
+      ${detailTabButton('site', tr('site'), 'globe')}
+      ${detailTabButton('ai', tr('aiAnalysis'), 'bot')}
+      ${detailTabButton('history', tr('history'), 'history')}
     </div>
     ${renderActiveDetailTab(result)}
   `;
@@ -3173,8 +3184,8 @@ async function ensureResultExtras(result) {
   if (state.selectedId === result.id) renderTabbedDetail();
 }
 
-function detailTabButton(id, label) {
-  return `<button class="detail-tab ${state.detailTab === id ? 'active' : ''}" type="button" data-detail-tab="${id}">${escapeHtml(label)}</button>`;
+function detailTabButton(id, label, icon) {
+  return `<button class="detail-tab ${state.detailTab === id ? 'active' : ''}" type="button" data-detail-tab="${id}"><i data-lucide="${icon}"></i>${escapeHtml(label)}</button>`;
 }
 
 function leadCompanyId(result) {

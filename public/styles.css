@@ -954,15 +954,25 @@ tbody tr.selected {
 }
 
 .detail-tab {
+  align-items: center;
   background: transparent;
   border: 0;
   border-bottom: 2px solid transparent;
   border-radius: 0;
   color: var(--muted);
+  display: inline-flex;
   font-size: 12px;
   font-weight: 800;
+  gap: 6px;
+  justify-content: center;
   min-height: 42px;
   padding: 0 8px;
+}
+
+.detail-tab svg {
+  flex-shrink: 0;
+  height: 14px;
+  width: 14px;
 }
 
 .detail-tab.active {

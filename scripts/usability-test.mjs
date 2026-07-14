@@ -2,7 +2,11 @@ import 'dotenv/config';
 import { chromium } from 'playwright';
 import { getPortfolioProjects } from '../public/site/data/portfolio.js';
 
-const baseUrl = normalizeBaseUrl(process.argv[2] || 'http://127.0.0.1:4317');
+// See scripts/smoke-test.mjs for why this prefers process.env.PORT over a
+// hardcoded 4317: on a machine that also runs a live pm2 instance of this app
+// on 4317, an unqualified `npm run usability` would otherwise silently drive
+// a real browser session against production instead of a local instance.
+const baseUrl = normalizeBaseUrl(process.argv[2] || `http://127.0.0.1:${process.env.PORT || 4317}`);
 const timeoutMs = Number(process.env.USABILITY_TIMEOUT_MS || 180000);
 const ADMIN_LOGIN = process.env.ADMIN_LOGIN || 'admin';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'Parol159';

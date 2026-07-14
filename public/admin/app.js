@@ -82,7 +82,18 @@ const state = {
   aiUsagePeriod: localStorage.getItem('auraAdminAiUsagePeriod') || 'all',
   workerAiTrainingSessions: [],
   serviceCatalogNames: null,
-  aiPersonas: null
+  aiPersonas: null,
+  // Lazy-loaded, id-keyed caches for the per-run status breakdown and the
+  // per-run/per-company AI-cost badges (items 1 & 4 of the batch-fixes round).
+  // undefined = not fetched yet, null = fetched but empty/failed, object = data.
+  // The *Loading sets guard against firing duplicate requests while one is
+  // already in flight (render() runs very often in this app).
+  runStatusSummaries: new Map(),
+  runStatusSummariesLoading: new Set(),
+  runAiCosts: new Map(),
+  runAiCostsLoading: new Set(),
+  companyAiCosts: new Map(),
+  companyAiCostsLoading: new Set()
 };
 
 const els = {
@@ -849,7 +860,7 @@ function renderWorkerDetail() {
 
   els.workerRunsCount.textContent = tr('admin_worker_runs_count_template', { n: runs.length });
   els.workerRunsList.innerHTML = runs.length
-    ? runs.slice(0, 30).map(renderRunItem).join('')
+    ? runs.slice(0, 30).map((run) => renderRunItem(run, { withStatusSummary: true })).join('')
     : `<div class="list-item muted">${escapeHtml(tr('admin_worker_no_runs'))}</div>`;
 
   els.workerAcademyBadge.textContent = `${academy.completionPercent || 0}%`;
@@ -860,6 +871,7 @@ function renderWorkerDetail() {
     <p><strong>${escapeHtml(tr('admin_label_modules_colon'))}</strong> ${escapeHtml(academy.completedModules || 0)}/${escapeHtml(academy.totalModules || 10)}</p>
     <p><strong>${escapeHtml(tr('admin_label_scripts_examples_colon'))}</strong> ${escapeHtml(academy.scriptsPercent || 0)}% (${escapeHtml(academy.scriptsOpened || 0)} ${escapeHtml(tr('admin_label_opened_count_suffix'))})</p>
     <p><strong>${escapeHtml(tr('admin_label_avg_test_score_colon'))}</strong> ${escapeHtml(academy.averageQuizScore || 0)}%</p>
+    <p><strong>${escapeHtml(tr('admin_label_ai_usage_colon'))}</strong> ${escapeHtml(tr('admin_academy_ai_usage_template', { count: academy.aiUsageCount || 0, cost: (academy.aiUsageCost || 0).toFixed(2) }))}</p>
     <p class="muted">${escapeHtml(tr('admin_label_last_colon'))} ${escapeHtml(formatDate(academy.lastActiveAt))}</p>
   `;
 
@@ -880,11 +892,11 @@ function renderWorkerDetail() {
               .map((id) => folders.find((folder) => folder.id === id)?.name)
               .filter(Boolean);
             return `
-            <div class="list-item">
+            <button type="button" class="list-item link-item" data-open-lead="${escapeAttribute(item.id)}">
               <strong>${escapeHtml(item.data?.company || item.data?.legal_name || tr('admin_no_name'))}</strong>
               <div class="muted">${escapeHtml(folderNames.join(', ') || tr('admin_no_folder'))} · ${escapeHtml(tr('admin_label_crm_status_colon'))} ${escapeHtml(crmStatusAdminLabel(item.crm_status))}</div>
               ${item.last_comment ? `<div class="muted">"${escapeHtml(item.last_comment.text.slice(0, 80))}"</div>` : ''}
-            </div>`;
+            </button>`;
           })
           .join('')
       : `<div class="list-item muted">${escapeHtml(tr('admin_worker_no_saved'))}</div>`;
@@ -912,7 +924,193 @@ function formatRunStatusLabel(status) {
   return label === key ? String(status || '-') : label;
 }
 
-function renderRunItem(run, { selectable = false, archived = false } = {}) {
+// --- Per-run status breakdown + AI-cost badges (runs & leads) ---
+// These follow one shared pattern: renderX() reads from an id-keyed cache in
+// `state`; on a cache miss it renders an (empty/placeholder) element tagged
+// with a data-* id, fires the fetch, and once it resolves patches every
+// matching element already in the DOM in place - no full re-render needed,
+// and repeat calls (render() runs after almost every action) never re-fetch
+// once an id is cached (success or failure).
+
+function safeAttrSelectorValue(value) {
+  const raw = String(value ?? '');
+  return window.CSS?.escape ? CSS.escape(raw) : raw.replace(/(["\\])/g, '\\$1');
+}
+
+// Coarse "has anyone actually worked this lead yet" split used for the
+// per-run summary - mirrors the same statuses store.js's getWorkerDetail()
+// leaves untouched right after a run is created/leads are assigned.
+const RUN_SUMMARY_UNTOUCHED_STATUSES = new Set(['new', 'seen', 'not_called', 'reserved']);
+
+function computeRunStatusSummary(companies) {
+  const list = Array.isArray(companies) ? companies : [];
+  let notProcessed = 0;
+  let processed = 0;
+  let withComments = 0;
+  list.forEach((company) => {
+    if (RUN_SUMMARY_UNTOUCHED_STATUSES.has(company.status || 'new')) notProcessed += 1;
+    else processed += 1;
+    if (company.last_comment?.text) withComments += 1;
+  });
+  return { notProcessed, processed, withComments, total: list.length };
+}
+
+// No batched "status breakdown per run" endpoint exists on the backend - the
+// run object only carries pool metrics (found_count/new_count/duplicate_count),
+// not a CRM-status breakdown. GET /api/admin/runs/:id (no page/pageSize query)
+// returns the run's full company list unpaginated, so we fetch that once per
+// run id and derive the breakdown client-side. Acceptable per-run request for
+// this admin-only, low-traffic view.
+function ensureRunStatusSummary(runId) {
+  const id = String(runId || '');
+  if (!id || state.runStatusSummaries.has(id) || state.runStatusSummariesLoading.has(id)) return;
+  state.runStatusSummariesLoading.add(id);
+  api(`/api/admin/runs/${encodeURIComponent(id)}`)
+    .then((data) => state.runStatusSummaries.set(id, computeRunStatusSummary(data.companies)))
+    .catch(() => state.runStatusSummaries.set(id, null))
+    .finally(() => {
+      state.runStatusSummariesLoading.delete(id);
+      patchRunStatusSummaryBadges(id);
+    });
+}
+
+function runStatusSummaryText(summary) {
+  return tr('admin_run_status_summary_template', {
+    notProcessed: summary.notProcessed,
+    processed: summary.processed,
+    comments: summary.withComments
+  });
+}
+
+function runStatusSummaryBadge(run) {
+  const id = String(run.id);
+  const summary = state.runStatusSummaries.get(id);
+  if (summary === undefined) {
+    ensureRunStatusSummary(id);
+    return `<div class="muted run-status-summary" data-run-status-summary="${escapeAttribute(id)}"></div>`;
+  }
+  if (!summary) return '';
+  return `<div class="muted run-status-summary" data-run-status-summary="${escapeAttribute(id)}">${escapeHtml(runStatusSummaryText(summary))}</div>`;
+}
+
+function patchRunStatusSummaryBadges(runId) {
+  const id = String(runId);
+  const summary = state.runStatusSummaries.get(id);
+  document.querySelectorAll(`[data-run-status-summary="${safeAttrSelectorValue(id)}"]`).forEach((node) => {
+    if (summary) node.textContent = runStatusSummaryText(summary);
+    else node.remove();
+  });
+}
+
+function formatAiCost(cost) {
+  return `$${Number(cost || 0).toFixed(2)}`;
+}
+
+function ensureRunAiCost(runId) {
+  const id = String(runId || '');
+  if (!id || state.runAiCosts.has(id) || state.runAiCostsLoading.has(id)) return;
+  state.runAiCostsLoading.add(id);
+  api(`/api/admin/ai-usage/run/${encodeURIComponent(id)}`)
+    .then((data) => state.runAiCosts.set(id, data))
+    .catch(() => state.runAiCosts.set(id, null))
+    .finally(() => {
+      state.runAiCostsLoading.delete(id);
+      patchRunAiCostBadges(id);
+    });
+}
+
+function runAiCostBadge(run) {
+  const id = String(run.id);
+  const usage = state.runAiCosts.get(id);
+  if (usage === undefined) {
+    ensureRunAiCost(id);
+    return `<span class="chip mono" data-ai-cost-run="${escapeAttribute(id)}"></span>`;
+  }
+  if (!usage || !usage.requestCount) return '';
+  return `<span class="chip mono" data-ai-cost-run="${escapeAttribute(id)}">${escapeHtml(tr('admin_ai_cost_label'))} ${escapeHtml(formatAiCost(usage.totalCost))}</span>`;
+}
+
+// Single-item detail view (run detail header) variant of runAiCostBadge():
+// always renders a labelled line (with an explicit "no AI usage" fallback)
+// instead of disappearing when there's no usage yet, since a blank line in a
+// detail header reads as a rendering bug while a blank chip in a dense list
+// doesn't.
+function runAiCostLabel(run) {
+  const id = String(run.id);
+  const usage = state.runAiCosts.get(id);
+  if (usage === undefined) {
+    ensureRunAiCost(id);
+    return `<span data-ai-cost-run-text="${escapeAttribute(id)}">${escapeHtml(tr('admin_loading_generic'))}</span>`;
+  }
+  const text = usage && usage.requestCount ? formatAiCost(usage.totalCost) : tr('admin_value_no_ai_usage');
+  return `<span data-ai-cost-run-text="${escapeAttribute(id)}">${escapeHtml(text)}</span>`;
+}
+
+function patchRunAiCostBadges(runId) {
+  const id = String(runId);
+  const usage = state.runAiCosts.get(id);
+  document.querySelectorAll(`[data-ai-cost-run="${safeAttrSelectorValue(id)}"]`).forEach((node) => {
+    if (usage && usage.requestCount) node.textContent = `${tr('admin_ai_cost_label')} ${formatAiCost(usage.totalCost)}`;
+    else node.remove();
+  });
+  document.querySelectorAll(`[data-ai-cost-run-text="${safeAttrSelectorValue(id)}"]`).forEach((node) => {
+    node.textContent = usage && usage.requestCount ? formatAiCost(usage.totalCost) : tr('admin_value_no_ai_usage');
+  });
+}
+
+function ensureCompanyAiCost(companyId) {
+  const id = String(companyId || '');
+  if (!id || state.companyAiCosts.has(id) || state.companyAiCostsLoading.has(id)) return;
+  state.companyAiCostsLoading.add(id);
+  api(`/api/admin/ai-usage/company/${encodeURIComponent(id)}`)
+    .then((data) => state.companyAiCosts.set(id, data))
+    .catch(() => state.companyAiCosts.set(id, null))
+    .finally(() => {
+      state.companyAiCostsLoading.delete(id);
+      patchCompanyAiCostBadges(id);
+    });
+}
+
+function companyAiCostBadge(companyId) {
+  const id = String(companyId || '');
+  if (!id) return '';
+  const usage = state.companyAiCosts.get(id);
+  if (usage === undefined) {
+    ensureCompanyAiCost(id);
+    return `<span class="chip mono" data-ai-cost-company="${escapeAttribute(id)}"></span>`;
+  }
+  if (!usage || !usage.requestCount) return '';
+  return `<span class="chip mono" data-ai-cost-company="${escapeAttribute(id)}">${escapeHtml(tr('admin_ai_cost_label'))} ${escapeHtml(formatAiCost(usage.totalCost))}</span>`;
+}
+
+// Single-item detail view (lead modal) variant of companyAiCostBadge() - see
+// runAiCostLabel() above for why the detail view gets an explicit fallback
+// instead of a badge that silently disappears.
+function companyAiCostLabel(companyId) {
+  const id = String(companyId || '');
+  if (!id) return escapeHtml(tr('admin_value_no_ai_usage'));
+  const usage = state.companyAiCosts.get(id);
+  if (usage === undefined) {
+    ensureCompanyAiCost(id);
+    return `<span data-ai-cost-company-text="${escapeAttribute(id)}">${escapeHtml(tr('admin_loading_generic'))}</span>`;
+  }
+  const text = usage && usage.requestCount ? formatAiCost(usage.totalCost) : tr('admin_value_no_ai_usage');
+  return `<span data-ai-cost-company-text="${escapeAttribute(id)}">${escapeHtml(text)}</span>`;
+}
+
+function patchCompanyAiCostBadges(companyId) {
+  const id = String(companyId);
+  const usage = state.companyAiCosts.get(id);
+  document.querySelectorAll(`[data-ai-cost-company="${safeAttrSelectorValue(id)}"]`).forEach((node) => {
+    if (usage && usage.requestCount) node.textContent = `${tr('admin_ai_cost_label')} ${formatAiCost(usage.totalCost)}`;
+    else node.remove();
+  });
+  document.querySelectorAll(`[data-ai-cost-company-text="${safeAttrSelectorValue(id)}"]`).forEach((node) => {
+    node.textContent = usage && usage.requestCount ? formatAiCost(usage.totalCost) : tr('admin_value_no_ai_usage');
+  });
+}
+
+function renderRunItem(run, { selectable = false, archived = false, withStatusSummary = false } = {}) {
   const title = (run.niches || []).join(', ') || tr('admin_run_default_title');
   const badges = [
     `<span class="badge">${escapeHtml(formatRunStatusLabel(run.status))}</span>`,
@@ -927,8 +1125,9 @@ function renderRunItem(run, { selectable = false, archived = false } = {}) {
       <div>
         <strong>${escapeHtml(title)}</strong>
         <div class="muted">${escapeHtml(formatDate(run.started_at))} · ${escapeHtml(run.city || '-')} · ${escapeHtml(tr('admin_run_worker_colon'))} ${escapeHtml(run.worker_id || '-')}</div>
-        <div class="run-badges">${badges}</div>
+        <div class="run-badges">${badges}${runAiCostBadge(run)}</div>
         <div>${escapeHtml(tr('admin_run_found_label'))}: ${escapeHtml(run.found_count || 0)} · ${escapeHtml(tr('admin_run_new_label'))}: ${escapeHtml(run.new_count || 0)} · ${escapeHtml(tr('admin_run_duplicates_label'))}: ${escapeHtml(run.duplicate_count || 0)} · ${escapeHtml(tr('admin_run_wrong_category_label'))}: ${escapeHtml(run.skipped_wrong_category || 0)}</div>
+        ${withStatusSummary ? runStatusSummaryBadge(run) : ''}
       </div>
       <div class="inline-actions">
         <button class="button secondary" data-open-run="${escapeAttribute(run.id)}">${escapeHtml(tr('btn_open'))}</button>
@@ -959,6 +1158,7 @@ function renderLeadRow(record, { selectable = true } = {}) {
         ${inbound ? `<span class="chip ok-chip">${escapeHtml(tr('admin_inbound_chip'))}</span>` : ''}
         <span class="chip">${escapeHtml(poolLabel(poolState))}</span>
         <span class="muted mono">AI ${escapeHtml(aiScore(record))} · ${escapeHtml(tr('admin_lead_category_score_label'))} ${escapeHtml(categoryScore(record))}</span>
+        ${companyAiCostBadge(record.id)}
         ${inboundText ? `<div class="muted">${escapeHtml(inboundText)}</div>` : ''}
       </td>
       <td>${statusSelect(record)}</td>
@@ -1127,6 +1327,7 @@ function renderRunDetail() {
         <h3>${escapeHtml((run.niches || []).join(', ') || tr('admin_run_default_title'))}</h3>
         <p class="muted">${escapeHtml(formatDate(run.started_at))} · ${escapeHtml(tr('admin_run_worker_colon'))} ${escapeHtml(run.worker_id || '-')} · ${escapeHtml(run.city || '-')} · ${escapeHtml(tr('admin_run_radius_label'))} ${escapeHtml(run.radiusKm || '-')} km</p>
         ${queries.length ? `<p class="muted"><strong>${escapeHtml(tr('admin_run_search_queries_label'))}</strong> ${escapeHtml(queries.slice(0, 10).join(' | '))}</p>` : ''}
+        <p><strong>${escapeHtml(tr('admin_label_ai_usage_colon'))}</strong> ${runAiCostLabel(run)}</p>
       </div>
       <div class="inline-actions">
         <button class="button danger" data-delete-run="${escapeAttribute(run.id)}">${escapeHtml(tr('btn_return_to_pool'))}</button>
@@ -1350,7 +1551,7 @@ function renderAcademyOverview() {
   const body = els.academyOverviewBody;
   if (!body) return;
   if (!state.workers.length) {
-    body.innerHTML = `<tr><td colspan="12" class="muted">${escapeHtml(tr('admin_no_workers'))}</td></tr>`;
+    body.innerHTML = `<tr><td colspan="13" class="muted">${escapeHtml(tr('admin_no_workers'))}</td></tr>`;
     return;
   }
   body.innerHTML = state.workers
@@ -1371,6 +1572,7 @@ function renderAcademyOverview() {
           <td>${escapeHtml(academy.aiTrainingCompleted || 0)}/${escapeHtml(academy.aiTrainingSessions || 0)}</td>
           <td>${escapeHtml(academy.averageAiTrainingScore || 0)}%</td>
           <td>${escapeHtml(academy.aiMeetingBookedRate || 0)}%</td>
+          <td>${escapeHtml(tr('admin_academy_ai_usage_template', { count: academy.aiUsageCount || 0, cost: (academy.aiUsageCost || 0).toFixed(2) }))}</td>
           <td>${escapeHtml(formatDate(academy.lastActiveAt))}</td>
           <td><button class="button secondary small-button" data-open-worker-academy="${escapeAttribute(worker.workerId)}">${escapeHtml(tr('admin_btn_open_profile'))}</button></td>
         </tr>
@@ -1661,6 +1863,7 @@ function renderLeadModal() {
           <p><strong>${escapeHtml(tr('admin_label_should_call'))}</strong> ${data.should_call === false || ai.shouldCall === false ? escapeHtml(tr('admin_value_no')) : escapeHtml(tr('admin_value_yes_check'))}</p>
           <p><strong>${escapeHtml(tr('admin_label_ai_score'))}</strong> ${escapeHtml(aiScore(record))}</p>
           <p><strong>${escapeHtml(tr('admin_label_opening'))}</strong> ${escapeHtml(ai.personalizedCallIntro || ai.personal_argument || record.analysis?.first_message_pl || '-')}</p>
+          <p><strong>${escapeHtml(tr('admin_label_ai_usage_colon'))}</strong> ${companyAiCostLabel(record.id)}</p>
         </section>
         <section class="sub-panel">
           <h3>${escapeHtml(tr('admin_lead_history_heading'))}</h3>
@@ -2224,6 +2427,7 @@ document.addEventListener('submit', async (event) => {
 
 bindLeadTable(els.leadsBody);
 bindLeadTable(els.runDetail);
+if (els.workerSavedList) bindLeadTable(els.workerSavedList);
 
 async function markAllInboxRead() {
   const unread = inboxSubmissions().filter(inboxIsUnread);

@@ -205,6 +205,10 @@ const state = {
   finalSubmitError: '',
   serviceQuizAnswers: {},
   openAnswers: {},
+  // Per-module "let me redo this quiz" override (see item 2: renderScenario/
+  // renderQualification/renderFinal gate on completedSet() and show a passed
+  // summary instead of the live quiz UI unless the module id is in this set).
+  retakeRequested: new Set(),
   qualificationTab: 'leads',
   matchAnswers: {},
   catalogServiceId: null,
@@ -525,6 +529,43 @@ async function loadProgress() {
   }
 
   if (els.workerName) els.workerName.value = state.progress.displayName || state.progress.userId;
+  rehydrateFinalExamState();
+}
+
+// state.finalResult (the in-page "passed/failed" banner state read by the
+// item-2 gating in renderFinal) used to be in-memory only, initialized to
+// null and never restored here - so reloading the page after already passing
+// the final exam showed a blank live exam instead of the passed summary.
+// completedSet().has('final') (loaded from server progress above) is enough
+// for the renderFinal gate on its own, but state.finalResult is reconstructed
+// too so anything reading it directly (and the retake flow, which clears it)
+// sees a consistent picture immediately after load rather than only after a
+// fresh submit. Individual single/case final-exam answers are never persisted
+// per-question (only the aggregate quizScores.final the server computes on
+// submit - see /api/academy/final-exam/submit in server.js), so
+// state.finalAnswers/state.matchAnswers can't be rebuilt from server data and
+// are intentionally left at their fresh-state defaults. Per-question OPEN
+// answers on the final exam ARE persisted individually (quizScores['final-q
+// <n>'], written by gradeOpenAnswer) and are restored into state.openAnswers
+// below so a reload shows "already graded" rather than a blank textarea.
+function rehydrateFinalExamState() {
+  const quizScores = state.progress.quizScores || {};
+  const finalScore = Number(quizScores.final);
+  state.finalResult = Number.isFinite(finalScore) ? { score: finalScore, passed: completedSet().has('final') } : null;
+
+  Object.keys(quizScores).forEach((key) => {
+    const match = key.match(/^final-q(\d+)$/);
+    if (!match) return;
+    const score = Number(quizScores[key]);
+    if (!Number.isFinite(score)) return;
+    state.openAnswers[key] = {
+      draft: '',
+      loading: false,
+      result: { score, feedback: '', strengths: [], improvements: [] },
+      error: '',
+      gradedText: ''
+    };
+  });
 }
 
 async function saveProgress(extra = {}) {
@@ -548,11 +589,37 @@ function isUnlocked(index) {
   return done.has(modules[index - 1].id) || done.has(modules[index].id);
 }
 
+// Positive-confirmation copy for the "section complete, next section unlocked"
+// toast (see completeModule below). Reuses the existing #academyLockToast
+// element/showLockToast() mechanism - its dark neutral toast styling already
+// works for a non-alarming confirmation message, and reusing it means the
+// one-time/auto-dismiss behavior comes for free without any new CSS. Kept as
+// a local {pl,ru} template (like WHAT_TO_PROPOSE_TEMPLATE etc. above) rather
+// than a shared/i18n.js key, since this round only touches app.js/index.html.
+const MODULE_COMPLETION_TOAST_TEMPLATE = {
+  pl: (title) => `Sekcja ukończona! Otworzono kolejną sekcję: ${title}`,
+  ru: (title) => `Раздел пройден! Открыт следующий раздел: ${title}`
+};
+
 function completeModule(moduleId) {
   const done = completedSet();
   done.add(moduleId);
   state.progress.completedModules = [...done];
+  // A fresh completion re-enters "passed" gating (see renderScenario/
+  // renderQualification/renderFinal) - drop any earlier retake request for
+  // this module so it shows the passed summary again, not a stale live quiz.
+  state.retakeRequested.delete(moduleId);
   saveProgress();
+
+  const thisIndex = moduleIndexById(moduleId);
+  const nextIndex = thisIndex + 1;
+  const nextModule = modules[nextIndex];
+  if (nextModule && isUnlocked(nextIndex)) {
+    state.activeModule = nextIndex;
+    showLockToast(MODULE_COMPLETION_TOAST_TEMPLATE[contentLang()](moduleTitle(nextModule)));
+  }
+  // If this was the last module (final), there's nothing further to unlock -
+  // renderFinal already shows its own pass/fail state via state.finalResult.
   render();
 }
 
@@ -1759,7 +1826,11 @@ function renderServiceQuizQuestion(question, key) {
 
 function renderOpenQuestion(question, key) {
   const tr = window.AuraI18n?.tr || ((key) => key);
-  const entry = state.openAnswers[key] || { draft: '', loading: false, result: null, error: '' };
+  const entry = state.openAnswers[key] || { draft: '', loading: false, result: null, error: '', gradedText: null };
+  // Same guard as gradeOpenAnswer's short-circuit: once a result exists for
+  // the exact draft text on screen, the button goes idle-disabled instead of
+  // allowing an identical repeat click; editing the draft re-enables it.
+  const isUnchangedSinceGrade = Boolean(entry.result && entry.gradedText === entry.draft);
   return `
     <div class="quiz-question open-question">
       <p class="quiz-question-text"><span class="pill">${escapeHtml(tr('academy_open_question_pill'))}</span> ${escapeHtml(bi(question.question))}</p>
@@ -1767,7 +1838,9 @@ function renderOpenQuestion(question, key) {
         entry.loading ? 'disabled' : ''
       }>${escapeHtml(entry.draft || '')}</textarea>
       <div class="action-row">
-        <button class="secondary" data-grade-answer="${escapeAttribute(key)}" ${entry.loading || !(entry.draft || '').trim() ? 'disabled' : ''}>
+        <button class="secondary" data-grade-answer="${escapeAttribute(key)}" ${
+          entry.loading || !(entry.draft || '').trim() || isUnchangedSinceGrade ? 'disabled' : ''
+        }>
           ${escapeHtml(entry.loading ? tr('academy_open_checking') : tr('academy_open_check_ai'))}
         </button>
         ${entry.result ? `<span class="pill">${escapeHtml(entry.result.score)}/100</span>` : ''}
@@ -1859,8 +1932,43 @@ function renderArticle(module) {
   `;
 }
 
+// Shown by renderScenario/renderQualification/renderFinal instead of the live
+// quiz body once a module is already completed, unless the trainee explicitly
+// asked to redo it (state.retakeRequested - see the data-retake-module click
+// handler). Compact confirmation + a retake button is the ONLY way back into
+// a completed quiz; plain navigation never silently re-enters a live quiz.
+const QUIZ_PASSED_LABEL = { pl: 'Test ukończony ✓', ru: 'Тест пройден ✓' };
+const QUIZ_RETAKE_BUTTON_LABEL = { pl: 'Powtórz test', ru: 'Пройти заново' };
+
+function renderQuizPassedSummary(module, { eyebrowKey, heading, score } = {}) {
+  const tr = window.AuraI18n?.tr || ((key) => key);
+  const hasScore = Number.isFinite(score);
+  return `
+    <div class="lesson-top">
+      <div>
+        <p class="eyebrow">${escapeHtml(tr(eyebrowKey || 'academy_scenario_eyebrow'))}</p>
+        <h2>${escapeHtml(heading || moduleTitle(module))}</h2>
+      </div>
+    </div>
+    <div class="content-card quiz-passed-summary">
+      <p class="feedback ok">${escapeHtml(bi(QUIZ_PASSED_LABEL))}${hasScore ? ` — ${score}%` : ''}</p>
+      <div class="action-row">
+        <button class="secondary" data-retake-module="${escapeAttribute(module.id)}">${escapeHtml(bi(QUIZ_RETAKE_BUTTON_LABEL))}</button>
+      </div>
+    </div>
+  `;
+}
+
 function renderScenario(module) {
   const tr = window.AuraI18n?.tr || ((key) => key);
+  if (completedSet().has(module.id) && !state.retakeRequested.has(module.id)) {
+    const rawScore = Number(state.progress.quizScores?.[module.id]);
+    return renderQuizPassedSummary(module, {
+      eyebrowKey: 'academy_scenario_eyebrow',
+      heading: moduleTitle(module),
+      score: Number.isFinite(rawScore) ? rawScore : NaN
+    });
+  }
   const set = SCENARIO_BANK[module.scenarioSet] || [];
   if (!set.length) {
     return `
@@ -1900,8 +2008,30 @@ function renderScenario(module) {
   `;
 }
 
+// 'qualification' completion writes two families of quizScores keys: the
+// plain 'qualification' key (leads tab, overwritten per-answer - see the
+// data-lead click handler) and 'qualification-match-<index>' (match tab, one
+// per case - see the data-match-service click handler). Average whatever of
+// those exist for the passed-summary score; completion itself is still
+// tracked the same way as every other module, via completedSet().
+function qualificationScore() {
+  const values = Object.entries(state.progress.quizScores || {})
+    .filter(([key]) => key === 'qualification' || key.startsWith('qualification-match-'))
+    .map(([, value]) => Number(value))
+    .filter(Number.isFinite);
+  if (!values.length) return NaN;
+  return Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
+}
+
 function renderQualification(module) {
   const tr = window.AuraI18n?.tr || ((key) => key);
+  if (completedSet().has(module.id) && !state.retakeRequested.has(module.id)) {
+    return renderQuizPassedSummary(module, {
+      eyebrowKey: 'academy_qualification_eyebrow',
+      heading: tr('academy_qualification_h2'),
+      score: qualificationScore()
+    });
+  }
   const tab = state.qualificationTab === 'match' ? 'match' : 'leads';
   return `
     <div class="lesson-top">
@@ -2056,6 +2186,14 @@ function renderFinalExamQuestion(question, qIndex) {
 
 function renderFinal(module) {
   const tr = window.AuraI18n?.tr || ((key) => key);
+  if (completedSet().has('final') && !state.retakeRequested.has('final')) {
+    const rawScore = Number(state.progress.quizScores?.final);
+    return renderQuizPassedSummary(module, {
+      eyebrowKey: 'academy_final_eyebrow',
+      heading: tr('academy_final_h2'),
+      score: Number.isFinite(rawScore) ? rawScore : NaN
+    });
+  }
   const total = FINAL_EXAM.length;
   const singleCaseIndexes = FINAL_EXAM.map((q, i) => ({ q, i })).filter(({ q }) => q.type !== 'open');
   const openIndexes = FINAL_EXAM.map((q, i) => ({ q, i })).filter(({ q }) => q.type === 'open');
@@ -2430,6 +2568,24 @@ document.addEventListener('click', (event) => {
   const complete = event.target.closest('[data-complete]');
   if (complete) {
     completeModule(complete.dataset.complete);
+    return;
+  }
+
+  // "Powtórz test" / "Пройти заново" - the only way back into an
+  // already-completed quiz (see renderQuizPassedSummary / item 2 gating).
+  const retakeButton = event.target.closest('[data-retake-module]');
+  if (retakeButton) {
+    const moduleId = retakeButton.dataset.retakeModule;
+    state.retakeRequested.add(moduleId);
+    state.feedback = '';
+    state.feedbackOk = null;
+    if (moduleId === 'final') {
+      // Clear the stale pass/fail banner so the reopened live quiz doesn't
+      // show last attempt's verdict alongside fresh answer inputs.
+      state.finalResult = null;
+      state.finalSubmitError = '';
+    }
+    render();
   }
 });
 
@@ -2451,8 +2607,12 @@ function resolveQuizQuestionByKey(key) {
 
 async function gradeOpenAnswer(key, question) {
   const tr = window.AuraI18n?.tr || ((k) => k);
-  const entry = state.openAnswers[key] || (state.openAnswers[key] = { draft: '', loading: false, result: null, error: '' });
+  const entry = state.openAnswers[key] || (state.openAnswers[key] = { draft: '', loading: false, result: null, error: '', gradedText: null });
   if (!entry.draft?.trim() || entry.loading) return;
+  // Dedupe guard: if the currently displayed result was already produced
+  // from this exact draft text, don't re-fire the paid grading call - only
+  // an actual edit (draft !== gradedText) should re-enable grading.
+  if (entry.result && entry.gradedText === entry.draft) return;
   entry.loading = true;
   entry.error = '';
   render();
@@ -2463,6 +2623,7 @@ async function gradeOpenAnswer(key, question) {
     });
     entry.result = data.result;
     entry.error = '';
+    entry.gradedText = entry.draft;
     state.progress.quizScores[key] = data.result.score;
     saveProgress();
   } catch (error) {
@@ -2501,6 +2662,9 @@ async function submitFinalExam() {
       state.progress = { ...state.progress, ...data.progress };
       localStorage.setItem(ACADEMY_PROGRESS_KEY, JSON.stringify(state.progress));
     }
+    // Passing clears any earlier retake request so the next visit shows the
+    // passed summary (item 2 gating) instead of re-entering the live quiz.
+    if (data.passed) state.retakeRequested.delete('final');
   } catch (error) {
     // See round-6 QA finding 4: this used to fake a "0%, failed" result on a
     // plain API/network failure, which reads as "you failed the exam" rather
@@ -2521,11 +2685,13 @@ document.addEventListener('input', (event) => {
   const openAnswerField = event.target.closest('[data-open-answer]');
   if (openAnswerField) {
     const key = openAnswerField.dataset.openAnswer;
-    if (!state.openAnswers[key]) state.openAnswers[key] = { draft: '', loading: false, result: null, error: '' };
-    state.openAnswers[key].draft = openAnswerField.value;
+    if (!state.openAnswers[key]) state.openAnswers[key] = { draft: '', loading: false, result: null, error: '', gradedText: null };
+    const entry = state.openAnswers[key];
+    entry.draft = openAnswerField.value;
     const container = openAnswerField.closest('.open-question');
     const gradeButtonEl = container?.querySelector('[data-grade-answer]');
-    if (gradeButtonEl) gradeButtonEl.disabled = !openAnswerField.value.trim() || state.openAnswers[key].loading;
+    const isUnchangedSinceGrade = Boolean(entry.result && entry.gradedText === entry.draft);
+    if (gradeButtonEl) gradeButtonEl.disabled = !openAnswerField.value.trim() || entry.loading || isUnchangedSinceGrade;
   }
 });
 

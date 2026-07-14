@@ -27,6 +27,11 @@ module.exports = {
       // Restart if the process leaks past this - better a 2s blip than a
       // slow OOM that eventually takes the whole machine down.
       max_memory_restart: '800M',
+      // Give server.js's SIGTERM handler (httpServer.close(), draining
+      // in-flight requests) enough time to finish before pm2 escalates to
+      // SIGKILL. Must stay comfortably above the 9s hard-timeout fallback
+      // in server.js's gracefulShutdown().
+      kill_timeout: 10000,
       out_file: '.runtime/pm2-out.log',
       error_file: '.runtime/pm2-err.log',
       merge_logs: true,
