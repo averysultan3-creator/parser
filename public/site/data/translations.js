@@ -70,9 +70,9 @@ export const siteTranslations = {
     },
     whyUs: {
       eyebrow: 'Dlaczego my',
-      title: 'Nie robimy tylko ładnych stron.',
+      title: 'Robimy dużo więcej niż ładne strony.',
       subtitle:
-        'Budujemy systemy, które mają pomagać w zdobywaniu klientów. Myślimy biznesowo, nie tylko wizualnie.'
+        'Budujemy systemy, które mają pomagać w zdobywaniu klientów. Myślimy najpierw biznesowo, potem wizualnie.'
     },
     quiz: {
       eyebrow: 'Bezpłatna analiza',
@@ -298,7 +298,7 @@ export const siteTranslations = {
     },
     whyUs: {
       eyebrow: 'Почему мы',
-      title: 'Мы делаем не просто красивые сайты.',
+      title: 'Мы делаем намного больше, чем просто красивые сайты.',
       subtitle:
         'Мы собираем системы, которые помогают бизнесу получать клиентов. Сначала логика и рост, потом визуал.'
     },

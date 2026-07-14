@@ -2,6 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import path from 'node:path';
 import fs from 'node:fs';
+import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { performance } from 'node:perf_hooks';
 import { AsyncLocalStorage } from 'node:async_hooks';
@@ -11,9 +12,30 @@ import robotsParser from 'robots-parser';
 import * as store from './store.js';
 import { getPortfolioProjects } from './public/site/data/portfolio.js';
 import { getServiceCategories } from './public/site/data/services.js';
+import { FINAL_EXAM } from './public/academy/data/final-exam.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Crash safety net: this single process serves the parser, academy and admin
+// panel to every worker/admin at once (and now runs behind a public Cloudflare
+// tunnel with concurrent users). Without these handlers, one unhandled promise
+// rejection anywhere - a flaky Google Places/CEIDG/OpenAI call, a malformed
+// response - kills the whole Node process and takes the site down for everyone
+// until a human notices and restarts it by hand. Log and keep serving instead.
+process.on('unhandledRejection', (reason, promise) => {
+  console.error(`[unhandledRejection] ${new Date().toISOString()}:`, reason instanceof Error ? reason.stack || reason.message : reason);
+});
+process.on('uncaughtException', (error) => {
+  console.error(`[uncaughtException] ${new Date().toISOString()}:`, error?.stack || error);
+  // Do NOT process.exit() here: an uncaughtException means some in-flight
+  // request is now in an unknown state, but the HTTP server and every other
+  // in-flight request are still healthy. Exiting would turn one bad request
+  // into a full outage for every concurrent user; logging and continuing
+  // trades a theoretical "the process could be in a corrupted state" risk
+  // (real crash-worthy corruption is astronomically rare in an Express app
+  // like this one) for actual uptime under real concurrent load.
+});
 
 const app = express();
 const PORT = Number(process.env.PORT || 4317);
@@ -24,7 +46,34 @@ const SEARCH_MODEL = process.env.OPENAI_SEARCH_MODEL || 'gpt-5.5';
 const USER_AGENT =
   process.env.PARSER_USER_AGENT || 'AuraParser/1.0 local lead audit tool';
 const ADMIN_LOGIN = String(process.env.ADMIN_LOGIN || 'admin');
-const ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || 'Parol159');
+// No hardcoded default password: this admin panel is reachable over the
+// public Cloudflare Tunnel, so a well-known fallback would be a real account
+// takeover risk. If ADMIN_PASSWORD is missing, generate a random one once
+// and persist it to .env so it survives restarts instead of rotating every
+// boot and locking the operator out.
+const ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || ensureAdminPassword());
+
+function ensureAdminPassword() {
+  const generated = crypto.randomBytes(18).toString('base64url');
+  const envPath = path.join(__dirname, '.env');
+  try {
+    const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf8') : '';
+    const withoutAdminPassword = existing
+      .split('\n')
+      .filter((line) => !/^ADMIN_PASSWORD=/.test(line))
+      .join('\n');
+    const separator = withoutAdminPassword && !withoutAdminPassword.endsWith('\n') ? '\n' : '';
+    fs.writeFileSync(envPath, `${withoutAdminPassword}${separator}ADMIN_PASSWORD=${generated}\n`);
+  } catch (error) {
+    console.error(`Could not persist a generated ADMIN_PASSWORD to .env: ${error.message}`);
+  }
+  console.log('='.repeat(72));
+  console.log('No ADMIN_PASSWORD was set in .env - generated one and saved it there.');
+  console.log(`Admin login:    ${ADMIN_LOGIN}`);
+  console.log(`Admin password: ${generated}`);
+  console.log('='.repeat(72));
+  return generated;
+}
 const RESPECT_ROBOTS = String(process.env.RESPECT_ROBOTS_TXT || 'true') !== 'false';
 const MAX_ITEMS = Number(process.env.MAX_ITEMS_PER_RUN || 100);
 const MAX_DISCOVERY_ITEMS = Number(process.env.MAX_DISCOVERY_ITEMS || 150);
@@ -94,7 +143,7 @@ const CITY_PRESETS = {
   warszawa: { label: 'Warszawa', lat: 52.2297, lng: 21.0122, country: 'Polska', regionCode: 'PL', languageCode: 'pl' },
   warsaw: { label: 'Warszawa', lat: 52.2297, lng: 21.0122, country: 'Polska', regionCode: 'PL', languageCode: 'pl' },
   krakow: { label: 'Kraków', lat: 50.0647, lng: 19.945, country: 'Polska', regionCode: 'PL', languageCode: 'pl' },
-  'krakow,polska': { label: 'Kraków', lat: 50.0647, lng: 19.945, country: 'Polska', regionCode: 'PL', languageCode: 'pl' },
+  krakowpolska: { label: 'Kraków', lat: 50.0647, lng: 19.945, country: 'Polska', regionCode: 'PL', languageCode: 'pl' },
   wroclaw: { label: 'Wrocław', lat: 51.1079, lng: 17.0385, country: 'Polska', regionCode: 'PL', languageCode: 'pl' },
   gdansk: { label: 'Gdańsk', lat: 54.352, lng: 18.6466, country: 'Polska', regionCode: 'PL', languageCode: 'pl' },
   poznan: { label: 'Poznań', lat: 52.4064, lng: 16.9252, country: 'Polska', regionCode: 'PL', languageCode: 'pl' },
@@ -203,7 +252,10 @@ function normalizePresetKey(value) {
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z]/g, '');
+    // Keep Latin (after diacritic-stripping) and Cyrillic letters - a plain
+    // [^a-z] filter used to silently drop Cyrillic entirely, so country
+    // presets keyed by their Cyrillic name (e.g. "\u0423\u043a\u0440\u0430\u0438\u043d\u0430") could never match.
+    .replace(/[^a-z\u0400-\u04ff]/g, '');
 }
 
 function getCityPreset(city) {
@@ -212,6 +264,16 @@ function getCityPreset(city) {
 
 function getCountryPreset(country) {
   return COUNTRY_PRESETS[normalizePresetKey(country)] || null;
+}
+
+// CEIDG is the Polish sole-trader registry API - calling it for a Ukraine
+// search just wastes a request/returns nothing useful, so every CEIDG call
+// site is gated on this instead of firing regardless of country.
+function isPolandDiscoveryRegion(city) {
+  const cityPreset = getCityPreset(city);
+  const countryPreset = getCountryPreset(getDiscoveryContext().country) || (cityPreset ? getCountryPreset(cityPreset.country) : null);
+  const regionCode = cityPreset?.regionCode || countryPreset?.regionCode || 'PL';
+  return regionCode !== 'UA';
 }
 
 function findCategoryDefinition(value) {
@@ -630,13 +692,20 @@ function createDiscoveryJob(meta) {
       radiusKm: meta.radiusKm || 0,
       sourceFocus: meta.sourceFocus || 'internet',
       limit: meta.limit || 0,
-      workerId: meta.workerId || 'worker-default'
+      workerId: meta.workerId || 'worker-default',
+      siteStatus: meta.siteStatus || 'all',
+      minScore: meta.minScore || 0,
+      hasSocial: Boolean(meta.hasSocial),
+      hasPhone: Boolean(meta.hasPhone),
+      hasEmail: Boolean(meta.hasEmail)
     },
     progress: {
       message: 'Ожидание запуска...',
       currentNiche: '',
       currentSource: '',
       foundCount: 0,
+      analyzedCount: 0,
+      analysisTarget: 0,
       processedNiches: 0,
       totalNiches: Array.isArray(meta.niches) ? meta.niches.length : 0
     },
@@ -673,6 +742,16 @@ function updateDiscoveryJob(jobId, patch = {}) {
       0,
       job.meta.limit || MAX_DISCOVERY_ITEMS
     );
+  }
+  if (patch.analyzedCompanies) {
+    // Already-analyzed analyzeLead()-shaped results ({id, input,
+    // websiteResolution, analysis, ...}), already deduped upstream via
+    // store.claimCompaniesForRun (one record per company id). Must NOT go
+    // through normalizeItems()/uniqueCompanies() above - those expect flat
+    // raw company records (item.company/item.niche/...) and silently drop
+    // anything else (empty dedup key), which previously made a fully
+    // analyzed, non-empty batch show up as 0 companies in the job.
+    job.partialCompanies = patch.analyzedCompanies.slice(0, job.meta.limit || MAX_DISCOVERY_ITEMS);
   }
   if (patch.appendWarnings?.length) {
     job.warnings = unique([...job.warnings, ...patch.appendWarnings.map(cleanText)]).slice(0, 40);
@@ -728,22 +807,74 @@ const openai = process.env.OPENAI_API_KEY
 
 // AI roleplay training personas. Behavior prompt stays Polish-only (matches the
 // rest of the Academy deep content); label is what the worker sees in the picker.
+// serviceId ties a persona to a specific catalog service (public/site/data/services.js)
+// so trainees can practice a client type relevant to the service they're studying;
+// null means the persona is generic / not tied to one service.
+// difficulty: 'easy' | 'medium' | 'hard' — how much the persona resists before opening up.
+// readiness: 'cold' | 'warm' | 'hot' — how close the persona already is to booking a meeting.
 const AI_TRAINING_PERSONAS = [
-  { id: 'busy_owner', label: 'Zajęty właściciel', prompt: 'Jesteś zapracowanym właścicielem małej firmy. Masz mało czasu, mówisz krótko, chcesz szybko zakończyć rozmowę, ale nie jesteś wrogi.' },
-  { id: 'angry_owner', label: 'Zły właściciel', prompt: 'Jesteś rozdrażnionym właścicielem firmy, dostajesz dużo telefonów sprzedażowych i jesteś poirytowany. Mówisz szorstko, ale worker może cię udobruchać dobrym podejściem.' },
-  { id: 'skeptic', label: 'Sceptyk', prompt: 'Jesteś nieufny wobec telefonicznych ofert, wątpisz w wartość usługi, zadajesz dużo pytań kontrolnych zanim uwierzysz w cokolwiek.' },
-  { id: 'no_website', label: 'Klient bez strony', prompt: 'Prowadzisz firmę, nie masz własnej strony internetowej, korzystasz tylko z Facebooka. Jesteś otwarty na rozmowę o stronie, jeśli worker dobrze wyjaśni korzyść.' },
-  { id: 'old_website', label: 'Klient ze starą stroną', prompt: 'Masz stronę internetową sprzed kilku lat, uważasz że działa wystarczająco dobrze, trzeba cię przekonać, że warto ją odświeżyć.' },
-  { id: 'good_website', label: 'Klient z dobrą stroną', prompt: 'Masz nowoczesną, dobrze działającą stronę internetową i jesteś z niej zadowolony. Trudno cię zainteresować, chyba że worker zaproponuje coś poza samą stroną (reklama, automatyzacje, CRM).' },
-  { id: 'send_offer', label: 'Klient mówi "wyślij ofertę"', prompt: 'Od razu, na początku rozmowy, prosisz aby przesłać ofertę mailem i się rozłączyć. Worker musi cię zatrzymać na rozmowie zanim się zgodzisz.' },
-  { id: 'asks_price', label: 'Klient od razu pyta o cenę', prompt: 'Zanim worker cokolwiek wyjaśni, pytasz "ile to kosztuje?". Naciskasz na konkretną kwotę, worker powinien podać widełki i przejść do umówienia spotkania zamiast obiecywać dokładną cenę.' },
-  { id: 'no_marketing', label: 'Klient nie rozumie marketingu', prompt: 'Nie rozumiesz pojęć typu SEO, kampanie, lejki sprzedażowe. Worker musi tłumaczyć bardzo prostymi słowami, bez żargonu.' },
-  { id: 'has_agency', label: 'Klient ma już agencję', prompt: 'Współpracujesz już z inną agencją marketingową i jesteś względnie zadowolony. Trzeba dobrego argumentu, żeby w ogóle zgodzić się na rozmowę.' },
-  { id: 'interested_website', label: 'Klient zainteresowany stroną', prompt: 'Jesteś realnie zainteresowany nową stroną internetową, zadajesz konkretne pytania o proces i cenę, łatwo cię przekonać do spotkania.' },
-  { id: 'interested_ads', label: 'Klient zainteresowany reklamą', prompt: 'Interesuje cię głównie reklama (Google Ads / Meta Ads), pytasz o efekty i koszt kliknięcia, worker powinien skierować rozmowę do spotkania z ekspertem.' },
-  { id: 'wants_callback', label: 'Klient chce, żeby oddzwonić', prompt: 'Jesteś teraz zajęty i prosisz o oddzwonienie później. Worker powinien ustalić konkretny dzień i godzinę, a nie zostawić to open-ended.' },
-  { id: 'distrustful', label: 'Klient nie ufa', prompt: 'Podejrzewasz, że to oszustwo albo spam, pytasz skąd masz numer, jesteś podejrzliwy przez całą rozmowę, worker musi budować zaufanie krok po kroku.' },
-  { id: 'ready_to_meet', label: 'Klient gotowy na spotkanie', prompt: 'Jesteś pozytywnie nastawiony i szybko zgadzasz się na umówienie spotkania/konsultacji, jeśli worker tylko poprawnie poprowadzi rozmowę.' }
+  { id: 'busy_owner', label: { pl: 'Zajęty właściciel', ru: 'Занятый владелец' }, serviceId: null, difficulty: 'easy', readiness: 'cold', prompt: 'Jesteś zapracowanym właścicielem małej firmy. Masz mało czasu, mówisz krótko, chcesz szybko zakończyć rozmowę, ale nie jesteś wrogi.' },
+  { id: 'angry_owner', label: { pl: 'Zły właściciel', ru: 'Злой владелец' }, serviceId: null, difficulty: 'hard', readiness: 'cold', prompt: 'Jesteś rozdrażnionym właścicielem firmy, dostajesz dużo telefonów sprzedażowych i jesteś poirytowany. Mówisz szorstko, ale worker może cię udobruchać dobrym podejściem.' },
+  { id: 'skeptic', label: { pl: 'Sceptyk', ru: 'Скептик' }, serviceId: null, difficulty: 'medium', readiness: 'cold', prompt: 'Jesteś nieufny wobec telefonicznych ofert, wątpisz w wartość usługi, zadajesz dużo pytań kontrolnych zanim uwierzysz w cokolwiek.' },
+  { id: 'no_website', label: { pl: 'Klient bez strony', ru: 'Клиент без сайта' }, serviceId: 'websites', difficulty: 'easy', readiness: 'warm', prompt: 'Prowadzisz firmę, nie masz własnej strony internetowej, korzystasz tylko z Facebooka. Jesteś otwarty na rozmowę o stronie, jeśli worker dobrze wyjaśni korzyść.' },
+  { id: 'old_website', label: { pl: 'Klient ze starą stroną', ru: 'Клиент со старым сайтом' }, serviceId: 'websites', difficulty: 'medium', readiness: 'cold', prompt: 'Masz stronę internetową sprzed kilku lat, uważasz że działa wystarczająco dobrze, trzeba cię przekonać, że warto ją odświeżyć.' },
+  { id: 'good_website', label: { pl: 'Klient z dobrą stroną', ru: 'Клиент с хорошим сайтом' }, serviceId: 'websites', difficulty: 'hard', readiness: 'cold', prompt: 'Masz nowoczesną, dobrze działającą stronę internetową i jesteś z niej zadowolony. Trudno cię zainteresować, chyba że worker zaproponuje coś poza samą stroną (reklama, automatyzacje, CRM).' },
+  { id: 'send_offer', label: { pl: 'Klient mówi "wyślij ofertę"', ru: 'Клиент говорит: "пришлите предложение"' }, serviceId: null, difficulty: 'medium', readiness: 'cold', prompt: 'Od razu, na początku rozmowy, prosisz aby przesłać ofertę mailem i się rozłączyć. Worker musi cię zatrzymać na rozmowie zanim się zgodzisz.' },
+  { id: 'asks_price', label: { pl: 'Klient od razu pyta o cenę', ru: 'Клиент сразу спрашивает цену' }, serviceId: null, difficulty: 'medium', readiness: 'warm', prompt: 'Zanim worker cokolwiek wyjaśni, pytasz "ile to kosztuje?". Naciskasz na konkretną kwotę, worker powinien podać widełki i przejść do umówienia spotkania zamiast obiecywać dokładną cenę.' },
+  { id: 'no_marketing', label: { pl: 'Klient nie rozumie marketingu', ru: 'Клиент не понимает маркетинг' }, serviceId: null, difficulty: 'easy', readiness: 'cold', prompt: 'Nie rozumiesz pojęć typu SEO, kampanie, lejki sprzedażowe. Worker musi tłumaczyć bardzo prostymi słowami, bez żargonu.' },
+  { id: 'has_agency', label: { pl: 'Klient ma już agencję', ru: 'У клиента уже есть агентство' }, serviceId: null, difficulty: 'hard', readiness: 'cold', prompt: 'Współpracujesz już z inną agencją marketingową i jesteś względnie zadowolony. Trzeba dobrego argumentu, żeby w ogóle zgodzić się na rozmowę.' },
+  { id: 'interested_website', label: { pl: 'Klient zainteresowany stroną', ru: 'Клиент заинтересован в сайте' }, serviceId: 'websites', difficulty: 'easy', readiness: 'hot', prompt: 'Jesteś realnie zainteresowany nową stroną internetową, zadajesz konkretne pytania o proces i cenę, łatwo cię przekonać do spotkania.' },
+  { id: 'interested_ads', label: { pl: 'Klient zainteresowany reklamą', ru: 'Клиент заинтересован в рекламе' }, serviceId: 'googleads', difficulty: 'easy', readiness: 'hot', prompt: 'Interesuje cię głównie reklama (Google Ads / Meta Ads), pytasz o efekty i koszt kliknięcia, worker powinien skierować rozmowę do spotkania z ekspertem.' },
+  { id: 'wants_callback', label: { pl: 'Klient chce, żeby oddzwonić', ru: 'Клиент просит перезвонить' }, serviceId: null, difficulty: 'easy', readiness: 'warm', prompt: 'Jesteś teraz zajęty i prosisz o oddzwonienie później. Worker powinien ustalić konkretny dzień i godzinę, a nie zostawić to open-ended.' },
+  { id: 'distrustful', label: { pl: 'Klient nie ufa', ru: 'Клиент не доверяет' }, serviceId: null, difficulty: 'hard', readiness: 'cold', prompt: 'Podejrzewasz, że to oszustwo albo spam, pytasz skąd masz numer, jesteś podejrzliwy przez całą rozmowę, worker musi budować zaufanie krok po kroku.' },
+  { id: 'ready_to_meet', label: { pl: 'Klient gotowy na spotkanie', ru: 'Клиент готов на встречу' }, serviceId: null, difficulty: 'easy', readiness: 'hot', prompt: 'Jesteś pozytywnie nastawiony i szybko zgadzasz się na umówienie spotkania/konsultacji, jeśli worker tylko poprawnie poprowadzi rozmowę.' },
+
+  // --- Extended roster: service-specific and character-variety personas ---
+  { id: 'ecommerce_migration_fear', label: { pl: 'Sklep boi się migracji z Allegro', ru: 'Магазин боится переезда с Allegro' }, serviceId: 'ecommerce', difficulty: 'medium', readiness: 'warm', prompt: 'Sprzedajesz produkty głównie przez Allegro i Facebook Marketplace. Boisz się, że własny sklep internetowy to duży koszt i ryzyko, że nikt nie wejdzie. Musisz usłyszeć konkretny argument o przewadze własnego kanału sprzedaży, zanim zaczniesz się otwierać.' },
+  { id: 'restaurant_booking_resist', label: { pl: 'Restauracja: "rezerwacje telefoniczne zawsze działały"', ru: 'Ресторан: «телефонные брони всегда работали»' }, serviceId: 'booking', difficulty: 'medium', readiness: 'cold', prompt: 'Prowadzisz restaurację. Rezerwacje przyjmujecie telefonicznie od lat i uważasz, że to wystarcza. Jesteś nieco defensywny wobec sugestii, że system rezerwacji online coś zmieni, ale otworzysz się, jeśli worker pokaże konkretny problem (np. zgubione rezerwacje w godzinach szczytu).' },
+  { id: 'clinic_reviews_skeptic', label: { pl: 'Klinika stomatologiczna, sceptyczna wobec GBP', ru: 'Стоматологическая клиника, скептически настроена к профилю в Google' }, serviceId: 'gbp', difficulty: 'medium', readiness: 'cold', prompt: 'Prowadzisz małą klinikę stomatologiczną. Masz Google Business Profile, ale nikt się nim nie zajmuje. Wątpisz, czy "wizytówka w Google" naprawdę przekłada się na nowych pacjentów. Potrzebujesz konkretów, nie ogólników.' },
+  { id: 'law_firm_formal', label: { pl: 'Kancelaria prawna, formalny ton', ru: 'Юридическая фирма, формальный тон' }, serviceId: 'websites', difficulty: 'medium', readiness: 'cold', prompt: 'Jesteś wspólnikiem małej kancelarii prawnej. Mówisz formalnie, oczekujesz precyzji i konkretów, nie tolerujesz potocznego języka sprzedażowego ani nachalności. Cenisz wiarygodność i referencje.' },
+  { id: 'construction_calculator_interested', label: { pl: 'Budowlanka, zainteresowana kalkulatorem wyceny', ru: 'Стройфирма, заинтересована калькулятором стоимости' }, serviceId: 'calculators', difficulty: 'easy', readiness: 'hot', prompt: 'Prowadzisz firmę remontowo-budowlaną. Codziennie dostajesz pytania "ile to będzie kosztować" i tracisz na nie czas. Jesteś od razu zainteresowany pomysłem kalkulatora wyceny na stronie, zadajesz praktyczne pytania o to, jak to działa.' },
+  { id: 'beauty_salon_social', label: { pl: 'Salon kosmetyczny, aktywny Instagram', ru: 'Салон красоты, активный Instagram' }, serviceId: 'metaads', difficulty: 'easy', readiness: 'warm', prompt: 'Prowadzisz salon kosmetyczny, masz aktywny, ładny Instagram, ale mało nowych klientek z social mediów. Jesteś otwarta na rozmowę o reklamie na Meta, jeśli worker doceni to, co już masz, zamiast zaczynać od krytyki.' },
+  { id: 'auto_workshop_grumpy', label: { pl: 'Warsztat samochodowy, starszy właściciel, "po co mi internet"', ru: 'Автосервис, пожилой владелец, «зачем мне интернет»' }, serviceId: 'gbp', difficulty: 'hard', readiness: 'cold', prompt: 'Prowadzisz warsztat samochodowy od 20 lat, klienci przychodzą z polecenia. Nie widzisz sensu w "internetach", mówisz krótko i szorstko, potrzebujesz bardzo prostego, konkretnego argumentu związanego z pieniędzmi, żeby w ogóle słuchać dalej.' },
+  { id: 'gym_crm_chaos', label: { pl: 'Siłownia, chaos w zapisach i karnetach', ru: 'Спортзал, хаос с записями и абонементами' }, serviceId: 'crmauto', difficulty: 'medium', readiness: 'warm', prompt: 'Prowadzisz siłownię/klub fitness. Zapisy na zajęcia i karnety ogarniacie w Excelu i grupie na WhatsApp, robi się chaos. Sfrustrowany, ale nie do końca wiesz, jakie rozwiązanie by pomogło — worker musi to nazwać za ciebie.' },
+  { id: 'dentist_chatbot_worried', label: { pl: 'Dentysta, boi się że chatbot źle odpowie pacjentowi', ru: 'Стоматолог, боится, что чат-бот даст пациенту неверный ответ' }, serviceId: 'aichatbot', difficulty: 'hard', readiness: 'cold', prompt: 'Prowadzisz gabinet stomatologiczny. Obawiasz się, że automatyczny chatbot udzieli pacjentowi złej informacji medycznej albo zabrzmi bezosobowo. Potrzebujesz usłyszeć, że masz pełną kontrolę nad tym, co bot mówi, zanim się zainteresujesz.' },
+  { id: 'cleaning_company_leadforms', label: { pl: 'Firma sprzątająca, mnóstwo pytań "ile to kosztuje"', ru: 'Клининговая компания, море вопросов «сколько это стоит»' }, serviceId: 'leadforms', difficulty: 'easy', readiness: 'warm', prompt: 'Prowadzisz firmę sprzątającą. Formularz kontaktowy na stronie jest krótki i ludzie piszą niejasne zapytania, na które trudno szybko odpowiedzieć. Chętnie posłuchasz o czymś, co zbierze więcej konkretnych informacji od razu.' },
+  { id: 'real_estate_dashboards', label: { pl: 'Agencja nieruchomości, potrzebuje dashboardu', ru: 'Агентство недвижимости, нужна аналитическая панель' }, serviceId: 'dashboards', difficulty: 'medium', readiness: 'warm', prompt: 'Prowadzisz małą agencję nieruchomości z kilkoma pracownikami. Dane o ofertach i leadach są rozrzucone po arkuszach i mailach, trudno ci ocenić, co działa. Jesteś zainteresowany, ale sceptyczny co do kosztu wdrożenia.' },
+  { id: 'language_school_email', label: { pl: 'Szkoła językowa, chce automatyzacji maili', ru: 'Языковая школа, хочет автоматизацию email-рассылок' }, serviceId: 'emailint', difficulty: 'easy', readiness: 'warm', prompt: 'Prowadzisz szkołę językową. Masz sporą bazę byłych i obecnych kursantów, ale nie wysyłacie do nich regularnie żadnych wiadomości. Jesteś otwarty na pomysł automatycznych maili, jeśli to nie wymaga dużo twojej pracy.' },
+  { id: 'photographer_portfolio', label: { pl: 'Fotograf, mały budżet, potrzebuje portfolio', ru: 'Фотограф, маленький бюджет, нужно портфолио' }, serviceId: 'branding', difficulty: 'medium', readiness: 'cold', prompt: 'Jesteś fotografem na jednoosobowej działalności. Masz bardzo ograniczony budżet i jesteś wrażliwy na cenę. Potrzebujesz usłyszeć, że inwestycja w markę/portfolio realnie pomoże ci zdobywać droższe zlecenia, zanim zaczniesz brać to na poważnie.' },
+  { id: 'furniture_store_ecommerce', label: { pl: 'Sklep meblowy, rozważa e-commerce', ru: 'Мебельный магазин, рассматривает интернет-магазин' }, serviceId: 'ecommerce', difficulty: 'medium', readiness: 'warm', prompt: 'Prowadzisz stacjonarny sklep meblowy. Klienci pytają, czy można zamówić online, ale nie masz sklepu internetowego. Zastanawiasz się nad tym od jakiegoś czasu, ale nie wiesz, od czego zacząć.' },
+  { id: 'hvac_seasonal_urgent', label: { pl: 'Klimatyzacja, pełnia sezonu, mało czasu', ru: 'Кондиционеры, разгар сезона, мало времени' }, serviceId: 'googleads', difficulty: 'medium', readiness: 'warm', prompt: 'Prowadzisz firmę montującą klimatyzację, jest pełnia sezonu, masz mnóstwo pracy i mało czasu na rozmowę. Jeśli worker szybko pokaże, że chodzi o więcej zleceń w sezonie, jesteś zainteresowany, ale nie zniesiesz przegadanej rozmowy.' },
+  { id: 'tiktok_young_brand', label: { pl: 'Młoda marka odzieżowa, chce TikToka', ru: 'Молодой бренд одежды, хочет продвижение в TikTok' }, serviceId: 'tiktokads', difficulty: 'easy', readiness: 'hot', prompt: 'Prowadzisz młodą markę odzieżową skierowaną do nastolatków i młodych dorosłych. Sami już nagrywacie trochę wideo, ale nie umiecie tego skalować w reklamę. Jesteś entuzjastycznie nastawiony do TikToka, zadajesz konkretne pytania o budżet i format.' },
+  { id: 'b2b_manufacturer_geoai', label: { pl: 'Producent B2B, obecność w kilku krajach', ru: 'B2B-производитель, присутствие в нескольких странах' }, serviceId: 'geoai', difficulty: 'hard', readiness: 'cold', prompt: 'Zarządzasz marketingiem w firmie produkcyjnej B2B działającej w kilku krajach. Nie rozumiesz pojęcia "widoczność w AI/wyszukiwarkach" i podchodzisz do tego nieufnie jako do modnego hasła bez pokrycia. Worker musi to wytłumaczyć bardzo konkretnie i bez hype-u.' },
+  { id: 'telegram_messenger_fan', label: { pl: 'Firma, która żyje w Telegramie', ru: 'Компания, которая живёт в Telegram' }, serviceId: 'messengers', difficulty: 'easy', readiness: 'warm', prompt: 'Twój zespół komunikuje się głównie przez Telegram, mail sprawdzacie rzadko. Zapytania z formularza na stronie giną, bo nikt nie zagląda do skrzynki na czas. Szybko rozumiesz wartość integracji z komunikatorem.' },
+  { id: 'multi_location_franchise', label: { pl: 'Sieć salonów, potrzebuje widoku multi-lokalizacyjnego', ru: 'Сеть салонов, нужен обзор по всем точкам сразу' }, serviceId: 'dashboards', difficulty: 'hard', readiness: 'cold', prompt: 'Zarządzasz siecią kilku salonów/punktów w różnych miastach. Masz sporo doświadczenia z dostawcami IT, którzy nie dowieźli obietnic, więc jesteś wymagający i zadajesz szczegółowe pytania o wdrożenie i utrzymanie.' },
+  { id: 'distrustful_after_scam', label: { pl: 'Klient oszukany kiedyś przez agencję', ru: 'Клиент, которого когда-то обмануло агентство' }, serviceId: null, difficulty: 'hard', readiness: 'cold', prompt: 'Kilka lat temu zapłaciłeś agencji marketingowej z góry i nic nie dostałeś. Jesteś bardzo nieufny wobec każdej telefonicznej oferty, prosisz o referencje i dowody, zanim w ogóle rozważysz dalszą rozmowę.' },
+  { id: 'price_shopper_compares', label: { pl: 'Porównuje oferty kilku agencji naraz', ru: 'Сравнивает предложения нескольких агентств одновременно' }, serviceId: null, difficulty: 'hard', readiness: 'warm', prompt: 'Rozmawiasz teraz z trzecią agencją w tym tygodniu i otwarcie o tym mówisz. Naciskasz na to, żeby worker "od razu powiedział, czym różnicie się od innych" i porównujesz każdą odpowiedź do konkurencji.' },
+  { id: 'non_decision_maker', label: { pl: 'Recepcjonistka, nie jest decydentem', ru: 'Администратор на ресепшене, не принимает решений' }, serviceId: null, difficulty: 'medium', readiness: 'cold', prompt: 'Odbierasz telefon w recepcji/biurze, ale to nie ty podejmujesz decyzje zakupowe — właściciel jest zajęty. Worker musi sprawnie wydobyć od ciebie dane kontaktowe do decydenta i umówić kontakt z nim, zamiast tracić czas na próbę przekonania ciebie.' },
+  { id: 'tech_savvy_founder', label: { pl: 'Techniczny founder startupu, trudne pytania o integracje', ru: 'Технический основатель стартапа, сложные вопросы об интеграциях' }, serviceId: 'apiint', difficulty: 'hard', readiness: 'warm', prompt: 'Jesteś współzałożycielem małego startupu, sam trochę programujesz. Zadajesz precyzyjne, techniczne pytania o integracje, API i architekturę, i szybko wyczuwasz, kiedy worker recytuje ogólniki zamiast konkretów.' },
+  { id: 'old_school_no_computer', label: { pl: 'Starszy właściciel, "nie znam się na komputerach"', ru: 'Пожилой владелец, «я не разбираюсь в компьютерах»' }, serviceId: null, difficulty: 'medium', readiness: 'cold', prompt: 'Jesteś starszym właścicielem lokalnego biznesu, nie czujesz się pewnie z technologią i boisz się, że coś "skomplikowanego" będzie dla ciebie za trudne w obsłudze. Potrzebujesz uspokojenia, że to będzie proste, zanim zaczniesz słuchać dalej.' },
+  { id: 'multitasking_solo_owner', label: { pl: 'Jednoosobowa działalność, robi wszystko sam', ru: 'Индивидуальный предприниматель, делает всё сам' }, serviceId: 'aiauto', difficulty: 'medium', readiness: 'warm', prompt: 'Prowadzisz jednoosobową działalność usługową i robisz dosłownie wszystko sam: obsługę klienta, księgowość, wykonanie usługi. Jesteś ciągle zapracowany i podejrzliwy wobec czegokolwiek, co brzmi jak "kolejna rzecz do ogarnięcia", ale otwierasz się, jeśli usłyszysz, że to realnie odciąży cię z pracy.' },
+  { id: 'warm_referral_client', label: { pl: 'Klient z polecenia, już ciepły', ru: 'Клиент по рекомендации, уже тёплый' }, serviceId: null, difficulty: 'easy', readiness: 'hot', prompt: 'Dostałeś namiar na Aura Global Merchants od znajomego, który był zadowolony ze współpracy. Jesteś już dość ciepły i pozytywnie nastawiony, ale worker wciąż powinien profesjonalnie zdiagnozować twoją sytuację, zanim od razu zaproponuje termin spotkania.' },
+  { id: 'angry_after_bad_agency', label: { pl: 'Zły po współpracy z poprzednią agencją', ru: 'Зол после работы с предыдущим агентством' }, serviceId: null, difficulty: 'hard', readiness: 'cold', prompt: 'Poprzednia agencja marketingowa zawaliła terminy i komunikację, jesteś sfrustrowany i od razu to zaznaczasz w rozmowie. Testujesz, czy worker będzie się bronił nachalnie, czy poważnie potraktuje twoje obawy.' },
+  { id: 'wants_full_package', label: { pl: 'Chce "wszystko naraz"', ru: 'Хочет «всё и сразу»' }, serviceId: null, difficulty: 'medium', readiness: 'hot', prompt: 'Chcesz od razu "stronę, reklamę, SEO i automatyzacje razem, i to szybko". Worker powinien to uporządkować, zapytać o priorytety i realny budżet, zamiast obiecywać wszystko naraz bez planu.' },
+  { id: 'silent_thinker', label: { pl: 'Mało mówi, trudno wyciągnąć informacje', ru: 'Немногословный, трудно вытянуть информацию' }, serviceId: null, difficulty: 'hard', readiness: 'cold', prompt: 'Odpowiadasz bardzo krótko, monosylabami, nie rozwijasz myśli sam z siebie. Worker musi zadawać dobre, otwarte pytania, żeby w ogóle coś się dowiedzieć o twojej firmie i potrzebach.' },
+  { id: 'objection_chain', label: { pl: 'Seria obiekcji jedna po drugiej (trudny finał)', ru: 'Серия возражений одно за другим (сложный финал)' }, serviceId: null, difficulty: 'hard', readiness: 'cold', prompt: 'Rzucasz obiekcje jedna po drugiej: najpierw cena, potem że masz już kogoś, potem że nie masz czasu, potem że musisz to przemyśleć. Nie poddawaj się po jednej dobrej odpowiedzi — worker musi konsekwentnie i spokojnie poprowadzić całą sekwencję, zanim rozważysz zgodę na krótką konsultację.' },
+  { id: 'driving_school_landing', label: { pl: 'Szkoła jazdy, promocja kursu wakacyjnego', ru: 'Автошкола, продвижение летнего курса' }, serviceId: 'landing', difficulty: 'easy', readiness: 'warm', prompt: 'Prowadzisz szkołę jazdy i chcesz zrobić promocję "kurs wakacyjny", ale wszystko kierujesz na stronę główną, gdzie oferta się gubi wśród innych informacji. Jesteś otwarty na pomysł osobnej strony pod tę kampanię, jeśli worker wytłumaczy, że to realnie zwiększy liczbę zapisów.' },
+  { id: 'transport_company_copy', label: { pl: 'Firma transportowa, słabe teksty na stronie', ru: 'Транспортная компания, слабые тексты на сайте' }, serviceId: 'copywriting', difficulty: 'medium', readiness: 'cold', prompt: 'Prowadzisz firmę transportową, macie stronę, ale teksty pisał kierowca "na szybko" i brzmią sucho, nikogo nie przekonują do kontaktu. Uważasz, że "teksty to nie priorytet" — worker musi pokazać konkretny związek między słabym tekstem a utraconymi zapytaniami, zanim się zainteresujesz.' },
+  { id: 'boutique_hotel_uiux', label: { pl: 'Hotel butikowy, chaotyczna ścieżka rezerwacji na stronie', ru: 'Бутик-отель, запутанный путь бронирования на сайте' }, serviceId: 'uiux', difficulty: 'hard', readiness: 'cold', prompt: 'Prowadzisz kameralny hotel butikowy, macie stronę z ładnymi zdjęciami, ale sam proces rezerwacji jest zagmatwany i klienci się gubią. Jesteś dumny z estetyki strony i bronisz jej, uważając problem za przesadzony — worker musi konkretnie pokazać, w którym momencie tracisz rezerwacje, zanim rozważysz redesign.' },
+  { id: 'custom_furniture_anim3d', label: { pl: 'Producent mebli na wymiar, chce wyróżnić produkty animacją 3D', ru: 'Производитель мебели на заказ, хочет выделить товары 3D-анимацией' }, serviceId: 'anim3d', difficulty: 'easy', readiness: 'hot', prompt: 'Produkujesz meble na wymiar i widziałeś u konkurencji efektowne animacje 3D produktów na stronie. Jesteś od razu zainteresowany, bo wiesz, że twoje realizacje wyglądają lepiej "na żywo" niż na zwykłych zdjęciach, i pytasz workera o proces oraz czas realizacji.' },
+  { id: 'premium_realestate_cro', label: { pl: 'Agencja nieruchomości premium, duży ruch, mało zapytań', ru: 'Премиальное агентство недвижимости, много трафика, мало заявок' }, serviceId: 'cro', difficulty: 'medium', readiness: 'warm', prompt: 'Prowadzisz agencję nieruchomości premium, strona ma sporo odwiedzin z reklam, ale mało osób zostawia zapytanie o ofertę. Podejrzewasz, że coś jest nie tak, ale nie wiesz co — worker musi zdiagnozować konkretne miejsce w ścieżce, gdzie tracisz klientów, zanim zgodzisz się na audyt.' },
+  { id: 'accounting_office_seo', label: { pl: 'Biuro rachunkowe, sceptyczne wobec długoterminowego SEO', ru: 'Бухгалтерская контора, скептически настроена к долгосрочному SEO' }, serviceId: 'seo', difficulty: 'medium', readiness: 'cold', prompt: 'Prowadzisz biuro rachunkowe i słyszałeś, że "SEO trzeba płacić miesiącami, zanim cokolwiek się stanie". Jesteś sceptyczny wobec inwestycji bez natychmiastowego efektu — worker musi jasno wytłumaczyć, dlaczego pozycjonowanie opłaca się w dłuższej perspektywie, i podać realistyczny harmonogram działań.' },
+  { id: 'catering_remarketing', label: { pl: 'Firma cateringowa, odwiedzający stronę nie zostawiają kontaktu', ru: 'Кейтеринговая компания, посетители сайта не оставляют контакты' }, serviceId: 'remarketing', difficulty: 'easy', readiness: 'warm', prompt: 'Prowadzisz firmę cateringową na wesela i eventy. Widzisz w statystykach, że dużo osób ogląda ofertę, ale mało kto pisze zapytanie. Jesteś otwarty na pomysł przypominania się reklamą osobom, które już były na stronie, jeśli worker prosto wyjaśni, jak to działa.' },
+  { id: 'sports_club_analytics', label: { pl: 'Klub sportowy, wydaje na marketing bez wiedzy co działa', ru: 'Спортивный клуб, тратит на маркетинг, не зная, что работает' }, serviceId: 'analytics', difficulty: 'hard', readiness: 'cold', prompt: 'Zarządzasz klubem sportowym i wydajesz co miesiąc pieniądze na różne reklamy, ale nie masz pojęcia, która z nich faktycznie przyprowadza nowych członków. Jesteś zniechęcony wcześniejszymi "raportami" od agencji, które nic nie wnosiły — worker musi pokazać, że dane mogą być zrozumiałe i praktyczne, a nie tylko tabelką liczb.' },
+  { id: 'saas_startup_funnels', label: { pl: 'Startup SaaS, potrzebuje całej ścieżki klienta od reklamy po follow-up', ru: 'SaaS-стартап, нужен весь путь клиента от рекламы до follow-up' }, serviceId: 'funnels', difficulty: 'hard', readiness: 'warm', prompt: 'Jesteś współzałożycielem startupu SaaS. Macie osobno reklamy, osobno stronę i osobno maile do leadów, ale nic ze sobą nie gra i tracicie klientów po drodze. Rozumiesz wagę spójnego lejka, ale jesteś wymagający i chcesz usłyszeć konkretną strukturę projektu, zanim zaangażujesz zespół w dalsze rozmowy.' },
+  { id: 'event_agency_aiqualify', label: { pl: 'Agencja eventowa, zalewana słabymi zapytaniami', ru: 'Ивент-агентство, завалено слабыми заявками' }, serviceId: 'aiqualify', difficulty: 'medium', readiness: 'warm', prompt: 'Prowadzisz agencję eventową i codziennie dostajesz mnóstwo zapytań z formularza, z czego większość to osoby bez realnego budżetu albo "tylko pytają". Tracisz czas na rozmowy, które donikąd nie prowadzą. Jesteś zainteresowany pomysłem automatycznej wstępnej kwalifikacji leadów, jeśli worker przekona cię, że AI nie odsieje przy okazji też dobrych klientów.' },
+  { id: 'dance_school_aifollowup', label: { pl: 'Szkoła tańca, zapytania stygną bez odpowiedzi', ru: 'Школа танцев, заявки остывают без ответа' }, serviceId: 'aifollowup', difficulty: 'easy', readiness: 'hot', prompt: 'Prowadzisz szkołę tańca. Ludzie zapisują się na "pierwsze bezpłatne zajęcia" przez stronę, ale nikt w zespole nie ma czasu, żeby do nich wracać po kilku dniach ciszy, więc większość nigdy nie przychodzi. Jesteś od razu zainteresowany pomysłem automatycznego przypominania się takim osobom i pytasz workera, jak szybko można to uruchomić.' },
+  { id: 'security_company_aireports', label: { pl: 'Firma ochroniarska, właściciel nie ma czasu czytać raportów', ru: 'Охранная компания, у владельца нет времени читать отчёты' }, serviceId: 'aireports', difficulty: 'medium', readiness: 'cold', prompt: 'Prowadzisz firmę ochroniarską i dostajesz od czasu do czasu długie, nieczytelne raporty marketingowe w PDF, których nigdy nie doczytujesz do końca. Jesteś sceptyczny, że "automatyczny raport od AI" będzie czymkolwiek lepszy — worker musi pokazać ci konkretnie, jak krótki i praktyczny może być taki raport, zanim się przekonasz.' },
+  { id: 'cosmetics_producer_automsg', label: { pl: 'Producent kosmetyków, brak automatycznych powiadomień do klientów', ru: 'Производитель косметики, нет автоматических уведомлений для клиентов' }, serviceId: 'automsg', difficulty: 'easy', readiness: 'warm', prompt: 'Prowadzisz małą markę kosmetyków naturalnych ze sklepem internetowym. Klienci piszą do ciebie, bo nie wiedzą, czy zamówienie zostało przyjęte, albo zapominają dokończyć porzucony koszyk. Jesteś otwarty na pomysł automatycznych wiadomości SMS lub mail wysyłanych w takich momentach, jeśli worker pokaże, że to nie wymaga twojej stałej pracy.' },
+  { id: 'consulting_firm_adminpanels', label: { pl: 'Firma consultingowa, zarządzanie klientami rozjechane po arkuszach', ru: 'Консалтинговая компания, управление клиентами разбросано по таблицам' }, serviceId: 'adminpanels', difficulty: 'hard', readiness: 'cold', prompt: 'Prowadzisz firmę consultingową i zarządzasz kilkunastoma projektami klientów jednocześnie, każdy w innym arkuszu albo notatniku. Uważasz, że "jakoś to działa" i nie widzisz sensu inwestować w dedykowany panel — worker musi pokazać ci konkretny scenariusz, w którym brak takiego panelu realnie cię kosztuje, zanim zaczniesz słuchać dalej.' },
+  { id: 'wholesale_builder_customtools', label: { pl: 'Hurtownia materiałów budowlanych, unikalny proces zamówień', ru: 'Оптовый склад стройматериалов, нестандартный процесс заказов' }, serviceId: 'customtools', difficulty: 'hard', readiness: 'warm', prompt: 'Prowadzisz hurtownię materiałów budowlanych z nietypowym systemem rezerwacji towaru i rabatów zależnych od stałych klientów. Próbowałeś już kilku gotowych programów, ale żaden nie pasował do twojego sposobu pracy i zrezygnowałeś. Jesteś ostrożnie zainteresowany, jeśli worker udowodni, że rozumie twój konkretny proces, a nie proponuje kolejne uniwersalne narzędzie.' }
 ];
 
 // Rough per-1K-token USD rates used only for internal cost estimates in the admin
@@ -755,7 +886,7 @@ const AI_MODEL_RATES = {
 AI_MODEL_RATES[AI_TRAINING_MODEL] = AI_MODEL_RATES[AI_TRAINING_MODEL] || AI_MODEL_RATES['gpt-5.4-mini'];
 
 const AI_TRAINING_ROLEPLAY_RULES = [
-  'To jest trening rozmowy telefonicznej dla callera Aura Global Merchants.',
+  'To jest trening rozmowy telefonicznej dla callera Aura Global Merchants — studia oferującego strony, e-commerce, branding, copywriting, reklamy Google/Meta/TikTok, SEO, Google Business Profile, AI-automatyzacje, CRM, chatboty i systemy biznesowe (formularze, kalkulatory, panele, rezerwacje, dashboardy).',
   'Grasz tylko klienta, nigdy trenera ani sprzedawcy.',
   'Odpowiadasz po polsku, naturalnie, jak przez telefon: 1-3 krotkie zdania.',
   'Nie pomagaj workerowi wprost. Reaguj na jakosc jego pytan i argumentow.',
@@ -765,13 +896,61 @@ const AI_TRAINING_ROLEPLAY_RULES = [
   'Nie akceptuj spotkania za latwo, chyba ze persona mowi inaczej.'
 ].join('\n');
 
+// Extra runtime instruction layered on top of a persona's base prompt, tuned by
+// difficulty — makes "hard" personas genuinely harder to close, not just flavor text.
+const AI_TRAINING_DIFFICULTY_INSTRUCTIONS = {
+  easy: 'Poziom trudnosci: latwy. Otwierasz sie stosunkowo szybko na dobre pytania, nie stawiaj wielu barier.',
+  medium: 'Poziom trudnosci: sredni. Wymagaj od workera co najmniej jednego sensownego argumentu lub pytania o Twoj realny problem, zanim zaczniesz sie otwierac.',
+  hard: 'Poziom trudnosci: trudny. Stawiaj realny opor: rzucaj kolejne obiekcje, nie poddawaj sie po pierwszej dobrej odpowiedzi, wymagaj co najmniej dwoch-trzech mocnych argumentow zanim rozwazysz zgode na cokolwiek.'
+};
+
 function estimateAiCost(model, promptTokens, completionTokens) {
   const rate = AI_MODEL_RATES[model] || AI_MODEL_RATES[DEFAULT_MODEL];
   return Number(((promptTokens / 1000) * rate.input + (completionTokens / 1000) * rate.output).toFixed(6));
 }
 
+function personaSystemPrompt(persona) {
+  const difficultyLine = AI_TRAINING_DIFFICULTY_INSTRUCTIONS[persona?.difficulty] || AI_TRAINING_DIFFICULTY_INSTRUCTIONS.medium;
+  return `${persona?.prompt || ''}\n${difficultyLine}`;
+}
+
 function findAiTrainingPersona(clientType) {
   return AI_TRAINING_PERSONAS.find((persona) => persona.id === String(clientType || '')) || null;
+}
+
+// Persona.label is either a plain (Polish) string or a { pl, ru } pair — mirrors
+// the client's bi() helper (public/academy/app.js) so a persona without a Russian
+// translation yet just falls back to Polish instead of breaking.
+function localizedPersonaLabel(label, language) {
+  if (typeof label === 'string') return label;
+  if (!label) return '';
+  return label[language] ?? label.pl ?? label.ru ?? '';
+}
+
+// Same session-language pattern used by /api/auth/me and /api/auth/login
+// (session.language, set at worker login/registration) — reused here so the
+// AI-training API responds in the worker's chosen language.
+function requestAcademyLanguage(req) {
+  const session = currentSession(req);
+  return session?.language === 'ru' ? 'ru' : 'pl';
+}
+
+// Bilingual heuristic-analysis string helper — same { pl, ru } pattern as
+// localizedPersonaLabel above, used by the non-AI heuristic analysis
+// generator (buildHeuristicAnalysis and everything it calls) so main_problem /
+// why_it_matters / mini_audit_points actually respect the discover request's
+// `language` field instead of being hardcoded Russian. Falls back to 'ru' to
+// match the rest of this generator's historical default.
+function heuristicText(pair, language) {
+  if (typeof pair === 'string') return pair;
+  if (!pair) return '';
+  return pair[language] ?? pair.ru ?? pair.pl ?? '';
+}
+
+// Normalizes any incoming language value (discover request body, options
+// object, etc.) down to the two languages the heuristic generator supports.
+function normalizeAnalysisLanguage(language) {
+  return language === 'pl' ? 'pl' : 'ru';
 }
 
 const freeEmailDomains = new Set([
@@ -812,6 +991,11 @@ const directoryDomains = [
   'firmy.net',
   'gowork.pl',
   'aleo.com',
+  'rejestr.io',
+  'regon24.pl',
+  'biznes.gov.pl',
+  'opendatabot.ua',
+  'youcontrol.com.ua',
   'google.com',
   'maps.google',
   'bing.com',
@@ -923,8 +1107,18 @@ const AURA_SITE_ORIGIN = String(process.env.AURA_SITE_ORIGIN || 'https://parser.
 const AURA_SITE_TEMPLATE = path.join(__dirname, 'public', 'site', 'index.html');
 
 function auraLanguage(req) {
-  const candidate = String(req.query?.lang || 'pl').toLowerCase();
-  return ['pl', 'en', 'ru'].includes(candidate) ? candidate : 'pl';
+  const supported = ['pl', 'en', 'ru'];
+  const fromQuery = String(req.query?.lang || '').toLowerCase();
+  if (supported.includes(fromQuery)) return fromQuery;
+  // No explicit choice — follow the browser's Accept-Language instead of
+  // defaulting every first visit to Polish.
+  const header = String(req.headers['accept-language'] || '');
+  for (const part of header.split(',')) {
+    const base = part.split(';')[0].trim().toLowerCase().split('-')[0];
+    if (supported.includes(base)) return base;
+    if (['uk', 'be', 'kk'].includes(base)) return 'ru';
+  }
+  return 'pl';
 }
 
 function auraServiceBySlug(slug, language) {
@@ -932,6 +1126,16 @@ function auraServiceBySlug(slug, language) {
     .flatMap((category) => category.services.map((service) => ({ ...service, category: category.label })))
     .find((service) => service.slug === slug || service.id === slug) || null;
 }
+
+// Shared fallback OG image used by every page that has no image of its own
+// (list pages, service detail pages - services only carry an icon name, not
+// a real photo). Real dimensions of public/site/og-image.png, verified on disk.
+const AURA_DEFAULT_OG_IMAGE = {
+  url: `${AURA_SITE_ORIGIN}/site/og-image.png`,
+  type: 'image/png',
+  width: 1200,
+  height: 630
+};
 
 function auraPageMeta(req) {
   const language = auraLanguage(req);
@@ -943,6 +1147,10 @@ function auraPageMeta(req) {
   let description = 'Strategy, design, development, marketing and AI automation. Aura Global starts with the real business task.';
   let schema = { '@context': 'https://schema.org', '@type': 'Organization', name: 'Aura Global', url: `${AURA_SITE_ORIGIN}/site/` };
   let canonicalPath = routePath.startsWith('/site') ? routePath : routePath;
+  // Per-item og:image/twitter:image. Falls back to the shared site-wide
+  // og-image.png for list pages and any item without its own real image
+  // (all current services only carry a lucide icon name, not a photo).
+  let image = { ...AURA_DEFAULT_OG_IMAGE };
 
   if (routePath === '/portfolio' || routePath === '/site/portfolio') {
     title = 'Portfolio — Aura Global';
@@ -954,6 +1162,12 @@ function auraPageMeta(req) {
       title = `${project.title} — Aura Global`;
       description = project.summary;
       schema = { '@context': 'https://schema.org', '@type': 'CreativeWork', name: project.title, description: project.summary, url: `${AURA_SITE_ORIGIN}${routePath}`, image: project.media.map((item) => `${AURA_SITE_ORIGIN}${item}`), sameAs: project.projectUrl };
+      // Portfolio covers are captured screenshots, all verified 1440x900 jpg
+      // on disk (see public/site/media/portfolio/*/cover.jpg|detail.jpg) -
+      // real dimensions, not a guess, so it's safe to report them.
+      if (project.cover) {
+        image = { url: `${AURA_SITE_ORIGIN}${project.cover}`, type: 'image/jpeg', width: 1440, height: 900 };
+      }
     }
   } else if (serviceMatch) {
     const service = auraServiceBySlug(serviceMatch[1], language);
@@ -961,13 +1175,15 @@ function auraPageMeta(req) {
       title = `${service.name} — Aura Global`;
       description = service.short;
       schema = { '@context': 'https://schema.org', '@type': 'Service', name: service.name, description: service.short, provider: { '@type': 'Organization', name: 'Aura Global', url: `${AURA_SITE_ORIGIN}/site/` }, offers: { '@type': 'Offer', priceCurrency: 'EUR', description: service.price } };
+      // Services have no per-item photo (icon is a lucide glyph name, not a
+      // real image file) - keep the shared fallback set above.
     }
   } else if (routePath === '/services' || routePath === '/site/services') {
     title = 'Services — Aura Global';
     description = 'Website, marketing, AI automation and business-system services with scope, timing and a clear next step.';
   }
 
-  return { language, title, description, schema, canonical: `${AURA_SITE_ORIGIN}${canonicalPath || '/site/'}` };
+  return { language, title, description, schema, image, canonical: `${AURA_SITE_ORIGIN}${canonicalPath || '/site/'}` };
 }
 
 function renderAuraSite(req, res) {
@@ -980,6 +1196,18 @@ function renderAuraSite(req, res) {
     page('#ogTitle, #twitterTitle').attr('content', meta.title);
     page('#ogDescription, #twitterDescription').attr('content', meta.description);
     page('#ogUrl').attr('content', meta.canonical);
+    page('#ogImage').attr('content', meta.image.url);
+    page('meta[property="og:image:type"]').attr('content', meta.image.type);
+    page('meta[name="twitter:image"]').attr('content', meta.image.url);
+    if (meta.image.width && meta.image.height) {
+      page('meta[property="og:image:width"]').attr('content', String(meta.image.width));
+      page('meta[property="og:image:height"]').attr('content', String(meta.image.height));
+    } else {
+      // No verified real dimensions for this image - don't lie with a
+      // hardcoded 1200x630, just omit the size hint entirely.
+      page('meta[property="og:image:width"]').remove();
+      page('meta[property="og:image:height"]').remove();
+    }
     page('#canonicalLink').attr('href', meta.canonical);
     page('#structuredData').text(JSON.stringify(meta.schema));
     page('head').append(`<script>window.__AURA_SITE_LANG__=${JSON.stringify(meta.language)};</script>`);
@@ -1011,11 +1239,356 @@ app.get(['/robots.txt', '/site/robots.txt'], (_req, res) => {
 
 app.use(
   express.static(path.join(__dirname, 'public'), {
-    setHeaders(res) {
-      res.setHeader('Cache-Control', 'no-store');
+    setHeaders(res, filePath) {
+      // Images and fonts are immutable enough to cache for a day; HTML/JS/CSS
+      // stay no-store so site updates are visible immediately.
+      if (/\.(webp|png|jpe?g|gif|svg|ico|woff2?|mp4)$/i.test(filePath)) {
+        res.setHeader('Cache-Control', 'public, max-age=86400');
+      } else {
+        res.setHeader('Cache-Control', 'no-store');
+      }
     }
   })
 );
+
+// ---- CLACK (dance studio landing page), mounted at /clack ----
+// Lives in its own folder outside this repo. It rides on this process only
+// because the Cloudflare tunnel for parser.auraglobal-merchants.com forwards
+// the whole hostname to this one local port - there is no separate ingress
+// rule available to point /clack at an isolated process.
+const CLACK_DIR = 'C:\\Users\\Sasha\\Desktop\\clack';
+const CLACK_ENV = (() => {
+  try {
+    const raw = fs.readFileSync(path.join(CLACK_DIR, '.env'), 'utf8');
+    const env = {};
+    raw.split('\n').forEach((line) => {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) return;
+      const idx = trimmed.indexOf('=');
+      if (idx === -1) return;
+      const key = trimmed.slice(0, idx).trim();
+      let value = trimmed.slice(idx + 1).trim();
+      if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+        value = value.slice(1, -1);
+      }
+      env[key] = value;
+    });
+    return env;
+  } catch {
+    return {};
+  }
+})();
+const CLACK_BOT_TOKEN = CLACK_ENV.TELEGRAM_BOT_TOKEN || '';
+const CLACK_CHAT_ID = CLACK_ENV.TELEGRAM_CHAT_ID || '';
+if (!CLACK_BOT_TOKEN || !CLACK_CHAT_ID) {
+  console.warn('[clack] TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID missing in clack/.env - /clack/api/zapis will only log submissions, not notify Telegram.');
+}
+
+// Mutable admin-editable settings (pixel IDs, WhatsApp number, referral copy)
+// live here, NOT in .env - clack/bot.js writes to this file from the Telegram
+// admin panel, and every request below re-reads it, so changes made through
+// the bot apply immediately with no server restart.
+const CLACK_CONFIG_PATH = path.join(CLACK_DIR, 'config.json');
+const CLACK_DEFAULT_CONFIG = {
+  ga4MeasurementId: '',
+  metaPixelId: '',
+  tiktokPixelId: '',
+  clarityProjectId: '',
+  whatsappNumber: '',
+  googleReviewLink: '',
+  referralRewardText: '',
+  remindersEnabled: true
+};
+function loadClackConfig() {
+  try {
+    return { ...CLACK_DEFAULT_CONFIG, ...JSON.parse(fs.readFileSync(CLACK_CONFIG_PATH, 'utf8')) };
+  } catch {
+    return { ...CLACK_DEFAULT_CONFIG };
+  }
+}
+
+const CLACK_DATA_DIR = path.join(CLACK_DIR, 'data');
+const CLACK_LEADS_PATH = path.join(CLACK_DATA_DIR, 'leads.json');
+const CLACK_EVENTS_PATH = path.join(CLACK_DATA_DIR, 'events.jsonl');
+function loadClackLeads() {
+  try {
+    return JSON.parse(fs.readFileSync(CLACK_LEADS_PATH, 'utf8'));
+  } catch {
+    return [];
+  }
+}
+function saveClackLeads(leads) {
+  fs.mkdirSync(CLACK_DATA_DIR, { recursive: true });
+  fs.writeFileSync(CLACK_LEADS_PATH, JSON.stringify(leads, null, 2), 'utf8');
+}
+function appendClackEvent(evt) {
+  try {
+    fs.mkdirSync(CLACK_DATA_DIR, { recursive: true });
+    fs.appendFileSync(CLACK_EVENTS_PATH, JSON.stringify(evt) + '\n', 'utf8');
+  } catch (error) {
+    console.error('[clack] failed to append event:', error.message);
+  }
+}
+function generateClackReferralCode(name) {
+  const initials = String(name || '')
+    .trim()
+    .split(/\s+/)
+    .map((part) => part[0])
+    .filter(Boolean)
+    .slice(0, 2)
+    .join('')
+    .toUpperCase();
+  const random = Math.random().toString(36).slice(2, 6).toUpperCase();
+  return `${initials || 'CL'}${random}`;
+}
+function sanitizeClackRefCode(raw) {
+  return String(raw || '').replace(/[^A-Za-z0-9]/g, '').slice(0, 12).toUpperCase();
+}
+
+const clackHits = new Map();
+function isClackRateLimited(ip) {
+  const now = Date.now();
+  const windowMs = 10 * 60 * 1000;
+  const recent = (clackHits.get(ip) || []).filter((t) => now - t < windowMs);
+  recent.push(now);
+  clackHits.set(ip, recent);
+  return recent.length > 5;
+}
+
+function escapeHtmlClack(str) {
+  return String(str).replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+}
+
+async function sendClackTelegramMessage(text) {
+  const response = await fetch(`https://api.telegram.org/bot${CLACK_BOT_TOKEN}/sendMessage`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ chat_id: CLACK_CHAT_ID, text, parse_mode: 'HTML' })
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.ok) {
+    throw new Error(`Telegram sendMessage failed: ${response.status} ${JSON.stringify(data)}`);
+  }
+}
+
+// Whitelisted public assets only (og:image etc.) - never the whole CLACK_DIR,
+// which also holds .env (bot token), subscribers.json and server source.
+app.use(
+  '/clack/assets',
+  express.static(path.join(CLACK_DIR, 'assets'), {
+    setHeaders(res, filePath) {
+      res.setHeader('Cache-Control', /\.(png|jpe?g|webp|mp4|svg)$/i.test(filePath) ? 'public, max-age=86400' : 'no-store');
+    }
+  })
+);
+
+app.get('/clack/api/config', (_req, res) => {
+  const cfg = loadClackConfig();
+  res.json({
+    ga4MeasurementId: cfg.ga4MeasurementId,
+    metaPixelId: cfg.metaPixelId,
+    tiktokPixelId: cfg.tiktokPixelId,
+    clarityProjectId: cfg.clarityProjectId,
+    whatsappNumber: cfg.whatsappNumber,
+    referralRewardText: cfg.referralRewardText
+  });
+});
+
+// ---- rich behavioural analytics ingest (clack-analytics.js) ----
+// Same privacy posture as /clack/api/track below: first-party, no cookies,
+// no PII (client only ever sends event names + technical params). Raw events
+// land in clack/data/analytics/raw/events-YYYY-MM-DD.jsonl; the Telegram bot
+// aggregates them into daily/weekly digests.
+const CLACK_ANALYTICS_RAW_DIR = path.join(CLACK_DATA_DIR, 'analytics', 'raw');
+const CLACK_EVENT_NAME_RE = /^[a-z0-9_]{2,48}$/;
+const CLACK_EVENT_PARAM_KEYS = new Set([
+  'page', 'element', 'section', 'device', 'traffic_source', 'campaign', 'direction',
+  'session_id', 'visit_type', 'lang', 'ref', 'duration_s', 'max_scroll_pct',
+  'form_state', 'ttfb_ms', 'dom_ms', 'load_ms'
+]);
+const clackEventHits = new Map();
+function isClackEventsRateLimited(ip) {
+  const now = Date.now();
+  const windowMs = 10 * 60 * 1000;
+  const recent = (clackEventHits.get(ip) || []).filter((t) => now - t < windowMs);
+  recent.push(now);
+  clackEventHits.set(ip, recent);
+  return recent.length > 120; // 120 batchy / 10 min z jednego IP wystarcza z zapasem
+}
+
+app.post('/clack/api/events', (req, res) => {
+  const ip = req.socket.remoteAddress || 'unknown';
+  if (isClackEventsRateLimited(ip)) {
+    return res.status(429).json({ ok: false });
+  }
+  const events = Array.isArray(req.body?.events) ? req.body.events.slice(0, 25) : [];
+  if (!events.length) return res.status(400).json({ ok: false });
+
+  let accepted = 0;
+  const lines = [];
+  for (const raw of events) {
+    const name = String(raw?.event || '');
+    if (!CLACK_EVENT_NAME_RE.test(name)) continue;
+    const ts = typeof raw.ts === 'string' && !Number.isNaN(Date.parse(raw.ts)) ? raw.ts : new Date().toISOString();
+    const record = { event: name, ts };
+    const rawParams = raw.params && typeof raw.params === 'object' ? raw.params : {};
+    for (const [key, value] of Object.entries(rawParams)) {
+      if (!CLACK_EVENT_PARAM_KEYS.has(key)) continue;
+      record[key] = String(value).slice(0, 120);
+    }
+    lines.push(JSON.stringify(record));
+    accepted += 1;
+    // legacy dual-write, żeby stary ekran statystyk w bocie dalej liczył odsłony
+    if (name === 'page_view') {
+      appendClackEvent({
+        type: 'view',
+        utm_source: record.traffic_source && !record.traffic_source.startsWith('ref:') && record.traffic_source !== 'direct' ? record.traffic_source : '',
+        utm_medium: '',
+        utm_campaign: record.campaign || '',
+        ref: record.ref || '',
+        ts
+      });
+    }
+  }
+  if (lines.length) {
+    try {
+      fs.mkdirSync(CLACK_ANALYTICS_RAW_DIR, { recursive: true });
+      const day = new Date().toISOString().slice(0, 10);
+      fs.appendFileSync(path.join(CLACK_ANALYTICS_RAW_DIR, `events-${day}.jsonl`), lines.join('\n') + '\n', 'utf8');
+    } catch (error) {
+      console.error('[clack] analytics append failed:', error.message);
+    }
+  }
+  res.json({ ok: true, accepted });
+});
+
+// Anonymous, no-PII aggregate counters (page views vs form submits) so the
+// bot's "Статистика" screen can show a real conversion rate. Not gated behind
+// cookie consent: no cookie, no persistent identifier, first-party only -
+// unlike GA4/Meta/TikTok this carries none of the cross-site tracking
+// properties that make consent a GDPR requirement.
+app.post('/clack/api/track', (req, res) => {
+  const body = req.body || {};
+  const type = body.type === 'submit' ? 'submit' : body.type === 'view' ? 'view' : null;
+  if (!type) {
+    return res.status(400).json({ ok: false, error: 'invalid type' });
+  }
+  appendClackEvent({
+    type,
+    utm_source: String(body.utm_source || '').slice(0, 60),
+    utm_medium: String(body.utm_medium || '').slice(0, 60),
+    utm_campaign: String(body.utm_campaign || '').slice(0, 60),
+    ref: sanitizeClackRefCode(body.ref),
+    ts: new Date().toISOString()
+  });
+  res.json({ ok: true });
+});
+
+app.get('/clack/api/stats-public', (_req, res) => {
+  const leads = loadClackLeads();
+  const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const signupsLast7d = leads.filter((lead) => new Date(lead.createdAt).getTime() > weekAgo).length;
+  res.json({ signupsLast7d });
+});
+
+app.get(['/clack', '/clack/'], (_req, res) => {
+  res.sendFile(path.join(CLACK_DIR, 'index.html'));
+});
+
+app.post('/clack/api/zapis', async (req, res) => {
+  const ip = req.socket.remoteAddress || 'unknown';
+  if (isClackRateLimited(ip)) {
+    return res.status(429).json({ ok: false, error: 'Zbyt wiele prob. Sprobuj ponownie za kilka minut.' });
+  }
+
+  try {
+    const payload = req.body || {};
+
+    // honeypot - spambots fill hidden fields, real users never see them
+    if (payload.website) {
+      return res.json({ ok: true });
+    }
+
+    const name = String(payload.name || '').trim().slice(0, 200);
+    const contact = String(payload.contact || '').trim().slice(0, 200);
+    const format = String(payload.format || '').trim().slice(0, 100);
+    const daysArr = Array.isArray(payload.preferredDays) ? payload.preferredDays.slice(0, 10) : [];
+    const days = daysArr.join(', ');
+    const comment = String(payload.comment || '').trim().slice(0, 1000);
+    const utmFields = {
+      utm_source: String(payload.utm_source || '').slice(0, 60),
+      utm_medium: String(payload.utm_medium || '').slice(0, 60),
+      utm_campaign: String(payload.utm_campaign || '').slice(0, 60)
+    };
+    const utm = Object.entries(utmFields)
+      .map(([k, v]) => (v ? `${k}=${v}` : null))
+      .filter(Boolean)
+      .join(' ');
+    const referredByCode = sanitizeClackRefCode(payload.ref);
+    const lang = ['pl', 'ru', 'uk'].includes(payload.lang) ? payload.lang : 'pl';
+
+    if (!name || !contact || !format) {
+      return res.status(400).json({ ok: false, error: 'Brakuje wymaganych pol (imie, kontakt, format).' });
+    }
+
+    const leads = loadClackLeads();
+    const leadId = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+    const referralCode = generateClackReferralCode(name);
+    const lead = {
+      id: leadId,
+      name,
+      contact,
+      format,
+      preferredDays: daysArr,
+      comment,
+      ...utmFields,
+      referralCode,
+      referredByCode: referredByCode || null,
+      referralCount: 0,
+      lang,
+      chatId: null,
+      createdAt: new Date().toISOString(),
+      remindersSentForClassDate: null,
+      reviewRequestSent: false
+    };
+    leads.push(lead);
+
+    if (referredByCode) {
+      const referrer = leads.find((l) => l.referralCode === referredByCode);
+      if (referrer) referrer.referralCount = (referrer.referralCount || 0) + 1;
+    }
+    saveClackLeads(leads);
+    appendClackEvent({ type: 'submit', ...utmFields, ref: referredByCode, ts: lead.createdAt });
+
+    const lines = [
+      'CLACK - nowe zgloszenie',
+      `Imie: ${escapeHtmlClack(name)}`,
+      `Kontakt: ${escapeHtmlClack(contact)}`,
+      `Format: ${escapeHtmlClack(format)}`,
+      days ? `Dogodne dni: ${escapeHtmlClack(days)}` : null,
+      comment ? `Komentarz: ${escapeHtmlClack(comment)}` : null,
+      utm ? `UTM: ${escapeHtmlClack(utm)}` : null,
+      lang !== 'pl' ? `Jezyk strony: ${lang}` : null,
+      referredByCode ? `Polecone przez kod: ${escapeHtmlClack(referredByCode)}` : null,
+      `Kod polecajacy tej osoby: ${referralCode}`
+    ].filter(Boolean);
+
+    if (CLACK_BOT_TOKEN && CLACK_CHAT_ID) {
+      await sendClackTelegramMessage(lines.join('\n'));
+    } else {
+      console.log('[clack] (DEV, Telegram not configured):\n' + lines.join('\n'));
+    }
+
+    res.json({
+      ok: true,
+      referralCode,
+      telegramDeepLink: `https://t.me/clak_res_bot?start=lead_${leadId}`
+    });
+  } catch (error) {
+    console.error('[clack] zapis failed:', error);
+    res.status(500).json({ ok: false, error: 'Blad serwera. Sprobuj ponownie pozniej.' });
+  }
+});
 
 app.get('/api/config', (_req, res) => {
   res.json({
@@ -1057,9 +1630,72 @@ app.get('/api/categories', (_req, res) => {
   res.json({ categories: CATEGORY_CATALOG });
 });
 
-app.get('/api/location/suggestions', (req, res) => {
-  const q = normalizeSearchText(req.query.q || '');
+// Real-world city/region autocomplete via Google Places Autocomplete (New).
+// The local LOCATION_SUGGESTIONS list only covers ~24 Polish cities, so
+// typing anything else (a Ukrainian city, a district, a smaller town) used
+// to return nothing and silently leave the old suggestions on screen. This
+// queries Google directly so any city/country worldwide can be found while
+// typing, with the static list only as an offline/no-API-key fallback.
+async function fetchGooglePlaceAutocomplete(input, { country = '', languageCode = 'pl' } = {}) {
+  if (!GOOGLE_PLACES_API_KEY || !input) return [];
+  const body = {
+    input,
+    languageCode,
+    includedPrimaryTypes: ['locality', 'administrative_area_level_2', 'administrative_area_level_1']
+  };
+  const preset = COUNTRY_PRESETS[normalizeSearchText(country)];
+  if (preset?.regionCode) body.includedRegionCodes = [preset.regionCode];
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), GOOGLE_PLACES_TIMEOUT_MS);
+  try {
+    const response = await fetch('https://places.googleapis.com/v1/places:autocomplete', {
+      method: 'POST',
+      signal: controller.signal,
+      headers: { 'content-type': 'application/json', 'X-Goog-Api-Key': GOOGLE_PLACES_API_KEY, 'user-agent': USER_AGENT },
+      body: JSON.stringify(body)
+    });
+    if (!response.ok) return [];
+    const data = await response.json().catch(() => ({}));
+    return (data.suggestions || [])
+      .map((item) => item.placePrediction)
+      .filter(Boolean)
+      .map((prediction) => {
+        const mainText = prediction.structuredFormat?.mainText?.text || prediction.text?.text || '';
+        const secondaryText = prediction.structuredFormat?.secondaryText?.text || '';
+        const parts = secondaryText.split(',').map((part) => part.trim()).filter(Boolean);
+        return {
+          cityName: mainText,
+          region: parts[0] || '',
+          countryName: parts[parts.length - 1] || country || '',
+          countryCode: preset?.regionCode || '',
+          displayName: prediction.text?.text || [mainText, secondaryText].filter(Boolean).join(', '),
+          placeId: prediction.placeId || ''
+        };
+      });
+  } catch {
+    return [];
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+app.get('/api/location/suggestions', async (req, res) => {
+  const rawQuery = cleanText(req.query.q || '');
+  const q = normalizeSearchText(rawQuery);
   const country = normalizeSearchText(req.query.country || '');
+  const radiusKm = Number(req.query.radiusKm || 15) || 15;
+
+  if (rawQuery.length >= 2 && GOOGLE_PLACES_API_KEY) {
+    const googleSuggestions = await fetchGooglePlaceAutocomplete(rawQuery, { country: req.query.country || '' });
+    if (googleSuggestions.length) {
+      return res.json({
+        suggestions: googleSuggestions.slice(0, 12).map((item) => ({ ...item, radiusKm, language: 'pl' })),
+        source: 'google'
+      });
+    }
+  }
+
   const suggestions = LOCATION_SUGGESTIONS.filter((item) => {
     if (country && !normalizeSearchText(`${item.countryName} ${item.countryCode}`).includes(country)) return false;
     if (!q) return true;
@@ -1068,11 +1704,11 @@ app.get('/api/location/suggestions', (req, res) => {
     .slice(0, 12)
     .map((item) => ({
       ...item,
-      radiusKm: Number(req.query.radiusKm || 15) || 15,
+      radiusKm,
       displayName: [item.cityName, item.region, item.countryName].filter(Boolean).join(', '),
       language: 'pl'
     }));
-  res.json({ suggestions });
+  res.json({ suggestions, source: 'static' });
 });
 
 app.get('/health', (_req, res) => {
@@ -1214,6 +1850,7 @@ app.post('/api/analyze', async (req, res) => {
     const useWebSearch = false;
     const model = String(req.body?.model || DEFAULT_MODEL).trim() || DEFAULT_MODEL;
     const searchModel = String(req.body?.searchModel || SEARCH_MODEL).trim() || SEARCH_MODEL;
+    const language = cleanText(req.body?.language || req.body?.uiLanguage || 'ru');
 
     if (!items.length) {
       return res.status(400).json({ error: 'Добавьте хотя бы одну компанию.' });
@@ -1223,19 +1860,38 @@ app.post('/api/analyze', async (req, res) => {
     }
 
     const startedAt = Date.now();
-    const results = await mapLimit(items, 3, async (item, index) => {
-      const result = await analyzeLead(item, { useAi, useWebSearch, model, searchModel });
+    // Sequential (concurrency 1), not Promise.all/mapLimit(3): companies are
+    // processed one at a time in order, and a single item's failure (network
+    // blip, hung fetch) is caught per-item so it can't reject the whole
+    // mapLimit Promise.all and silently drop every already-finished result.
+    const results = await mapLimit(items, 1, async (item, index) => {
       const companyId = companyIds[index] || store.findExistingCompanyId(item);
-      if (companyId) {
-        store.updateCompanyAnalysis(companyId, {
-          websiteResolution: result.websiteResolution,
-          parsed: result.parsed,
-          heuristic: result.heuristic,
-          analysis: result.analysis
-        });
-        result._companyId = companyId;
+      try {
+        const result = await analyzeLead(item, { useAi, useWebSearch, model, searchModel, language });
+        if (companyId) {
+          store.updateCompanyAnalysis(companyId, {
+            websiteResolution: result.websiteResolution,
+            parsed: result.parsed,
+            heuristic: result.heuristic,
+            analysis: result.analysis
+          });
+          result._companyId = companyId;
+        }
+        return result;
+      } catch (error) {
+        console.error(`[analyze] item failed for "${item.company || companyId}":`, error);
+        return {
+          id: cryptoRandomId(),
+          input: item,
+          _companyId: companyId,
+          error: error.message || 'Ошибка анализа компании.',
+          websiteResolution: { websiteStatus: 'UNCERTAIN', websiteConfidence: 0, candidates: [] },
+          parsed: { ok: false, error: error.message || 'Ошибка анализа', pages: [], signals: emptySignals() },
+          heuristic: {},
+          analysis: { website_status: 'UNCERTAIN', lead_score: 0 },
+          aiSiteAnalysis: { status: 'NOT_REQUESTED', version: 1, analyzed_at: '', company_data_version: 1 }
+        };
       }
-      return result;
     });
 
     res.json({
@@ -1259,6 +1915,11 @@ app.post('/api/discover', async (req, res) => {
   const runStartedAt = 0;
   const run = null;
   try {
+    const session = currentSession(req);
+    if (!isAdminAuthorized(req) && !(session && session.role === 'worker')) {
+      res.setHeader('WWW-Authenticate', 'Basic realm="Aura Admin"');
+      return res.status(401).json({ error: 'Login required to run discovery.' });
+    }
     const requestedNiches = Array.isArray(req.body?.niches)
       ? req.body.niches.map(cleanText).filter(Boolean)
       : [];
@@ -1271,9 +1932,22 @@ app.post('/api/discover', async (req, res) => {
     const radiusKm = Number.isFinite(requestedRadiusKm) && requestedRadiusKm > 0 ? clamp(requestedRadiusKm, 1, 200) : 0;
     const sourceFocus = normalizeDiscoverySource(req.body?.sourceFocus);
     const requestedLimit = Number.parseInt(req.body?.limit, 10);
-    const limit = clamp(Number.isFinite(requestedLimit) ? requestedLimit : 40, 1, MAX_DISCOVERY_ITEMS);
-    const sessionWorkerId = requestWorkerId(req);
-    const workerId = sessionWorkerId || cleanText(req.body?.workerId || req.body?.userId || req.headers['x-worker-id'] || 'worker-default');
+    const limit = clamp(Number.isFinite(requestedLimit) ? requestedLimit : 20, 1, MAX_DISCOVERY_ITEMS);
+    // requestWorkerId already resolves an admin-supplied override safely; an
+    // anonymous caller is rejected above, so no further client-supplied
+    // workerId/x-worker-id should be trusted here.
+    const workerId = requestWorkerId(req) || 'worker-default';
+    // These come from the single search settings panel on the frontend
+    // (site status / score / social / phone / email) and, unlike before, are
+    // no longer dropped - they gate which analyzed companies count toward
+    // `limit` inside runDiscoveryJob's sequential analysis loop.
+    const siteStatus = normalizeSiteStatusFilter(req.body?.siteStatus);
+    const requestedMinScore = Number.parseInt(req.body?.minScore, 10);
+    const minScore = Number.isFinite(requestedMinScore) ? clamp(requestedMinScore, 0, 100) : 0;
+    const hasSocial = Boolean(req.body?.hasSocial);
+    const hasPhone = Boolean(req.body?.hasPhone);
+    const hasEmail = Boolean(req.body?.hasEmail);
+    const language = cleanText(req.body?.language || req.body?.uiLanguage || 'ru');
 
     if (!niches.length) {
       return res.status(400).json({ error: 'Укажите категорию или нишу для поиска.' });
@@ -1290,7 +1964,12 @@ app.post('/api/discover', async (req, res) => {
       radiusKm,
       sourceFocus,
       limit,
-      workerId
+      workerId,
+      siteStatus,
+      minScore,
+      hasSocial,
+      hasPhone,
+      hasEmail
     });
 
     void runDiscoveryJob(job.id, {
@@ -1301,7 +1980,13 @@ app.post('/api/discover', async (req, res) => {
       radiusKm,
       sourceFocus,
       limit,
-      workerId
+      workerId,
+      siteStatus,
+      minScore,
+      hasSocial,
+      hasPhone,
+      hasEmail,
+      language
     });
 
     res.json({
@@ -1366,8 +2051,15 @@ app.post('/api/discover/jobs/:id/cancel', (req, res) => {
 
 app.get('/api/history/runs', (req, res) => {
   const admin = isAdminAuthorized(req);
-  const workerId = admin ? '' : requestWorkerId(req);
-  res.json({ runs: store.listRuns({ limit: 100, workerId }) });
+  if (!admin) {
+    const workerId = requestWorkerId(req);
+    if (!workerId) {
+      res.setHeader('WWW-Authenticate', 'Basic realm="Aura Admin"');
+      return res.status(401).json({ error: 'Login required.' });
+    }
+    return res.json({ runs: store.listRuns({ limit: 100, workerId }) });
+  }
+  res.json({ runs: store.listRuns({ limit: 100, workerId: '' }) });
 });
 
 app.get('/api/history/runs/:id', (req, res) => {
@@ -2119,6 +2811,25 @@ app.get('/api/academy/progress', (req, res) => {
   res.json({ progress: store.getAcademyProgress(sessionWorkerId) });
 });
 
+// Persists the Academy toolbar language toggle onto the current session, so
+// requestAcademyLanguage() (used by AI-training personas/finish-session
+// feedback/grade-answer) reflects the trainee's actually-selected UI
+// language instead of only the language captured once at login. Called from
+// the [data-set-lang] click handler in public/academy/app.js. See round-6 QA
+// finding 3.
+app.post('/api/academy/session-language', (req, res) => {
+  const token = sessionToken(req);
+  const session = token ? store.getSession(token) : null;
+  if (!session) return res.status(401).json({ error: 'Sign in required.' });
+  const requested = String(req.body?.language || '').toLowerCase();
+  if (!['pl', 'ru', 'en'].includes(requested)) {
+    return res.status(400).json({ error: 'language must be "pl", "ru" or "en".' });
+  }
+  const updated = store.setSessionLanguage(token, requested);
+  if (!updated) return res.status(401).json({ error: 'Sign in required.' });
+  res.json({ ok: true, language: updated.language });
+});
+
 app.post('/api/academy/progress', (req, res) => {
   const sessionWorkerId = requestWorkerId(req);
   if (!sessionWorkerId) return res.status(401).json({ error: 'Sign in required.' });
@@ -2126,8 +2837,17 @@ app.post('/api/academy/progress', (req, res) => {
   res.json({ ok: true, progress });
 });
 
-app.get('/api/academy/ai-training/personas', (_req, res) => {
-  res.json({ personas: AI_TRAINING_PERSONAS.map(({ id, label }) => ({ id, label })) });
+app.get('/api/academy/ai-training/personas', (req, res) => {
+  const language = requestAcademyLanguage(req);
+  res.json({
+    personas: AI_TRAINING_PERSONAS.map(({ id, label, serviceId, difficulty, readiness }) => ({
+      id,
+      label: localizedPersonaLabel(label, language),
+      serviceId,
+      difficulty,
+      readiness
+    }))
+  });
 });
 
 app.get('/api/academy/ai-training/sessions', (req, res) => {
@@ -2165,7 +2885,7 @@ app.post('/api/academy/ai-training/start', async (req, res) => {
       input: [
         {
           role: 'system',
-          content: `${AI_TRAINING_ROLEPLAY_RULES}\n\nPersona klienta:\n${persona.prompt}\n\nTo worker dzwoni pierwszy. Zacznij od krotkiej reakcji klienta, np. "Slucham?" albo "Kto mowi?", zgodnie z persona.`
+          content: `${AI_TRAINING_ROLEPLAY_RULES}\n\nPersona klienta:\n${personaSystemPrompt(persona)}\n\nTo worker dzwoni pierwszy. Zacznij od krotkiej reakcji klienta, np. "Slucham?" albo "Kto mowi?", zgodnie z persona.`
         }
       ],
       max_output_tokens: 200
@@ -2184,7 +2904,12 @@ app.post('/api/academy/ai-training/start', async (req, res) => {
       estimatedCost: estimateAiCost(AI_TRAINING_MODEL, usage.input_tokens || 0, usage.output_tokens || 0)
     });
 
-    res.json({ sessionId: session.sessionId, clientType: persona.id, personaLabel: persona.label, openingLine });
+    res.json({
+      sessionId: session.sessionId,
+      clientType: persona.id,
+      personaLabel: localizedPersonaLabel(persona.label, requestAcademyLanguage(req)),
+      openingLine
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: error.message || 'Błąd startu treningu AI.' });
@@ -2209,7 +2934,7 @@ app.post('/api/academy/ai-training/:sessionId/message', async (req, res) => {
       input: [
         {
           role: 'system',
-          content: `${AI_TRAINING_ROLEPLAY_RULES}\n\nPersona klienta:\n${persona?.prompt || ''}\n\nKontynuuj rozmowe. Odpowiadaj tylko jako klient.`
+          content: `${AI_TRAINING_ROLEPLAY_RULES}\n\nPersona klienta:\n${personaSystemPrompt(persona)}\n\nKontynuuj rozmowe. Odpowiadaj tylko jako klient.`
         },
         ...updated.messages.map((message) => ({
           role: message.role === 'worker' ? 'user' : 'assistant',
@@ -2263,12 +2988,19 @@ app.post('/api/academy/ai-training/:sessionId/finish', async (req, res) => {
       .map((message) => `${message.role === 'worker' ? 'Sprzedawca' : 'Klient'}: ${message.text}`)
       .join('\n');
 
+    // Feedback CONTENT (coaching analysis) follows the trainee's UI language,
+    // unlike the roleplay persona above which is a deliberately Polish
+    // verbatim call-script. See requestAcademyLanguage/localizedPersonaLabel.
+    const feedbackLanguage = requestAcademyLanguage(req);
+    const finishLanguageInstruction =
+      feedbackLanguage === 'ru' ? 'Пиши по-русски, конкретно и кратко.' : 'Pisz po polsku, konkretnie i krotko.';
+
     const response = await openai.responses.create({
       model: AI_TRAINING_MODEL,
       input: [
         {
           role: 'system',
-          content: `Jestes trenerem sprzedazy telefonicznej Aura Global Merchants. Ocen rozmowe worker-a z klientem: "${persona?.label || session.clientType}". Kryteria: konkretna obserwacja o firmie, pytania o problem, krotkie wyjasnienie wartosci, brak nachalnej sprzedazy, nieobiecywanie dokladnej ceny przez telefon, proba umowienia konkretnej konsultacji. Ocen 0-100, meetingBooked, good, bad, improvements. Pisz po polsku, konkretnie i krotko.`
+          content: `Jestes trenerem sprzedazy telefonicznej Aura Global Merchants. Ocen rozmowe worker-a z klientem: "${localizedPersonaLabel(persona?.label, 'pl') || session.clientType}". Kryteria: konkretna obserwacja o firmie, pytania o problem, krotkie wyjasnienie wartosci, brak nachalnej sprzedazy, nieobiecywanie dokladnej ceny przez telefon, proba umowienia konkretnej konsultacji. Ocen 0-100, meetingBooked, good, bad, improvements. ${finishLanguageInstruction}`
         },
         { role: 'user', content: transcriptText || '(brak wiadomości)' }
       ],
@@ -2304,6 +3036,122 @@ app.post('/api/academy/ai-training/:sessionId/finish', async (req, res) => {
   }
 });
 
+// Grades a free-text ("open") Academy quiz/exam answer with AI — used by both
+// per-service quizzes and the open-ended final-exam questions. Score comes back
+// already vetted by the model (not a raw client-supplied number), which is the
+// closest we can get to server-side validation for free-text answers.
+app.post('/api/academy/grade-answer', async (req, res) => {
+  try {
+    if (!openai) return res.status(400).json({ error: 'OPENAI_API_KEY не указан в .env.' });
+    const workerId = requestWorkerId(req);
+    if (!workerId) return res.status(401).json({ error: 'Sign in required.' });
+    const question = cleanText(req.body?.question || '').slice(0, 2000);
+    const gradingNotes = cleanText(req.body?.gradingNotes || '').slice(0, 2000);
+    const answer = cleanText(req.body?.answer || '').slice(0, 4000);
+    if (!question || !answer) return res.status(400).json({ error: 'Pytanie i odpowiedź są wymagane.' });
+
+    // Same convention as the finish-session feedback prompt above: the
+    // question/gradingNotes text is verbatim authored Polish, but the
+    // FEEDBACK the model writes back should match the trainee's UI language.
+    const gradeLanguage = requestAcademyLanguage(req);
+    const gradeLanguageInstruction =
+      gradeLanguage === 'ru'
+        ? 'Напиши краткий фидбэк по-русски'
+        : 'napisz krotki feedback po polsku';
+
+    const schema = {
+      type: 'object',
+      additionalProperties: false,
+      required: ['score', 'feedback', 'strengths', 'improvements'],
+      properties: {
+        score: { type: 'number', minimum: 0, maximum: 100 },
+        feedback: { type: 'string' },
+        strengths: { type: 'array', items: { type: 'string' } },
+        improvements: { type: 'array', items: { type: 'string' } }
+      }
+    };
+
+    const response = await openai.responses.create({
+      model: AI_TRAINING_MODEL,
+      input: [
+        {
+          role: 'system',
+          content: `Jestes trenerem sprzedazy telefonicznej Aura Global Merchants oceniajacym pisemna odpowiedz stazysty na pytanie treningowe z Akademii sprzedazy. Pytanie: "${question}". Kryteria dobrej odpowiedzi: ${gradingNotes || 'trafna diagnoza potrzeby klienta, konkretny i zywy jezyk sprzedazowy (nie ksiazkowy), brak nachalnosci, nieobiecywanie dokladnej ceny ani gwarantowanego efektu, dazenie do konkretnego nastepnego kroku (spotkanie/konsultacja).'} Ocen odpowiedz od 0 do 100, ${gradeLanguageInstruction}, liste mocnych stron i liste rzeczy do poprawy. Badz konkretny i rzeczowy, nie ogolnikowy.`
+        },
+        { role: 'user', content: answer }
+      ],
+      max_output_tokens: 500,
+      text: {
+        format: {
+          type: 'json_schema',
+          name: 'academy_answer_feedback',
+          strict: true,
+          schema
+        }
+      }
+    });
+
+    const feedback = JSON.parse(response.output_text);
+    const usage = response.usage || {};
+    store.logAiUsage({
+      workerId,
+      feature: 'academy_grading',
+      model: AI_TRAINING_MODEL,
+      promptTokens: usage.input_tokens || 0,
+      completionTokens: usage.output_tokens || 0,
+      totalTokens: usage.total_tokens || 0,
+      estimatedCost: estimateAiCost(AI_TRAINING_MODEL, usage.input_tokens || 0, usage.output_tokens || 0)
+    });
+
+    res.json({ result: feedback });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message || 'Błąd oceny odpowiedzi.' });
+  }
+});
+
+// Server-side recompute of the final exam score for single/case questions (can't be
+// spoofed by a crafted POST body like the generic /api/academy/progress endpoint can).
+// Open-ended questions are pre-graded per-question via /api/academy/grade-answer and
+// their scores are passed in as openScores — already vetted by the model, just not
+// re-verified against the transcript here.
+app.post('/api/academy/final-exam/submit', (req, res) => {
+  try {
+    const workerId = requestWorkerId(req);
+    if (!workerId) return res.status(401).json({ error: 'Sign in required.' });
+    const answers = req.body?.answers && typeof req.body.answers === 'object' ? req.body.answers : {};
+    const openScores = req.body?.openScores && typeof req.body.openScores === 'object' ? req.body.openScores : {};
+
+    let earned = 0;
+    let scored = 0;
+    FINAL_EXAM.forEach((question, index) => {
+      if (question.type === 'open') {
+        const value = Number(openScores[index]);
+        if (Number.isFinite(value)) {
+          earned += Math.max(0, Math.min(100, value)) / 100;
+          scored += 1;
+        }
+        return;
+      }
+      scored += 1;
+      if (Number(answers[index]) === question.correct) earned += 1;
+    });
+
+    const score = scored ? Math.round((earned / scored) * 100) : 0;
+    const passed = score >= 80;
+    let progress = store.saveAcademyProgress(workerId, { quizScores: { final: score } });
+    if (passed) {
+      const completed = new Set(progress.completedModules || []);
+      completed.add('final');
+      progress = store.saveAcademyProgress(workerId, { completedModules: [...completed] });
+    }
+    res.json({ score, passed, progress });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message || 'Błąd sprawdzania testu.' });
+  }
+});
+
 app.get('/api/admin/academy', (_req, res) => {
   res.json({ users: store.listAcademyProgress() });
 });
@@ -2326,6 +3174,18 @@ app.get('/api/admin/audit', (req, res) => {
   res.json({ actions: store.listAuditLog({ limit: Number.parseInt(req.query.limit, 10) || 200 }) });
 });
 
+// Powers "suggest as you type" for the city/country/category/worker filter
+// inputs across History, Leads and worker search - always scans the full,
+// permanently-kept history (never a paginated slice), so anything ever
+// recorded is findable from the very first keystroke.
+app.get('/api/admin/filters/suggestions', (req, res) => {
+  const field = cleanText(req.query.field || '');
+  if (!['city', 'country', 'category', 'workerId'].includes(field)) {
+    return res.status(400).json({ error: 'field must be one of city, country, category, workerId.' });
+  }
+  res.json({ suggestions: store.getFilterFacets({ field, q: req.query.q || '', limit: Number.parseInt(req.query.limit, 10) || 20 }) });
+});
+
 app.get('/api/admin/summary', (req, res) => {
   res.json({
     stats: store.getAdminSummary({ period: req.query.period || 'all' }),
@@ -2337,6 +3197,11 @@ app.get('/api/admin/summary', (req, res) => {
 
 app.post('/api/ai/site-analysis', async (req, res) => {
   try {
+    const session = currentSession(req);
+    if (!isAdminAuthorized(req) && !(session && session.role === 'worker')) {
+      res.setHeader('WWW-Authenticate', 'Basic realm="Aura Admin"');
+      return res.status(401).json({ error: 'Login required for AI analysis.' });
+    }
     if (!openai) {
       return res.status(400).json({
         error: 'OPENAI_API_KEY не указан в .env. Вставьте ключ и перезапустите сервер.'
@@ -2414,9 +3279,14 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = REGISTRY_TIMEOUT_
 }
 
 app.get('/api/registry/ceidg/search', async (req, res) => {
+  const session = currentSession(req);
+  if (!isAdminAuthorized(req) && !(session && session.role === 'worker')) {
+    res.setHeader('WWW-Authenticate', 'Basic realm="Aura Admin"');
+    return res.status(401).json({ error: 'Login required.' });
+  }
   if (!CEIDG_TOKEN) {
     return res.status(400).json({
-      error: 'CEIDG_API_TOKEN не указан в .env. �?мпортируйте CSV или добавьте токен.'
+      error: 'CEIDG_API_TOKEN не указан в .env. Импортируйте CSV или добавьте токен.'
     });
   }
 
@@ -2441,6 +3311,11 @@ app.get('/api/registry/ceidg/search', async (req, res) => {
 });
 
 app.get('/api/registry/krs/:krs', async (req, res) => {
+  const session = currentSession(req);
+  if (!isAdminAuthorized(req) && !(session && session.role === 'worker')) {
+    res.setHeader('WWW-Authenticate', 'Basic realm="Aura Admin"');
+    return res.status(401).json({ error: 'Login required.' });
+  }
   const krs = cleanIdentifier(req.params.krs);
   if (!krs) return res.status(400).json({ error: 'KRS is required.' });
 
@@ -2454,6 +3329,15 @@ app.get('/api/registry/krs/:krs', async (req, res) => {
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
+});
+
+// Final safety net: catches errors passed to next(err) or thrown synchronously
+// inside a route handler, so a single bad request returns a clean 500 instead
+// of an unhandled exception that could otherwise crash the process.
+app.use((err, req, res, _next) => {
+  console.error(`[express error] ${req.method} ${req.originalUrl}:`, err?.stack || err);
+  if (res.headersSent) return;
+  res.status(500).json({ error: 'Internal server error.' });
 });
 
 app.listen(PORT, HOST, () => {
@@ -2537,6 +3421,50 @@ function normalizeDiscoverySource(value) {
     return raw === 'maps_check' ? 'maps_api' : raw;
   }
   return 'internet';
+}
+
+function normalizeSiteStatusFilter(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  return ['no_site', 'has_site', 'weak_site', 'uncertain'].includes(raw) ? raw : 'all';
+}
+
+// Mirrors the client-side siteFilterMatches()/hasAnySocial() in public/app.js so
+// the single search panel's "site status / score / social / phone / email"
+// controls genuinely gate which analyzed companies count toward the requested
+// limit, instead of being decorative fields that never reach the backend.
+const NO_SITE_STATUSES = new Set([
+  'NO_WEBSITE_CONFIRMED',
+  'SOCIAL_ONLY',
+  'DIRECTORY_ONLY',
+  'MARKETPLACE_ONLY',
+  'BROKEN_WEBSITE',
+  'FREE_SUBDOMAIN'
+]);
+
+function siteStatusMatchesFilter(status, filter) {
+  if (!filter || filter === 'all') return true;
+  if (filter === 'no_site') return NO_SITE_STATUSES.has(status);
+  if (filter === 'has_site') return status === 'WEBSITE_FOUND';
+  if (filter === 'weak_site') return ['ONE_PAGE_PLACEHOLDER', 'FREE_SUBDOMAIN', 'BROKEN_WEBSITE'].includes(status);
+  if (filter === 'uncertain') return status === 'UNCERTAIN';
+  return true;
+}
+
+function hasAnySocialInput(input = {}) {
+  const social = input.social_profiles || {};
+  return Boolean(social.instagram || social.facebook || social.tiktok || /instagram|facebook|tiktok/i.test(input.source_profile || ''));
+}
+
+function matchesDiscoveryFilters(analyzedResult, filters) {
+  const input = analyzedResult.input || {};
+  const analysis = analyzedResult.analysis || {};
+  const status = analysis.website_status || analyzedResult.websiteResolution?.websiteStatus || 'UNCERTAIN';
+  if (filters.minScore && Number(analysis.lead_score || 0) < filters.minScore) return false;
+  if (!siteStatusMatchesFilter(status, filters.siteStatus)) return false;
+  if (filters.hasSocial && !hasAnySocialInput(input)) return false;
+  if (filters.hasPhone && !input.phone) return false;
+  if (filters.hasEmail && !input.email) return false;
+  return true;
 }
 
 function computeDiscoveryCandidateLimit(requestedLimit, sourceFocus = 'internet') {
@@ -2655,35 +3583,171 @@ async function runDiscoveryJob(jobId, params) {
 
     const relevance = applyCategoryRelevance(normalizeItems(discovery.companies || []), params.niches);
     const rawCompanies = relevance.companies.slice(0, candidateLimit);
+    // Claim the whole over-fetched candidate buffer (not just `params.limit`),
+    // because the site-status/score/social/phone/email filters below only
+    // resolve once each candidate is analyzed - some candidates will not match
+    // and must not consume the requested slot count.
     const claimedFinal = store.claimCompaniesForRun(rawCompanies, {
       runId: run.id,
       workerId: params.workerId,
-      limit: params.limit
+      limit: candidateLimit
     });
-    const companies = claimedFinal.companies;
-    const foundCount = companies.length;
+    const candidates = claimedFinal.companies;
     const rawFoundCount = rawCompanies.length;
     const newCount = claimedFinal.newCount;
     const duplicateCount = claimedFinal.duplicateCount;
     const companyIds = claimedFinal.companyIds;
+    store.addCompanyIdsToRun(run.id, companyIds);
+
+    const discoveryFilters = {
+      siteStatus: params.siteStatus || 'all',
+      minScore: Number(params.minScore || 0),
+      hasSocial: Boolean(params.hasSocial),
+      hasPhone: Boolean(params.hasPhone),
+      hasEmail: Boolean(params.hasEmail)
+    };
+
+    // ---- Sequential per-company pipeline -------------------------------
+    // Companies are analyzed ONE AT A TIME, in discovery order (not
+    // Promise.all'd), so each finished card can stream to the dashboard the
+    // moment it is fully ready (website checked, scored, AI-analyzed) -
+    // instead of the previous two-phase flow where /api/discover only
+    // returned raw, unanalyzed rows and the frontend had to fire a second,
+    // whole-batch-blocking /api/analyze call before anything useful appeared.
+    const matchedCompanies = [];
+    const warningsFromAnalysis = [];
+    let analyzedCount = 0;
+    const analysisTarget = Math.min(candidates.length, params.limit);
+    const analysisDeadline = runStartedAt + MAX_DISCOVERY_JOB_MS - 5000;
+
+    updateDiscoveryJob(jobId, {
+      analyzedCompanies: [],
+      progress: {
+        message: `Найдено ${candidates.length} кандидатов. Проверяю сайты по одному...`,
+        currentNiche: '',
+        currentSource: discovery.source || params.sourceFocus,
+        processedNiches: params.niches.length,
+        totalNiches: params.niches.length,
+        foundCount: 0,
+        analyzedCount: 0,
+        analysisTarget
+      }
+    });
+
+    for (const candidate of candidates) {
+      if (guard.stopped || matchedCompanies.length >= params.limit) break;
+      if (performance.now() > analysisDeadline) {
+        warningsFromAnalysis.push('Проверка сайтов прервана по тайм-ауту, часть кандидатов не была проверена.');
+        break;
+      }
+
+      analyzedCount += 1;
+      const companyId = candidate._companyId;
+      let analyzed;
+      try {
+        analyzed = await analyzeLead(candidate, {
+          useAi: false,
+          useWebSearch: false,
+          model: DEFAULT_MODEL,
+          searchModel: SEARCH_MODEL,
+          language: params.language
+        });
+      } catch (error) {
+        // One company's failure (a network blip, a hung fetch, a malformed
+        // page) must never sink the rest of the batch - log it, tell the
+        // user, and move on to the next candidate in order.
+        console.error(`[discover-job] id=${jobId} analyzeLead failed for "${candidate.company || companyId}":`, error);
+        warningsFromAnalysis.push(`Не удалось проверить "${candidate.company || 'компанию'}": ${error.message || 'ошибка проверки сайта'}.`);
+        continue;
+      }
+
+      analyzed._companyId = companyId;
+      analyzed.input = { ...analyzed.input, _companyId: companyId };
+
+      if (companyId) {
+        store.updateCompanyAnalysis(companyId, {
+          websiteResolution: analyzed.websiteResolution,
+          parsed: analyzed.parsed,
+          heuristic: analyzed.heuristic,
+          analysis: analyzed.analysis
+        });
+      }
+
+      // Automatic per-card AI write-up, generated right here from this one
+      // company's own freshly-collected facts (never from a shared/global
+      // variable - see analyzeSiteCardWithOpenAI's explicit argument list),
+      // so the card is already complete with its personalized analysis the
+      // moment it reaches the dashboard, with no separate manual AI click.
+      try {
+        const aiAnalysis = await analyzeSiteCardWithOpenAI({
+          item: analyzed.input,
+          parsed: analyzed.parsed,
+          websiteResolution: analyzed.websiteResolution,
+          heuristic: analyzed.analysis,
+          model: DEFAULT_MODEL,
+          language: params.language || 'ru',
+          workerId: params.workerId
+        });
+        if (aiAnalysis) {
+          analyzed.aiSiteAnalysis = {
+            status: 'COMPLETED',
+            version: aiAnalysis.ai_analysis_version || 1,
+            analyzed_at: aiAnalysis.ai_analyzed_at || new Date().toISOString(),
+            company_data_version: aiAnalysis.company_data_version || 1,
+            data: aiAnalysis
+          };
+          if (companyId) store.updateCompanyAiAnalysis(companyId, analyzed.aiSiteAnalysis);
+        }
+      } catch (error) {
+        console.error(`[discover-job] id=${jobId} AI card analysis failed for "${candidate.company || companyId}":`, error);
+        analyzed.aiSiteAnalysis = {
+          status: 'FAILED',
+          version: 1,
+          analyzed_at: new Date().toISOString(),
+          company_data_version: 1,
+          error: error.message || 'AI analysis failed'
+        };
+      }
+
+      if (matchesDiscoveryFilters(analyzed, discoveryFilters)) {
+        matchedCompanies.push(analyzed);
+      }
+
+      updateDiscoveryJob(jobId, {
+        analyzedCompanies: matchedCompanies,
+        appendWarnings: warningsFromAnalysis.splice(0, warningsFromAnalysis.length),
+        progress: {
+          message: `Проверено ${analyzedCount} из ${candidates.length}, подходит под фильтры: ${matchedCompanies.length} из ${params.limit}`,
+          currentNiche: '',
+          currentSource: discovery.source || params.sourceFocus,
+          processedNiches: params.niches.length,
+          totalNiches: params.niches.length,
+          foundCount: matchedCompanies.length,
+          analyzedCount,
+          analysisTarget
+        }
+      });
+    }
+
+    const companies = matchedCompanies;
+    const foundCount = companies.length;
     const finalStatus =
       guard.reason === 'cancelled'
         ? 'cancelled'
         : foundCount >= params.limit
           ? 'completed'
-          : newCount === 0 && duplicateCount > 0
+          : newCount === 0 && duplicateCount > 0 && foundCount === 0
             ? 'duplicates_only'
             : 'exhausted';
     const progressMessage =
       finalStatus === 'cancelled'
-        ? `Поиск отменен. Найдено ${foundCount} новых компаний до отмены.`
+        ? `Поиск отменен. Готово ${foundCount} карточек до отмены.`
         : finalStatus === 'completed'
-          ? `Найдено ${foundCount} новых компаний. Поиск завершен.`
+          ? `Готово: ${foundCount} карточек, полностью проверенных и проанализированных.`
           : finalStatus === 'duplicates_only'
             ? `Все найденные компании уже есть в базе (дублей: ${duplicateCount}). Новых нет.`
-            : `Поиск исчерпан: найдено ${foundCount} новых компаний из ${params.limit}, дублей пропущено ${duplicateCount}.`;
+            : `Проверено ${analyzedCount} кандидатов, под фильтры подошло ${foundCount} из запрошенных ${params.limit}. Больше подходящих компаний по этим фильтрам сейчас нет.`;
 
-    store.addCompanyIdsToRun(run.id, companyIds);
     store.updateRun(run.id, {
       status: finalStatus,
       finished_at: new Date().toISOString(),
@@ -2699,9 +3763,9 @@ async function runDiscoveryJob(jobId, params) {
 
     updateDiscoveryJob(jobId, {
       status: finalStatus === 'cancelled' ? 'cancelled' : 'completed',
-      partialCompanies: companies.map((company, index) => ({ ...company, _companyId: company._companyId || companyIds[index] })),
+      analyzedCompanies: companies,
       appendQueries: discovery.queries || [],
-      appendWarnings: discovery.warnings || [],
+      appendWarnings: [...(discovery.warnings || []), ...warningsFromAnalysis],
       result: {
         runId: run.id,
         queries: Array.isArray(discovery.queries) ? discovery.queries.slice(0, 10) : [],
@@ -2712,8 +3776,9 @@ async function runDiscoveryJob(jobId, params) {
           rawFoundCount,
           newCount,
           duplicateCount,
+          analyzedCount,
           skippedWrongCategory: relevance.skippedWrongCategory,
-          usedAi: false,
+          usedAi: true,
           source: discovery.source,
           sourceFocus: params.sourceFocus,
           searchStatus: finalStatus,
@@ -2731,7 +3796,9 @@ async function runDiscoveryJob(jobId, params) {
         currentSource: discovery.source || params.sourceFocus,
         processedNiches: params.niches.length,
         totalNiches: params.niches.length,
-        foundCount: companies.length
+        foundCount: companies.length,
+        analyzedCount,
+        analysisTarget
       }
     });
   } catch (error) {
@@ -2779,19 +3846,26 @@ async function discoverCompaniesBatchWithoutAI({ niches, city, district, limit, 
     }
 
     const amazonDiscoveries = [];
+    const amazonWarnings = [];
     const perNicheLimit = Math.max(5, Math.ceil(limit / Math.max(1, niches.length)));
     for (const niche of niches) {
       if (guard?.stopped) break;
       if (uniqueCompanies(amazonDiscoveries.flatMap((item) => item.companies || [])).length >= limit) break;
-      const discovery = await discoverCompaniesFromAmazonLocationExpanded({
-        niche,
-        city,
-        district,
-        limit: perNicheLimit,
-        sourceFocus,
-        onProgress,
-        guard
-      });
+      let discovery;
+      try {
+        discovery = await discoverCompaniesFromAmazonLocationExpanded({
+          niche,
+          city,
+          district,
+          limit: perNicheLimit,
+          sourceFocus,
+          onProgress,
+          guard
+        });
+      } catch (error) {
+        amazonWarnings.push(`Category "${niche}" skipped: ${error.message || 'unknown error'}`);
+        continue;
+      }
       amazonDiscoveries.push(discovery);
       if (typeof onProgress === 'function') {
         onProgress({
@@ -2807,24 +3881,36 @@ async function discoverCompaniesBatchWithoutAI({ niches, city, district, limit, 
       }
     }
 
-    return mergeDiscoveries(amazonDiscoveries, limit);
+    const amazonMerged = mergeDiscoveries(amazonDiscoveries, limit);
+    return { ...amazonMerged, warnings: unique([...(amazonMerged.warnings || []), ...amazonWarnings]).slice(0, 30) };
   }
 
   if (sourceFocus === 'maps_api') {
+    if (!GOOGLE_PLACES_API_KEY) {
+      throw new Error('Для Google Places нужен GOOGLE_PLACES_API_KEY в .env.');
+    }
+
     const googleDiscoveries = [];
+    const googleWarnings = [];
     const perNicheLimit = Math.max(5, Math.ceil(limit / Math.max(1, niches.length)));
     for (const niche of niches) {
       if (guard?.stopped) break;
       if (uniqueCompanies(googleDiscoveries.flatMap((item) => item.companies || [])).length >= limit) break;
-      const discovery = await discoverCompaniesFromGooglePlacesExpanded({
-        niche,
-        city,
-        district,
-        limit: perNicheLimit,
-        sourceFocus,
-        onProgress,
-        guard
-      });
+      let discovery;
+      try {
+        discovery = await discoverCompaniesFromGooglePlacesExpanded({
+          niche,
+          city,
+          district,
+          limit: perNicheLimit,
+          sourceFocus,
+          onProgress,
+          guard
+        });
+      } catch (error) {
+        googleWarnings.push(`Category "${niche}" skipped: ${error.message || 'unknown error'}`);
+        continue;
+      }
       googleDiscoveries.push(discovery);
       if (typeof onProgress === 'function') {
         onProgress({
@@ -2840,7 +3926,8 @@ async function discoverCompaniesBatchWithoutAI({ niches, city, district, limit, 
       }
     }
 
-    return mergeDiscoveries(googleDiscoveries, limit);
+    const googleMerged = mergeDiscoveries(googleDiscoveries, limit);
+    return { ...googleMerged, warnings: unique([...(googleMerged.warnings || []), ...googleWarnings]).slice(0, 30) };
   }
 
   // For multiple categories, iterate every niche (no artificial 12-category cap)
@@ -2914,7 +4001,7 @@ function mergeDiscoveries(discoveries, limit) {
 
 function discoveryPriority(discovery) {
   const source = String(discovery?.source || '');
-  if (source.includes('public_registry') || source.includes('public_contact_fallback')) return 1;
+  if (source.includes('public_registry') || source.includes('public_catalog') || source.includes('public_contact_fallback')) return 1;
   if (source.includes('public_search')) return 2;
   if (source.includes('amazon_location')) return 3;
   if (source.includes('google_places')) return 4;
@@ -2974,7 +4061,7 @@ async function discoverCompaniesWithoutAI({ niche, city, district, limit, source
       }
     }
 
-    if (!primary?.companies?.length && CEIDG_TOKEN && !guard?.stopped) {
+    if (!primary?.companies?.length && CEIDG_TOKEN && isPolandDiscoveryRegion(city) && !guard?.stopped) {
       try {
         primary = await discoverCompaniesFromCeidg({ niche, city, district, limit });
       } catch (error) {
@@ -3027,7 +4114,7 @@ async function discoverCompaniesWithoutAI({ niche, city, district, limit, source
   }
 
   if (sourceFocus === 'registries') {
-    if (!CEIDG_TOKEN) {
+    if (!CEIDG_TOKEN || !isPolandDiscoveryRegion(city)) {
       return discoverCompaniesFromPublicRegistries({ niche, city, district, limit });
     }
     return discoverCompaniesFromCeidg({ niche, city, district, limit });
@@ -3049,8 +4136,12 @@ async function discoverCompaniesWithoutAI({ niche, city, district, limit, source
     throw new Error('Для поиска Google Maps нужен GOOGLE_PLACES_API_KEY в .env.');
   }
 
-  if (CEIDG_TOKEN) {
+  if (CEIDG_TOKEN && isPolandDiscoveryRegion(city)) {
     return discoverCompaniesFromCeidg({ niche, city, district, limit });
+  }
+
+  if (!isPolandDiscoveryRegion(city)) {
+    return discoverCompaniesFromPublicRegistries({ niche, city, district, limit });
   }
 
   throw new Error(
@@ -3063,7 +4154,7 @@ function uniqueCompanies(companies) {
   const result = [];
   for (const company of companies) {
     const key = [
-      cleanText(company.nip || company.regon || ''),
+      cleanText(company.nip || company.regon || company.edrpou || ''),
       splitPhoneValues(company.phone || '', { city: company.city, country: company.country }).join(',') || normalizePhone(company.phone || ''),
       cleanText(company.source_profile || '').toLowerCase(),
       cleanText(company.company || '').toLowerCase(),
@@ -3307,8 +4398,8 @@ async function discoverCompaniesFromGooglePlacesExpanded({ niche, city, district
         });
       }
     } catch (error) {
-      warnings.push(error.message || 'Google Places API error');
-      break;
+      warnings.push(`Google Places skipped ${districtName || city}: ${error.message || 'unknown error'}`);
+      if (!districtName) break;
     }
   }
 
@@ -3532,19 +4623,28 @@ async function discoverCompaniesFromPublicSearch({ niche, city, district, limit,
   const query = [niche, district, city, focusTerms[sourceFocus] || focusTerms.internet]
     .filter(Boolean)
     .join(' ');
-  const queryVariants = unique([
-    query,
-    ['site:panoramafirm.pl', niche, district, city, 'kontakt'].filter(Boolean).join(' '),
-    ['site:oferteo.pl', niche, district, city, 'kontakt'].filter(Boolean).join(' '),
-    ['site:fixly.pl', niche, district, city, 'kontakt'].filter(Boolean).join(' '),
-    [niche, district, city, 'usługi firma kontakt telefon'].filter(Boolean).join(' '),
-    [niche, district, city, 'montaż serwis kontakt'].filter(Boolean).join(' '),
-    ['site:.pl', niche, district, city, 'kontakt'].filter(Boolean).join(' ')
-  ]).slice(0, sourceFocus === 'all_sources' || sourceFocus === 'internet' ? 7 : 2);
+  const queryVariants = unique(
+    isPolandDiscoveryRegion(city)
+      ? [
+          query,
+          ['site:panoramafirm.pl', niche, district, city, 'kontakt'].filter(Boolean).join(' '),
+          ['site:oferteo.pl', niche, district, city, 'kontakt'].filter(Boolean).join(' '),
+          ['site:fixly.pl', niche, district, city, 'kontakt'].filter(Boolean).join(' '),
+          [niche, district, city, 'usługi firma kontakt telefon'].filter(Boolean).join(' '),
+          [niche, district, city, 'montaż serwis kontakt'].filter(Boolean).join(' '),
+          ['site:.pl', niche, district, city, 'kontakt'].filter(Boolean).join(' ')
+        ]
+      : [
+          query,
+          ['site:opendatabot.ua', niche, district, city, 'контакти'].filter(Boolean).join(' '),
+          ['site:youcontrol.com.ua', niche, district, city, 'контакти'].filter(Boolean).join(' '),
+          [niche, district, city, 'послуги компанія контакти телефон'].filter(Boolean).join(' '),
+          [niche, district, city, 'каталог компаній контакти сайт'].filter(Boolean).join(' '),
+          ['site:.ua', niche, district, city, 'контакти'].filter(Boolean).join(' ')
+        ]
+  ).slice(0, sourceFocus === 'all_sources' || sourceFocus === 'internet' ? 7 : 2);
   const ddgUrl = `https://duckduckgo.com/html/?${new URLSearchParams({ q: queryVariants[0] })}`;
-  const bingUrls = queryVariants.map(
-    (variant) => `https://www.bing.com/search?${new URLSearchParams({ q: variant, count: String(maxResults) })}`
-  );
+  const bingUrls = queryVariants.map((variant) => buildBingSearchUrl(variant, { count: maxResults, city }));
   const searchUrls = unique([ddgUrl, ...bingUrls]);
   const warnings = [];
   const companies = [];
@@ -3559,7 +4659,7 @@ async function discoverCompaniesFromPublicSearch({ niche, city, district, limit,
     }
 
     try {
-      const html = await fetchText(searchUrl, 8_000);
+      const html = await fetchText(searchUrl, 8_000, isDuckDuckGo ? {} : { acceptLanguage: bingMarketFor(city).acceptLanguage });
 
       if (isDuckDuckGo && isDuckDuckGoBlockedHtml(html)) {
         registerDuckDuckGoBlock();
@@ -3640,25 +4740,40 @@ async function discoverCompaniesFromPublicSearch({ niche, city, district, limit,
   };
 }
 
+// Dispatches to the country-appropriate public-registry/catalog search. Both
+// branches only ever issue normal search-engine queries (Bing "site:" search)
+// and, via enrichDiscoveredCompanyContacts, open the specific pages that came
+// back in those results - there is no bulk crawl of any registry.
 async function discoverCompaniesFromPublicRegistries({ niche, city, district, limit }) {
+  const cityPreset = getCityPreset(city);
+  const countryPreset = getCountryPreset(getDiscoveryContext().country) || (cityPreset ? getCountryPreset(cityPreset.country) : null);
+  const regionCode = cityPreset?.regionCode || countryPreset?.regionCode || 'PL';
+  if (regionCode === 'UA') {
+    return discoverCompaniesFromPublicRegistriesUkraine({ niche, city, district, limit });
+  }
+  return discoverCompaniesFromPublicRegistriesPoland({ niche, city, district, limit });
+}
+
+async function discoverCompaniesFromPublicRegistriesPoland({ niche, city, district, limit }) {
   const registryQueries = unique([
     ['site:aplikacja.ceidg.gov.pl/CEIDG/CEIDG.Public.UI', niche, district, city].filter(Boolean).join(' '),
     ['site:aplikacja.ceidg.gov.pl', niche, district, city, 'CEIDG firma'].filter(Boolean).join(' '),
+    ['site:biznes.gov.pl', niche, district, city, 'wyszukiwarka firm'].filter(Boolean).join(' '),
     ['site:rejestr.io', niche, district, city, 'firma'].filter(Boolean).join(' '),
     ['site:aleo.com/pl/firmy', niche, district, city].filter(Boolean).join(' '),
     ['site:panoramafirm.pl', niche, district, city, 'NIP REGON'].filter(Boolean).join(' '),
+    ['site:pkt.pl', niche, district, city, 'kontakt'].filter(Boolean).join(' '),
+    ['site:regon24.pl', niche, district, city].filter(Boolean).join(' '),
     [niche, district, city, 'CEIDG NIP REGON firma kontakt'].filter(Boolean).join(' ')
   ]);
-  const searchUrls = registryQueries.flatMap((query) => [
-    `https://www.bing.com/search?${new URLSearchParams({ q: query, count: String(Math.min(limit, 12)) })}`
-  ]);
+  const searchUrls = registryQueries.flatMap((query) => [buildBingSearchUrl(query, { count: Math.min(limit, 12), city })]);
   const warnings = [];
   const companies = [];
 
   for (const searchUrl of searchUrls) {
     if (companies.length >= limit) break;
     try {
-      const html = await fetchText(searchUrl, 8_000);
+      const html = await fetchText(searchUrl, 8_000, { acceptLanguage: bingMarketFor(city).acceptLanguage });
       const $ = cheerio.load(html);
       for (const element of $('.b_algo').toArray()) {
         if (companies.length >= limit) break;
@@ -3667,7 +4782,7 @@ async function discoverCompaniesFromPublicRegistries({ niche, city, district, li
         if (!title || !href) continue;
         const host = safeHostname(href);
         if (!host) continue;
-        if (!/(ceidg|rejestr|aleo|panoramafirm|pkt|cylex|oferteo)/i.test(host)) continue;
+        if (!/(ceidg|biznes\.gov|rejestr|aleo|panoramafirm|pkt|cylex|oferteo|regon24)/i.test(host)) continue;
         const snippet = cleanText($(element).find('.b_caption p, .b_snippet').first().text());
         const evidence = cleanText(`${title} ${snippet} ${href}`);
         if (!isSearchEvidenceLocalToCity(evidence, city)) continue;
@@ -3682,6 +4797,7 @@ async function discoverCompaniesFromPublicRegistries({ niche, city, district, li
           email: extractEmails(evidence).join('; '),
           nip: (evidence.match(/\b\d{10}\b/) || [''])[0],
           regon: (evidence.match(/\b\d{9}\b/) || [''])[0],
+          krs: (evidence.match(/KRS[:\s]*?(\d{6,10})/i) || [, ''])[1] || '',
           website_url: '',
           source: 'public_registry_search',
           source_profile: href,
@@ -3735,6 +4851,107 @@ async function discoverCompaniesFromPublicRegistries({ niche, city, district, li
   };
 }
 
+// Ukraine: never queries the official EDR registry directly and never bulk-crawls
+// opendatabot.ua / youcontrol.com.ua. It only runs normal search-engine "site:"
+// queries and opens the specific already-indexed company pages that come back,
+// plus a generic local-catalog search analogous to the Poland Panorama Firm query.
+async function discoverCompaniesFromPublicRegistriesUkraine({ niche, city, district, limit }) {
+  const registryQueries = unique([
+    ['site:opendatabot.ua', niche, district, city, 'контакти'].filter(Boolean).join(' '),
+    ['site:youcontrol.com.ua', niche, district, city, 'контакти'].filter(Boolean).join(' '),
+    [niche, district, city, 'каталог компаній контакти сайт телефон'].filter(Boolean).join(' '),
+    [niche, district, city, 'ЄДРПОУ контакти телефон -prom.ua -olx -rozetka'].filter(Boolean).join(' ')
+  ]);
+  const searchUrls = registryQueries.flatMap((query) => [buildBingSearchUrl(query, { count: Math.min(limit, 12), city })]);
+  const warnings = [
+    'UA: используется только точечный веб-поиск по уже проиндексированным страницам Opendatabot/YouControl и открытым бизнес-каталогам, без прямого обращения к реестру ЄДР и без массового обхода. Для большего объёма и точности данных по Украине в будущем стоит рассмотреть платный API Opendatabot или YouControl (легальная агрегация данных ЄДР по соглашению с Минюстом) - сейчас это не реализовано, так как нет API-ключа.'
+  ];
+  const companies = [];
+
+  for (const searchUrl of searchUrls) {
+    if (companies.length >= limit) break;
+    try {
+      const html = await fetchText(searchUrl, 8_000, { acceptLanguage: bingMarketFor(city).acceptLanguage });
+      const $ = cheerio.load(html);
+      for (const element of $('.b_algo').toArray()) {
+        if (companies.length >= limit) break;
+        const title = cleanText($(element).find('h2').first().text());
+        const href = normalizeSearchResultUrl($(element).find('h2 a').first().attr('href') || '');
+        if (!title || !href) continue;
+        const host = safeHostname(href);
+        if (!host) continue;
+        const isNamedRegistry = /(opendatabot\.ua|youcontrol\.com\.ua)/i.test(host);
+        const type = classifyUrlType(href);
+        if (!isNamedRegistry) {
+          if (!isAllowedPublicSearchResult(href, title, 'internet', type)) continue;
+          if (type !== 'directory' && !host.endsWith('.ua')) continue;
+        }
+        const snippet = cleanText($(element).find('.b_caption p, .b_snippet').first().text());
+        const evidence = cleanText(`${title} ${snippet} ${href}`);
+        if (!isSearchEvidenceLocalToCity(evidence, city)) continue;
+        const company = inferCompanyNameFromSearchTitle(title, niche, city, href) || companyNameFromHost(href);
+        if (!company) continue;
+        companies.push({
+          company,
+          niche: inferNicheFromSearchResult(evidence, niche),
+          city: city || '',
+          district: district || '',
+          phone: extractPhones(evidence, { city, country: getDiscoveryContext().country }).join('; '),
+          email: extractEmails(evidence).join('; '),
+          edrpou: extractEdrpou(evidence),
+          website_url: isNamedRegistry ? '' : type === 'official_candidate' ? href : '',
+          source: isNamedRegistry ? 'public_registry_search_ua' : 'public_catalog_search_ua',
+          source_profile: href,
+          services: parseList(String(niche || '').replace(/,\s*/g, ';')),
+          physical_location: true,
+          notes: snippet || `Public registry/catalog result from ${host}`
+        });
+      }
+    } catch (error) {
+      warnings.push(`UA public registry/catalog search skipped: ${error.message || 'unknown error'}`);
+    }
+  }
+
+  const uniqueFoundCompanies = uniqueCompanies(companies).slice(0, limit);
+  const enriched = await enrichDiscoveredCompanyContacts(uniqueFoundCompanies, { limit: Math.min(limit, 20), warnings });
+  if (enriched.length < Math.min(5, limit)) {
+    const fallback = await discoverCompaniesFromPublicSearchExpanded({
+      niche,
+      city,
+      district,
+      limit,
+      sourceFocus: 'all_sources'
+    });
+    const merged = mergeDiscoveries(
+      [
+        {
+          source: 'public_registry_search_ua',
+          queries: searchUrls,
+          warnings,
+          companies: enriched
+        },
+        fallback
+      ],
+      limit
+    );
+    return {
+      ...merged,
+      source: 'public_registry_search_ua,public_contact_fallback',
+      warnings: unique([
+        ...warnings,
+        'Public Opendatabot/YouControl pages were not accessible/indexed for this query; used public contact fallback.',
+        ...(merged.warnings || [])
+      ])
+    };
+  }
+  return {
+    source: 'public_registry_search_ua',
+    queries: searchUrls,
+    warnings,
+    companies: enriched.slice(0, limit)
+  };
+}
+
 async function enrichPrimaryCompaniesSmart(primaryCompanies, { warnings = [] } = {}) {
   const baseCompanies = await enrichDiscoveredCompanyContacts(uniqueCompanies(primaryCompanies), {
     limit: Math.min(primaryCompanies.length, 30),
@@ -3757,7 +4974,7 @@ async function enrichPrimaryCompaniesSmart(primaryCompanies, { warnings = [] } =
 
 async function crossVerifyPrimaryCompany(company, warnings) {
   let current = { ...company };
-  const needsRegistry = !current.nip && !current.regon;
+  const needsRegistry = !current.nip && !current.regon && !current.edrpou;
   const needsContacts = !current.phone || !current.email || !current.website_url;
 
   if (!needsRegistry && !needsContacts) {
@@ -3905,6 +5122,7 @@ function mergeCompanyEvidence(targetCompany, evidenceCompany) {
   if (!merged.nip && evidenceCompany.nip) merged.nip = evidenceCompany.nip;
   if (!merged.regon && evidenceCompany.regon) merged.regon = evidenceCompany.regon;
   if (!merged.krs && evidenceCompany.krs) merged.krs = evidenceCompany.krs;
+  if (!merged.edrpou && evidenceCompany.edrpou) merged.edrpou = evidenceCompany.edrpou;
   if (!merged.source_profile && evidenceCompany.source_profile) merged.source_profile = evidenceCompany.source_profile;
 
   const socialProfiles = {
@@ -4030,7 +5248,7 @@ function isKnownNonCompanyHost(host) {
   ].some((domain) => host.includes(domain));
 }
 
-async function fetchText(url, timeoutMs) {
+async function fetchText(url, timeoutMs, { acceptLanguage } = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -4038,7 +5256,8 @@ async function fetchText(url, timeoutMs) {
       signal: controller.signal,
       headers: {
         'user-agent': 'Mozilla/5.0 AuraParser/1.0',
-        accept: 'text/html,application/xhtml+xml'
+        accept: 'text/html,application/xhtml+xml',
+        ...(acceptLanguage ? { 'accept-language': acceptLanguage } : {})
       }
     });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -4049,6 +5268,31 @@ async function fetchText(url, timeoutMs) {
   } finally {
     clearTimeout(timer);
   }
+}
+
+// Without a market/language hint, Bing ignores the actual query intent and
+// serves generic (observed: UK/US) results instead of Polish/Ukrainian local
+// businesses - e.g. a "Restauracja Krakow" query came back with London job
+// listings. `mkt`/`setlang`/`cc` plus a matching Accept-Language header fixes
+// this; it's what made the `registries`/public-search discovery sources
+// silently return zero usable companies even though Bing itself was healthy.
+function bingMarketFor(city) {
+  return isPolandDiscoveryRegion(city)
+    ? { mkt: 'pl-PL', setlang: 'pl', cc: 'PL', acceptLanguage: 'pl-PL,pl;q=0.9' }
+    : { mkt: 'uk-UA', setlang: 'uk', cc: 'UA', acceptLanguage: 'uk-UA,uk;q=0.9' };
+}
+
+function buildBingSearchUrl(query, { count, city } = {}) {
+  const market = bingMarketFor(city);
+  const params = new URLSearchParams({ q: query, mkt: market.mkt, setlang: market.setlang, cc: market.cc });
+  if (count) params.set('count', String(count));
+  return `https://www.bing.com/search?${params.toString()}`;
+}
+
+async function fetchBingSearch(query, { count, city, timeoutMs = 8_000 } = {}) {
+  return fetchText(buildBingSearchUrl(query, { count, city }), timeoutMs, {
+    acceptLanguage: bingMarketFor(city).acceptLanguage
+  });
 }
 
 function normalizeSearchResultUrl(rawHref) {
@@ -4125,7 +5369,13 @@ function isAllowedPublicSearchResult(url, title, sourceFocus, type) {
       'playhop.com',
       'ttt4.com',
       'plix.gg',
-      'microsoft.com'
+      'microsoft.com',
+      'prom.ua',
+      'rozetka',
+      'kabanchik',
+      'izi.ua',
+      'work.ua',
+      'rabota.ua'
     ].some((part) => host.includes(part))
   ) {
     return false;
@@ -4204,6 +5454,13 @@ function companyNameFromHost(href) {
     .replace(/[-_]+/g, ' ')
     .replace(/\b\w/g, (char) => char.toUpperCase())
     .slice(0, 90);
+}
+
+function extractEdrpou(evidence) {
+  const labeled = evidence.match(/(?:ЄДРПОУ|ОКПО|EDRPOU)[:\s]*?(\d{8})/i);
+  if (labeled) return labeled[1];
+  const bare = evidence.match(/\b\d{8}\b/);
+  return bare ? bare[0] : '';
 }
 
 function inferNicheFromSearchResult(text, fallback) {
@@ -4513,7 +5770,7 @@ async function analyzeLead(item, options) {
     );
   }
 
-  const heuristic = buildHeuristicAnalysis(item, parsed, websiteResolution);
+  const heuristic = buildHeuristicAnalysis(item, parsed, websiteResolution, options.language);
   let ai = null;
   let aiError = null;
 
@@ -4681,9 +5938,9 @@ async function discoverWebsiteFromPublicSearch(item) {
   };
 
   for (const query of queries) {
-    const searchUrl = `https://www.bing.com/search?${new URLSearchParams({ q: query, count: '10' })}`;
+    const searchUrl = buildBingSearchUrl(query, { count: 10, city });
     try {
-      const html = await fetchText(searchUrl, 7_000);
+      const html = await fetchText(searchUrl, 7_000, { acceptLanguage: bingMarketFor(city).acceptLanguage });
       const $ = cheerio.load(html);
       for (const element of $('.b_algo').toArray()) {
         const title = cleanText($(element).find('h2').first().text());
@@ -4889,18 +6146,46 @@ function verifyDomain(item, parsed, url) {
   }
 }
 
-function buildHeuristicAnalysis(item, parsed, resolution) {
+// Every issue the heuristic scanner can flag, as a { pl, ru } pair plus the
+// score penalty and the "why it matters" category it belongs to (see
+// buildWhyItMatters). Keyed by a stable id instead of matching regexes
+// against already-translated text, which is what let this whole generator
+// silently stay Russian-only regardless of the request's language.
+const HEURISTIC_ISSUE_DEFS = {
+  no_viewport: { penalty: 14, category: 'mobile', pl: 'Brak wyraźnego dostosowania do smartfonów', ru: 'Нет явного адаптива под смартфоны' },
+  no_tel_link: { penalty: 8, category: 'mobile', pl: 'Brak klikalnego przycisku do połączenia', ru: 'Нет кликабельной кнопки звонка' },
+  no_form: { penalty: 10, category: 'default', pl: 'Brak formularza zgłoszenia lub zapisu', ru: 'Нет формы заявки или записи' },
+  services_not_split: { penalty: 14, category: 'default', pl: 'Usługi nie są podzielone na czytelne podstrony', ru: 'Услуги не разделены на понятные страницы' },
+  weak_portfolio: { penalty: 10, category: 'portfolio', pl: 'Słabo pokazane realizacje, case\'y lub galeria', ru: 'Слабо показаны работы, кейсы или галерея' },
+  no_prices: { penalty: 8, category: 'price', pl: 'Nie widać cen ani orientacyjnych kosztów', ru: 'Не видно цен или ориентиров стоимости' },
+  low_trust: { penalty: 8, category: 'trust', pl: 'Mało sygnałów zaufania: zespół, NIP, doświadczenie, proces', ru: 'Мало сигналов доверия: команда, NIP, опыт, процесс' },
+  few_photos: { penalty: 6, category: 'default', pl: 'Mało realnych zdjęć firmy', ru: 'Мало реальных фотографий бизнеса' },
+  thin_text: { penalty: 8, category: 'default', pl: 'Na stronie jest mało treści', ru: 'На сайте мало содержательного текста' },
+  outdated: { penalty: 5, category: 'default', pl: 'Strona wygląda na dawno nieaktualizowaną', ru: 'Сайт выглядит давно не обновлявшимся' },
+  slow_load: { penalty: 4, category: 'default', pl: 'Strona ładuje się wolno', ru: 'Сайт загружается медленно' },
+  placeholder: { penalty: 14, category: 'default', pl: 'Strona wygląda jak zaślepka', ru: 'Сайт выглядит как страница-заглушка' },
+  free_subdomain: { penalty: 10, category: 'default', pl: 'Strona znajduje się na darmowej subdomenie', ru: 'Сайт находится на бесплатном поддомене' }
+};
+
+function buildHeuristicAnalysis(item, parsed, resolution, language) {
+  const lang = normalizeAnalysisLanguage(language);
   if (resolution.websiteStatus !== 'WEBSITE_FOUND' && resolution.websiteStatus !== 'UNCERTAIN') {
-    return buildNoWebsiteAnalysis(item, resolution, parsed);
+    return buildNoWebsiteAnalysis(item, resolution, parsed, lang);
   }
-  return buildWebsiteAnalysis(item, parsed, resolution);
+  return buildWebsiteAnalysis(item, parsed, resolution, lang);
 }
 
-function buildNoWebsiteAnalysis(item, resolution, parsed) {
+function buildNoWebsiteAnalysis(item, resolution, parsed, language) {
+  const lang = normalizeAnalysisLanguage(language);
   const business = scoreBusinessWithoutWebsite(item, resolution);
-  const packageName = business.score >= 80 ? 'Business Website' : business.score >= 55 ? 'Landing Page' : 'Landing Page';
+  const packageName = business.score >= 80 ? 'Business Website' : 'Landing Page';
   const priority = business.score >= 70 ? 'A' : business.score >= 55 ? 'B' : 'C';
-  const mainProblem = noWebsiteProblem(item, resolution);
+  const mainProblem = noWebsiteProblem(item, resolution, lang);
+  // first_message_ru/pl are two independently-generated outreach drafts (not
+  // tied to the UI language), and noWebsiteMessagePl translates FROM Russian
+  // source text via translateProblemForPl - so always feed them the Russian
+  // problem string regardless of which language main_problem itself uses.
+  const ruProblem = lang === 'ru' ? mainProblem : noWebsiteProblem(item, resolution, 'ru');
 
   return {
     priority,
@@ -4915,20 +6200,22 @@ function buildNoWebsiteAnalysis(item, resolution, parsed) {
     confidence: resolution.websiteConfidence >= 0.8 ? 'high' : 'medium',
     requires_manual_review: business.score >= 80 || resolution.websiteStatus === 'UNCERTAIN',
     main_problem: mainProblem,
-    why_it_matters: buildNoWebsiteWhy(resolution.websiteStatus),
-    proposed_solution: buildNicheSolution(item.niche),
+    why_it_matters: buildNoWebsiteWhy(resolution.websiteStatus, lang),
+    proposed_solution: buildNicheSolution(item.niche, lang),
     mini_audit_points: [
-      websiteStatusLabel(resolution.websiteStatus),
+      websiteStatusLabel(resolution.websiteStatus, lang),
       mainProblem,
-      buildNicheSolution(item.niche)
+      buildNicheSolution(item.niche, lang)
     ],
-    first_message_ru: noWebsiteMessageRu(item, mainProblem),
-    first_message_pl: noWebsiteMessagePl(item, mainProblem)
+    first_message_ru: noWebsiteMessageRu(item, ruProblem),
+    first_message_pl: noWebsiteMessagePl(item, ruProblem)
   };
 }
 
-function buildWebsiteAnalysis(item, parsed, resolution) {
+function buildWebsiteAnalysis(item, parsed, resolution, language) {
+  const lang = normalizeAnalysisLanguage(language);
   if (!parsed.ok) {
+    const openFailedProblem = parsed.error || heuristicText({ pl: 'Strona się nie otworzyła', ru: 'Сайт не открылся' }, lang);
     return {
       priority: item.niche ? 'B' : 'C',
       website_status: resolution.websiteStatus,
@@ -4941,14 +6228,26 @@ function buildWebsiteAnalysis(item, parsed, resolution) {
       recommended_website: 'New business website',
       confidence: 'low',
       requires_manual_review: true,
-      main_problem: parsed.error || 'Сайт не открылся',
-      why_it_matters:
-        'Если сайт не открывается или работает нестабильно, клиент не может нормально проверить компанию перед обращением.',
-      proposed_solution: buildNicheSolution(item.niche),
+      main_problem: openFailedProblem,
+      why_it_matters: heuristicText(
+        {
+          pl: 'Jeśli strona się nie otwiera lub działa niestabilnie, klient nie może normalnie sprawdzić firmy przed kontaktem.',
+          ru: 'Если сайт не открывается или работает нестабильно, клиент не может нормально проверить компанию перед обращением.'
+        },
+        lang
+      ),
+      proposed_solution: buildNicheSolution(item.niche, lang),
       mini_audit_points: [
-        parsed.error || 'Сайт не открылся при быстрой проверке.',
-        'Нужно проверить домен и сделать рабочую версию сайта.',
-        buildNicheSolution(item.niche)
+        parsed.error ||
+          heuristicText(
+            { pl: 'Strona nie otworzyła się podczas szybkiego sprawdzenia.', ru: 'Сайт не открылся при быстрой проверке.' },
+            lang
+          ),
+        heuristicText(
+          { pl: 'Trzeba sprawdzić domenę i zrobić działającą wersję strony.', ru: 'Нужно проверить домен и сделать рабочую версию сайта.' },
+          lang
+        ),
+        buildNicheSolution(item.niche, lang)
       ],
       first_message_ru: fallbackMessageRu(item, parsed.error),
       first_message_pl: fallbackMessagePl(item, parsed.error)
@@ -4959,19 +6258,19 @@ function buildWebsiteAnalysis(item, parsed, resolution) {
   const issues = [];
   let quality = 100;
 
-  if (!s.hasViewport) addIssue('Нет явного адаптива под смартфоны', 14);
-  if (!s.hasTelLink) addIssue('Нет кликабельной кнопки звонка', 8);
-  if (!s.forms) addIssue('Нет формы заявки или записи', 10);
-  if (!s.hasServiceKeywords || !hasLikelyServicePages(s)) addIssue('Услуги не разделены на понятные страницы', 14);
-  if (!s.hasPortfolioKeywords) addIssue('Слабо показаны работы, кейсы или галерея', 10);
-  if (!s.hasPriceKeywords) addIssue('Не видно цен или ориентиров стоимости', 8);
-  if (!s.hasAboutKeywords && !s.hasNipOrRegon) addIssue('Мало сигналов доверия: команда, NIP, опыт, процесс', 8);
-  if (s.nonSvgImages < 4) addIssue('Мало реальных фотографий бизнеса', 6);
-  if (s.textLength < 1200) addIssue('На сайте мало содержательного текста', 8);
-  if (s.outdatedCopyright) addIssue('Сайт выглядит давно не обновлявшимся', 5);
-  if (s.avgElapsedMs > 3500) addIssue('Сайт загружается медленно', 4);
-  if (resolution.websiteStatus === 'ONE_PAGE_PLACEHOLDER') addIssue('Сайт выглядит как страница-заглушка', 14);
-  if (resolution.websiteStatus === 'FREE_SUBDOMAIN') addIssue('Сайт находится на бесплатном поддомене', 10);
+  if (!s.hasViewport) addIssue('no_viewport');
+  if (!s.hasTelLink) addIssue('no_tel_link');
+  if (!s.forms) addIssue('no_form');
+  if (!s.hasServiceKeywords || !hasLikelyServicePages(s)) addIssue('services_not_split');
+  if (!s.hasPortfolioKeywords) addIssue('weak_portfolio');
+  if (!s.hasPriceKeywords) addIssue('no_prices');
+  if (!s.hasAboutKeywords && !s.hasNipOrRegon) addIssue('low_trust');
+  if (s.nonSvgImages < 4) addIssue('few_photos');
+  if (s.textLength < 1200) addIssue('thin_text');
+  if (s.outdatedCopyright) addIssue('outdated');
+  if (s.avgElapsedMs > 3500) addIssue('slow_load');
+  if (resolution.websiteStatus === 'ONE_PAGE_PLACEHOLDER') addIssue('placeholder');
+  if (resolution.websiteStatus === 'FREE_SUBDOMAIN') addIssue('free_subdomain');
 
   quality = clamp(quality, 0, 100);
   const weakness = 100 - quality;
@@ -4979,7 +6278,16 @@ function buildWebsiteAnalysis(item, parsed, resolution) {
   const leadScore = clamp(Math.round(weakness * 0.72 + nicheFit + (s.phones.length || s.emails.length ? 8 : 0)), 0, 100);
   const priority = leadScore >= 70 ? 'A' : leadScore >= 45 ? 'B' : 'C';
   const packageName = pickPackage(item.niche, s, issues);
-  const mainProblem = issues[0]?.text || 'Сайт можно сделать понятнее и сильнее для клиента с телефона';
+  const topIssue = issues[0] || null;
+  const defaultMainProblemPair = {
+    pl: 'Stronę można zrobić bardziej zrozumiałą i mocniejszą dla klienta z telefonu',
+    ru: 'Сайт можно сделать понятнее и сильнее для клиента с телефона'
+  };
+  const mainProblem = topIssue ? heuristicText(topIssue, lang) : heuristicText(defaultMainProblemPair, lang);
+  // Same reasoning as buildNoWebsiteAnalysis: first_message_ru/pl are two
+  // independent outreach drafts, and fallbackMessagePl translates FROM
+  // Russian via translateProblemForPl - always feed them Russian text.
+  const ruProblem = topIssue ? heuristicText(topIssue, 'ru') : heuristicText(defaultMainProblemPair, 'ru');
 
   return {
     priority,
@@ -4994,16 +6302,18 @@ function buildWebsiteAnalysis(item, parsed, resolution) {
     confidence: issues.length >= 3 ? 'high' : 'medium',
     requires_manual_review: resolution.domainVerification?.manual_review || false,
     main_problem: mainProblem,
-    why_it_matters: buildWhyItMatters(mainProblem),
-    proposed_solution: buildNicheSolution(item.niche),
-    mini_audit_points: buildMiniAuditPoints(issues, item.niche),
-    first_message_ru: fallbackMessageRu(item, mainProblem),
-    first_message_pl: fallbackMessagePl(item, mainProblem)
+    why_it_matters: buildWhyItMatters(topIssue?.category || 'default', lang),
+    proposed_solution: buildNicheSolution(item.niche, lang),
+    mini_audit_points: buildMiniAuditPoints(issues, item.niche, lang),
+    first_message_ru: fallbackMessageRu(item, ruProblem),
+    first_message_pl: fallbackMessagePl(item, ruProblem)
   };
 
-  function addIssue(text, penalty) {
-    issues.push({ text, penalty });
-    quality -= penalty;
+  function addIssue(key) {
+    const def = HEURISTIC_ISSUE_DEFS[key];
+    if (!def) return;
+    issues.push({ key, category: def.category, penalty: def.penalty, pl: def.pl, ru: def.ru });
+    quality -= def.penalty;
   }
 }
 
@@ -5039,7 +6349,9 @@ function scoreBusinessWithoutWebsite(item, resolution) {
 
   parts.contact = 0;
   if (item.phone) parts.contact += 5;
-  if (item.email && !freeEmailDomains.has(domainFromEmail(item.email) || '')) parts.contact += 5;
+  // domainFromEmail() already returns '' for free-mail domains, so a truthy
+  // result here means the email is on a real corporate/business domain.
+  if (item.email && domainFromEmail(item.email)) parts.contact += 5;
   else if (item.email) parts.contact += 2;
 
   score = parts.activity + parts.scale + parts.reputation + parts.sitePotential + parts.contact;
@@ -5055,36 +6367,98 @@ function scoreBusinessWithoutWebsite(item, resolution) {
   };
 }
 
-function noWebsiteProblem(item, resolution) {
+function noWebsiteProblem(item, resolution, language) {
+  const lang = normalizeAnalysisLanguage(language);
   if (resolution.websiteStatus === 'SOCIAL_ONLY') {
-    return 'Вся информация находится в соцсетях, поэтому клиенту сложно быстро посмотреть услуги, цены, примеры и контакты в одном месте.';
+    return heuristicText(
+      {
+        pl: 'Wszystkie informacje są w social mediach, więc klientowi trudno szybko sprawdzić usługi, ceny, realizacje i kontakt w jednym miejscu.',
+        ru: 'Вся информация находится в соцсетях, поэтому клиенту сложно быстро посмотреть услуги, цены, примеры и контакты в одном месте.'
+      },
+      lang
+    );
   }
   if (resolution.websiteStatus === 'DIRECTORY_ONLY') {
-    return 'Клиент сравнивает компанию рядом с десятками конкурентов внутри чужой платформы, а у бизнеса нет собственной презентации.';
+    return heuristicText(
+      {
+        pl: 'Klient porównuje firmę obok dziesiątek konkurentów na cudzej platformie, a firma nie ma własnej prezentacji.',
+        ru: 'Клиент сравнивает компанию рядом с десятками конкурентов внутри чужой платформы, а у бизнеса нет собственной презентации.'
+      },
+      lang
+    );
   }
   if (resolution.websiteStatus === 'MARKETPLACE_ONLY') {
-    return 'Компания зависит от маркетплейса или платформы, а не от собственной страницы с услугами и доверием.';
+    return heuristicText(
+      {
+        pl: 'Firma zależy od marketplace\'u lub platformy, a nie od własnej strony z usługami i zaufaniem.',
+        ru: 'Компания зависит от маркетплейса или платформы, а не от собственной страницы с услугами и доверием.'
+      },
+      lang
+    );
   }
   if (resolution.websiteStatus === 'BROKEN_WEBSITE') {
-    return 'Домен есть, но сайт не открывается, поэтому клиент не может нормально проверить компанию перед обращением.';
+    return heuristicText(
+      {
+        pl: 'Domena istnieje, ale strona się nie otwiera, więc klient nie może normalnie sprawdzić firmy przed kontaktem.',
+        ru: 'Домен есть, но сайт не открывается, поэтому клиент не может нормально проверить компанию перед обращением.'
+      },
+      lang
+    );
   }
   if (resolution.websiteStatus === 'FREE_SUBDOMAIN') {
-    return 'У компании есть только простая страница на бесплатном поддомене, которая выглядит слабее реального бизнеса.';
+    return heuristicText(
+      {
+        pl: 'Firma ma tylko prostą stronę na darmowej subdomenie, która wygląda słabiej niż realny biznes.',
+        ru: 'У компании есть только простая страница на бесплатном поддомене, которая выглядит слабее реального бизнеса.'
+      },
+      lang
+    );
   }
-  return 'У активной компании нет собственного сайта, где клиент может увидеть услуги, примеры работ, доверие и следующий шаг.';
+  return heuristicText(
+    {
+      pl: 'Aktywna firma nie ma własnej strony, na której klient zobaczy usługi, przykłady prac, zaufanie i następny krok.',
+      ru: 'У активной компании нет собственного сайта, где клиент может увидеть услуги, примеры работ, доверие и следующий шаг.'
+    },
+    lang
+  );
 }
 
-function buildNoWebsiteWhy(status) {
+function buildNoWebsiteWhy(status, language) {
+  const lang = normalizeAnalysisLanguage(language);
   if (status === 'SOCIAL_ONLY') {
-    return 'Соцсети хорошо показывают активность, но плохо заменяют структурированный сайт с услугами, ценами, портфолио и контактами.';
+    return heuristicText(
+      {
+        pl: 'Social media dobrze pokazują aktywność, ale słabo zastępują uporządkowaną stronę z usługami, cenami, portfolio i kontaktem.',
+        ru: 'Соцсети хорошо показывают активность, но плохо заменяют структурированный сайт с услугами, ценами, портфолио и контактами.'
+      },
+      lang
+    );
   }
   if (status === 'DIRECTORY_ONLY' || status === 'MARKETPLACE_ONLY') {
-    return 'На чужой платформе бизнес стоит рядом с конкурентами и не контролирует собственную презентацию.';
+    return heuristicText(
+      {
+        pl: 'Na cudzej platformie firma stoi obok konkurencji i nie kontroluje własnej prezentacji.',
+        ru: 'На чужой платформе бизнес стоит рядом с конкурентами и не контролирует собственную презентацию.'
+      },
+      lang
+    );
   }
   if (status === 'BROKEN_WEBSITE') {
-    return 'Неработающий сайт снижает доверие сильнее, чем полное отсутствие сайта.';
+    return heuristicText(
+      {
+        pl: 'Niedziałająca strona obniża zaufanie mocniej niż całkowity brak strony.',
+        ru: 'Неработающий сайт снижает доверие сильнее, чем полное отсутствие сайта.'
+      },
+      lang
+    );
   }
-  return 'Если бизнес уже активный и платежеспособный, сайт становится нормальной точкой доверия и объясняет услуги без ручных повторов.';
+  return heuristicText(
+    {
+      pl: 'Jeśli firma jest już aktywna i wypłacalna, strona staje się naturalnym punktem zaufania i wyjaśnia usługi bez ręcznych powtórek.',
+      ru: 'Если бизнес уже активный и платежеспособный, сайт становится нормальной точкой доверия и объясняет услуги без ручных повторов.'
+    },
+    lang
+  );
 }
 
 async function analyzeWithOpenAI(item, parsed, heuristic, resolution, model) {
@@ -5274,7 +6648,15 @@ async function analyzeSiteCardWithOpenAI({ item, parsed, websiteResolution, heur
     {
       role: 'system',
       content:
-        `You create a fact-checked, personalized website-opportunity analysis for one local company card. Use only the provided parser facts; do not invent missing facts, services, owners, prices, years, team size, locations, awards or problems. If evidence is weak, say UNKNOWN and lower confidence. Base personalization on exact evidence: company name, category, city/district, address, phone/email, reviews/rating, services, source profile, website status, selected URL, parsed pages and domain verification. If website_status is WEBSITE_FOUND, FREE_SUBDOMAIN, ONE_PAGE_PLACEHOLDER or UNCERTAIN, explain the exact status and recommend redesign/improvement only when justified. If there is category/company/site mismatch risk, put it in risks_or_skip_reasons and evidence_used. Write user-facing analysis fields in ${outputLanguageName}. first_message_pl must sound natural in Polish and mention at least two verified facts; first_message_ru must do the same in Russian. Return only JSON matching the schema.`
+        `You create a fact-checked, personalized website-opportunity analysis for exactly ONE local company card, identified by company.name + company.category + company.city in this payload. This payload is the complete and only source of truth for this single company - it contains no data from any other company, niche or request. Ignore any general knowledge you may have about the category.category from elsewhere; treat company.category as the definitive niche and never substitute, broaden or "correct" it based on assumptions. Use only the provided parser facts; do not invent missing facts, services, owners, prices, years, team size, locations, awards or problems. If evidence is weak, say UNKNOWN and lower confidence. Base personalization on exact evidence: company name, category, city/district, address, phone/email, reviews/rating, services, source profile, website status, selected URL, parsed pages and domain verification.
+
+Website status branches (website.status field) - follow the matching one exactly:
+- NO_WEBSITE_CONFIRMED, SOCIAL_ONLY, DIRECTORY_ONLY or MARKETPLACE_ONLY: the company has NO official website. Do not describe, imply or reference any website content, design or pages - none exist. Build the whole analysis strictly around the fact that there is no website yet; existing_materials must be an empty array; frame the offer as building a first website from scratch, using only social/contact/registry facts present in the payload.
+- BROKEN_WEBSITE: a domain exists but does not load or resolve. Do not describe page content, since none was retrievable; frame the offer as an urgent rebuild.
+- WEBSITE_FOUND, FREE_SUBDOMAIN or ONE_PAGE_PLACEHOLDER: a website was reached and parsed. Explain the exact status using parser_summary.parsed_summary and recommend redesign/improvement only when justified by that evidence.
+- UNCERTAIN: evidence is inconclusive. Say so plainly, lower confidence, and avoid asserting either that a website exists or that it does not.
+
+If there is category/company/site mismatch risk, put it in risks_or_skip_reasons and evidence_used. Write user-facing analysis fields in ${outputLanguageName}. first_message_pl must sound natural in Polish and mention at least two verified facts; first_message_ru must do the same in Russian. Return only JSON matching the schema.`
     },
     {
       role: 'user',
@@ -5347,7 +6729,7 @@ async function analyzeSiteCardWithOpenAI({ item, parsed, websiteResolution, heur
       },
       existing_materials: {
         type: 'array',
-        minItems: 1,
+        minItems: 0,
         maxItems: 10,
         items: { type: 'string' }
       },
@@ -5422,10 +6804,38 @@ function buildUrlCandidates(inputUrl) {
   return [`https://${raw}`, `http://${raw}`].map(safeUrl).filter(Boolean);
 }
 
+// Blocks obvious SSRF targets (loopback, link-local, RFC1918 private ranges,
+// cloud metadata endpoints) before this server's own network fetches a
+// "company website" URL that ultimately comes from search results / CSV
+// import - i.e. attacker-influenced input. This is a hostname/IP-literal
+// check, not full DNS-rebinding protection (the resolved IP at actual fetch
+// time isn't re-checked), but it stops the realistic case of a discovered or
+// imported URL pointing at an internal address.
+function isBlockedHost(hostname) {
+  const host = String(hostname || '').toLowerCase().replace(/^\[|\]$/g, '');
+  if (!host) return true;
+  if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local')) return true;
+  if (host === '::1' || host === '0.0.0.0') return true;
+  const ipv4 = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (ipv4) {
+    const [a, b] = ipv4.slice(1).map(Number);
+    if (a === 127) return true; // loopback
+    if (a === 10) return true; // RFC1918
+    if (a === 172 && b >= 16 && b <= 31) return true; // RFC1918
+    if (a === 192 && b === 168) return true; // RFC1918
+    if (a === 169 && b === 254) return true; // link-local incl. cloud metadata (169.254.169.254)
+    if (a === 100 && b >= 64 && b <= 127) return true; // carrier-grade NAT
+    if (a === 0) return true;
+  }
+  if (/^(fe80|fc00|fd00|::)/i.test(host)) return true; // IPv6 link-local/unique-local
+  return false;
+}
+
 function safeUrl(raw) {
   try {
     const url = new URL(raw);
     if (!['http:', 'https:'].includes(url.protocol)) return null;
+    if (isBlockedHost(url.hostname)) return null;
     url.hash = '';
     return url.toString();
   } catch {
@@ -5743,48 +7153,108 @@ function pickPackage(niche, signals, issues) {
   return 'Landing Page';
 }
 
-function buildWhyItMatters(problem) {
-  if (/telefon|смартфон|адаптив/i.test(problem)) {
-    return 'Локальный клиент чаще сравнивает компании с телефона. Если сайт неудобен, он быстрее уходит к конкуренту.';
+// Keyed by the issue "category" set in HEURISTIC_ISSUE_DEFS (see
+// buildWebsiteAnalysis) rather than by regex-matching the already-translated
+// problem text, which is what silently pinned this to Russian before.
+const WHY_IT_MATTERS_BY_CATEGORY = {
+  mobile: {
+    pl: 'Lokalny klient częściej porównuje firmy z telefonu. Jeśli strona jest niewygodna, szybciej przechodzi do konkurencji.',
+    ru: 'Локальный клиент чаще сравнивает компании с телефона. Если сайт неудобен, он быстрее уходит к конкуренту.'
+  },
+  portfolio: {
+    pl: 'W wizualnych branżach klient kupuje zaufanie poprzez przykłady prac. Jeśli nie są dobrze zebrane, realny poziom firmy nie jest widoczny.',
+    ru: 'В визуальных нишах клиент покупает доверие через примеры работ. Если они не собраны нормально, реальный уровень бизнеса не виден.'
+  },
+  price: {
+    pl: 'Orientacyjne ceny zmniejszają liczbę zbędnych pytań i pomagają klientowi zrozumieć, czy firma pasuje do jego potrzeb.',
+    ru: 'Ориентиры стоимости снижают лишние вопросы и помогают клиенту понять, подходит ли компания под его задачу.'
+  },
+  trust: {
+    pl: 'Dla lokalnego biznesu strona musi szybko udowodnić, że firma jest prawdziwa, aktywna i można jej zaufać.',
+    ru: 'Для локального бизнеса сайт должен быстро доказать, что компания настоящая, активная и ей можно доверять.'
+  },
+  default: {
+    pl: 'Strona powinna szybko wyjaśnić usługi, zaufanie i następny krok. Jeśli nie widać tego od razu, część klientów odchodzi do konkurencji.',
+    ru: 'Сайт должен быстро объяснить услуги, доверие и следующий шаг. Если это не видно сразу, часть клиентов уходит к конкурентам.'
   }
-  if (/работ|портфолио|галере/i.test(problem)) {
-    return 'В визуальных нишах клиент покупает доверие через примеры работ. Если они не собраны нормально, реальный уровень бизнеса не виден.';
-  }
-  if (/цен|стоим/i.test(problem)) {
-    return 'Ориентиры стоимости снижают лишние вопросы и помогают клиенту понять, подходит ли компания под его задачу.';
-  }
-  if (/довер/i.test(problem)) {
-    return 'Для локального бизнеса сайт должен быстро доказать, что компания настоящая, активная и ей можно доверять.';
-  }
-  return 'Сайт должен быстро объяснить услуги, доверие и следующий шаг. Если это не видно сразу, часть клиентов уходит к конкурентам.';
+};
+
+function buildWhyItMatters(category, language) {
+  const lang = normalizeAnalysisLanguage(language);
+  const pair = WHY_IT_MATTERS_BY_CATEGORY[category] || WHY_IT_MATTERS_BY_CATEGORY.default;
+  return heuristicText(pair, lang);
 }
 
-function buildNicheSolution(niche) {
+function buildNicheSolution(niche, language) {
+  const lang = normalizeAnalysisLanguage(language);
   const normalized = String(niche || '').toLowerCase();
   if (/klimatyz|wentyl/.test(normalized)) {
-    return 'Новый сайт с отдельными страницами montaż, serwis, naprawa, примерами монтажей, ценами "от", районами обслуживания и формой расчета.';
+    return heuristicText(
+      {
+        pl: 'Nowa strona z osobnymi podstronami montaż, serwis, naprawa, przykładami montaży, cenami "od", obsługiwanymi dzielnicami i formularzem wyceny.',
+        ru: 'Новый сайт с отдельными страницами montaż, serwis, naprawa, примерами монтажей, ценами "от", районами обслуживания и формой расчета.'
+      },
+      lang
+    );
   }
   if (/remont|wyko|wnętr|wnetr/.test(normalized)) {
-    return 'Новый сайт с портфолио, кейсами по площади/сроку/бюджету, этапами работы и формой, куда можно прикрепить план и фото.';
+    return heuristicText(
+      {
+        pl: 'Nowa strona z portfolio, case\'ami wg metrażu/terminu/budżetu, etapami pracy i formularzem, w którym można dołączyć plan i zdjęcia.',
+        ru: 'Новый сайт с портфолио, кейсами по площади/сроку/бюджету, этапами работы и формой, куда можно прикрепить план и фото.'
+      },
+      lang
+    );
   }
   if (/detailing|pdr|wrapping/.test(normalized)) {
-    return 'Новый сайт с пакетами услуг, прайсом, галереей до/после и формой с маркой автомобиля и фотографиями.';
+    return heuristicText(
+      {
+        pl: 'Nowa strona z pakietami usług, cennikiem, galerią przed/po i formularzem z marką samochodu i zdjęciami.',
+        ru: 'Новый сайт с пакетами услуг, прайсом, галереей до/после и формой с маркой автомобиля и фотографиями.'
+      },
+      lang
+    );
   }
   if (/stomat|implant|ortod/.test(normalized)) {
-    return 'Новый сайт с отдельными страницами процедур, профилями врачей, ценами, FAQ, фотографиями клиники и удобной записью.';
+    return heuristicText(
+      {
+        pl: 'Nowa strona z osobnymi podstronami zabiegów, profilami lekarzy, cenami, FAQ, zdjęciami kliniki i wygodnym zapisem.',
+        ru: 'Новый сайт с отдельными страницами процедур, профилями врачей, ценами, FAQ, фотографиями клиники и удобной записью.'
+      },
+      lang
+    );
   }
   if (/fizj|rehabil/.test(normalized)) {
-    return 'Новый сайт со страницами под конкретные проблемы, специалистами, методами, ценами и записью.';
+    return heuristicText(
+      {
+        pl: 'Nowa strona ze stronami pod konkretne problemy, specjalistami, metodami, cenami i zapisem.',
+        ru: 'Новый сайт со страницами под конкретные проблемы, специалистами, методами, ценами и записью.'
+      },
+      lang
+    );
   }
   if (/księg|ksieg|rachunk/.test(normalized)) {
-    return 'Новый сайт с услугами для JDG, sp. z o.o., e-commerce, тарифами, FAQ и понятной формой консультации.';
+    return heuristicText(
+      {
+        pl: 'Nowa strona z usługami dla JDG, sp. z o.o., e-commerce, cennikiem, FAQ i przejrzystym formularzem konsultacji.',
+        ru: 'Новый сайт с услугами для JDG, sp. z o.o., e-commerce, тарифами, FAQ и понятной формой консультации.'
+      },
+      lang
+    );
   }
-  return 'Новый сайт с понятными услугами, портфолио, отзывами, ценами или ориентирами стоимости, контактами и удобной формой.';
+  return heuristicText(
+    {
+      pl: 'Nowa strona z jasnymi usługami, portfolio, opiniami, cenami lub orientacyjnymi kosztami, kontaktem i wygodnym formularzem.',
+      ru: 'Новый сайт с понятными услугами, портфолио, отзывами, ценами или ориентирами стоимости, контактами и удобной формой.'
+    },
+    lang
+  );
 }
 
-function buildMiniAuditPoints(issues, niche) {
-  const points = issues.slice(0, 3).map((issue) => issue.text);
-  while (points.length < 3) points.push(buildNicheSolution(niche));
+function buildMiniAuditPoints(issues, niche, language) {
+  const lang = normalizeAnalysisLanguage(language);
+  const points = issues.slice(0, 3).map((issue) => heuristicText(issue, lang));
+  while (points.length < 3) points.push(buildNicheSolution(niche, lang));
   return points.slice(0, 3);
 }
 
@@ -5835,19 +7305,20 @@ function translateProblemForPl(problem) {
   return 'firma może lepiej pokazywać poziom usług i ułatwiać kontakt';
 }
 
-function websiteStatusLabel(status) {
+function websiteStatusLabel(status, language) {
+  const lang = normalizeAnalysisLanguage(language);
   const labels = {
-    NO_WEBSITE_CONFIRMED: 'Собственный сайт не найден после проверки.',
-    SOCIAL_ONLY: 'Найдены только социальные сети.',
-    DIRECTORY_ONLY: 'Найдены только каталоги или сервисы записи.',
-    MARKETPLACE_ONLY: 'Найдены только маркетплейсы или платформы.',
-    BROKEN_WEBSITE: 'Домен есть, но сайт не открывается.',
-    FREE_SUBDOMAIN: 'Есть только страница на бесплатном поддомене.',
-    ONE_PAGE_PLACEHOLDER: 'Есть только простая страница-заглушка.',
-    WEBSITE_FOUND: 'Найден полноценный сайт.',
-    UNCERTAIN: 'Нужна ручная проверка сайта.'
+    NO_WEBSITE_CONFIRMED: { pl: 'Nie znaleziono własnej strony po weryfikacji.', ru: 'Собственный сайт не найден после проверки.' },
+    SOCIAL_ONLY: { pl: 'Znaleziono tylko media społecznościowe.', ru: 'Найдены только социальные сети.' },
+    DIRECTORY_ONLY: { pl: 'Znaleziono tylko katalogi lub serwisy do zapisów.', ru: 'Найдены только каталоги или сервисы записи.' },
+    MARKETPLACE_ONLY: { pl: 'Znaleziono tylko marketplace\'y lub platformy.', ru: 'Найдены только маркетплейсы или платформы.' },
+    BROKEN_WEBSITE: { pl: 'Domena istnieje, ale strona się nie otwiera.', ru: 'Домен есть, но сайт не открывается.' },
+    FREE_SUBDOMAIN: { pl: 'Jest tylko strona na darmowej subdomenie.', ru: 'Есть только страница на бесплатном поддомене.' },
+    ONE_PAGE_PLACEHOLDER: { pl: 'Jest tylko prosta strona-zaślepka.', ru: 'Есть только простая страница-заглушка.' },
+    WEBSITE_FOUND: { pl: 'Znaleziono pełnoprawną stronę.', ru: 'Найден полноценный сайт.' },
+    UNCERTAIN: { pl: 'Wymagana ręczna weryfikacja strony.', ru: 'Нужна ручная проверка сайта.' }
   };
-  return labels[status] || labels.UNCERTAIN;
+  return heuristicText(labels[status] || labels.UNCERTAIN, lang);
 }
 
 function mergeAnalysis(heuristic, ai) {

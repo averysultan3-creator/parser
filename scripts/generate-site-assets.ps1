@@ -103,19 +103,27 @@ function Save-OgImage([string]$path) {
   $graphics.DrawRectangle($borderPen, 70, 68, 1060, 494)
   $borderPen.Dispose()
 
+  # NOTE: title/body copy mirrors the live English hero headline (site-copy.js
+  # COPY.en.hero.title) and the purpose-built OG description already defined
+  # in translations.js (en.meta.ogDescription) — no invented copy. The title
+  # box height and font size below were deliberately chosen so three lines of
+  # bold 58px text (~3 x 66px line-height = ~198px) fit inside the box with
+  # margin; the previous 66px/200px-tall combination overflowed and GDI+
+  # silently clipped the third line, which is why shared links showed a
+  # cropped/cut-off headline.
   $eyebrowFont = New-Object System.Drawing.Font("Segoe UI", 24, [System.Drawing.FontStyle]::Bold, [System.Drawing.GraphicsUnit]::Pixel)
-  $titleFont = New-Object System.Drawing.Font("Segoe UI", 66, [System.Drawing.FontStyle]::Bold, [System.Drawing.GraphicsUnit]::Pixel)
-  $bodyFont = New-Object System.Drawing.Font("Segoe UI", 28, [System.Drawing.FontStyle]::Regular, [System.Drawing.GraphicsUnit]::Pixel)
+  $titleFont = New-Object System.Drawing.Font("Segoe UI", 58, [System.Drawing.FontStyle]::Bold, [System.Drawing.GraphicsUnit]::Pixel)
+  $bodyFont = New-Object System.Drawing.Font("Segoe UI", 26, [System.Drawing.FontStyle]::Regular, [System.Drawing.GraphicsUnit]::Pixel)
   $pillFont = New-Object System.Drawing.Font("Segoe UI", 24, [System.Drawing.FontStyle]::Bold, [System.Drawing.GraphicsUnit]::Pixel)
   $lightBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, 238, 245, 240))
   $mutedBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(210, 186, 197, 191))
   $greenBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, 64, 255, 156))
 
-  $titleRect = [System.Drawing.RectangleF]::new([float]120, [float]176, [float]620, [float]200)
-  $bodyRect = [System.Drawing.RectangleF]::new([float]120, [float]398, [float]610, [float]110)
-  $graphics.DrawString("AURA GLOBAL", $eyebrowFont, $greenBrush, [float]120, [float]124)
-  $graphics.DrawString("Digital systems that turn traffic into clients.", $titleFont, $lightBrush, $titleRect)
-  $graphics.DrawString("Websites, Google, paid traffic, AI and automations combined into one premium growth layer.", $bodyFont, $mutedBrush, $bodyRect)
+  $titleRect = [System.Drawing.RectangleF]::new([float]120, [float]168, [float]680, [float]218)
+  $bodyRect = [System.Drawing.RectangleF]::new([float]120, [float]404, [float]680, [float]124)
+  $graphics.DrawString("AURA GLOBAL", $eyebrowFont, $greenBrush, [float]120, [float]122)
+  $graphics.DrawString("A website that`nwins customers`nevery single day.", $titleFont, $lightBrush, $titleRect)
+  $graphics.DrawString("Website, Google, paid traffic, AI and automations combined into one client acquisition system.", $bodyFont, $mutedBrush, $bodyRect)
 
   $pillBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, 64, 255, 156))
   $pillRect = New-Object System.Drawing.RectangleF(842, 420, 190, 58)

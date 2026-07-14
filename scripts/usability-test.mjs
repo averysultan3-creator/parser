@@ -1,4 +1,6 @@
+import 'dotenv/config';
 import { chromium } from 'playwright';
+import { getPortfolioProjects } from '../public/site/data/portfolio.js';
 
 const baseUrl = normalizeBaseUrl(process.argv[2] || 'http://127.0.0.1:4317');
 const timeoutMs = Number(process.env.USABILITY_TIMEOUT_MS || 180000);
@@ -175,7 +177,29 @@ async function runParser(page, summary) {
   }
 }
 
+// AI training is gated behind 40% of "training" + 30% of "scripts and
+// examples" progress. A fresh test worker starts at 0%, so seed just enough
+// completed modules / opened scripts via the real progress API (same one the
+// UI itself calls) instead of clicking through the whole learning path.
+async function seedAcademyProgressForAiTrainingGate(page) {
+  // 25 of the 67 total scripts+examples clears the 30% threshold with margin
+  // (25/67 ≈ 37%) rather than sitting right at the rounding edge.
+  const scriptIds = [
+    'first-call', 'client-busy', 'not-interested', 'already-has-website', 'send-offer',
+    'asks-price-immediately', 'asks-where-number-from', 'already-has-agency', 'irritated-client',
+    'asks-callback', 'how-to-book-meeting', 'how-to-end-call', 'need-to-think-about-it',
+    'too-expensive', 'need-partner-approval', 'comparing-offers', 'wants-to-diy',
+    'distrust-scam-call', 'talking-to-gatekeeper', 'pivot-to-broader-proposal',
+    'upsell-existing-client', 'inbound-warm-lead', 'asks-for-references', 'leaving-voicemail',
+    'closing-hesitant-client'
+  ];
+  await page.request.post(`${baseUrl.replace(/\/$/, '')}/api/academy/progress`, {
+    data: { completedModules: ['start', 'services', 'call-logic', 'scripts', 'objections'], scriptsOpened: scriptIds }
+  });
+}
+
 async function runAcademy(page, summary) {
+  await seedAcademyProgressForAiTrainingGate(page);
   await page.goto(`${baseUrl.replace(/\/$/, '')}/academy/`, { waitUntil: 'networkidle', timeout: 120000 });
 
   // The session token set while logging into Parser lives in the same-origin
@@ -261,8 +285,9 @@ async function runAdmin(page, summary) {
       return title && !/Wybierz pracownika|Loading|Ładowanie/i.test(title);
     }, { timeout: 15000 });
     summary.detailPanels = await count(page, '#workerDetailPanel .panel-block, #workerDetailPanel table tbody tr');
-    summary.detailText = short(await page.locator('#workerDetailPanel').innerText(), 500);
-    assert(summary.detailText.includes('Historia') || summary.detailText.includes('Akademia'), 'Admin worker profile must render detail content.');
+    const fullDetailText = await page.locator('#workerDetailPanel').innerText();
+    summary.detailText = short(fullDetailText, 500);
+    assert(fullDetailText.includes('Historia') || fullDetailText.includes('Akademia'), 'Admin worker profile must render detail content.');
 
     const workerAcademyLink = page.locator('#workerDetailPanel a[href*="../academy/?workerId="]').first();
     summary.workerAcademyLinkCount = await workerAcademyLink.count();
@@ -290,46 +315,44 @@ async function runSite(page, summary) {
   summary.title = await getText(page, 'h1');
   summary.serviceCards = await count(page, '.service-card');
   summary.quizButtons = await count(page, '#quizNext');
-  summary.portfolioCards = await count(page, '#portfolioCarousel [data-portfolio-card]');
-  summary.portfolioTitles = await page.locator('#portfolioCarousel [data-portfolio-card] h3').evaluateAll((list) => list.map((node) => (node.textContent || '').trim()));
+  summary.portfolioCards = await count(page, '#portfolioTrack [data-project-card]');
+  summary.portfolioTitles = await page.locator('#portfolioTrack [data-project-card] h3').evaluateAll((list) => list.map((node) => (node.textContent || '').trim()));
   summary.portfolioLinks = await page
-    .locator('#portfolioCarousel [data-portfolio-card]')
+    .locator('#portfolioTrack [data-project-card] .project-card-actions a[target="_blank"]')
     .evaluateAll((list) => list.map((node) => ({ href: node.getAttribute('href'), target: node.getAttribute('target') })));
-  const expectedProjects = ['Climatech', 'Mont Fort', 'Polar Signals', 'Langbase', 'Exa AI'];
-  assert(summary.portfolioCards === expectedProjects.length, 'Site portfolio must show the five configured project cards.');
+  const expectedProjects = getPortfolioProjects('pl').map((project) => project.title);
+  assert(summary.portfolioCards === expectedProjects.length, `Site portfolio must show all ${expectedProjects.length} configured project cards.`);
   for (const project of expectedProjects) {
     assert(summary.portfolioTitles.includes(project), `Site portfolio must include ${project}.`);
   }
-  assert(summary.portfolioLinks.every((item) => item.target === '_blank' && item.href), 'Every portfolio card must open a real project in a new tab.');
+  assert(summary.portfolioLinks.length === expectedProjects.length, 'Every portfolio card must expose its live project link.');
+  assert(summary.portfolioLinks.every((item) => item.target === '_blank' && item.href), 'Every portfolio card must open the live project in a new tab.');
   summary.desktopOverflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 2);
   assert(!summary.desktopOverflow, 'Site must not have horizontal overflow on desktop.');
 
-  await page.click('[data-quiz-open]');
-  await page.waitForTimeout(800);
-  await page.click('[data-quiz-option="website"]');
-  await page.click('#quizNext');
-  await page.waitForTimeout(500);
-  await page.click('[data-quiz-option="local-services"]');
-  await page.waitForTimeout(500);
-  await page.click('[data-quiz-option="none"]');
-  await page.waitForTimeout(500);
-  await page.click('[data-quiz-option="more-calls"]');
-  await page.waitForTimeout(500);
-  await page.click('[data-quiz-option="unknown"]');
-  await page.waitForTimeout(500);
+  await page.click('[data-lead-open]');
+  await page.waitForSelector('#leadForm', { state: 'visible', timeout: 12000 });
+  await page.click('[data-lead-option="task:website"]');
+  await page.click('[data-lead-next]');
+  await page.waitForTimeout(400);
+  await page.click('[data-lead-option="goal:leads"]');
+  await page.click('[data-lead-next]');
+  await page.waitForTimeout(400);
+  await page.fill('#leadContext', 'Automated usability submission — testing the lead form end to end.');
+  await page.click('[data-lead-next]');
+  await page.waitForTimeout(400);
+  await page.click('[data-lead-option="budget:starter"]');
+  await page.click('[data-lead-next]');
+  await page.waitForTimeout(400);
 
   const stamp = Date.now();
-  await page.fill('#qName', `UX Test ${stamp}`);
-  await page.fill('#qPhone', `+48555${String(stamp).slice(-6)}`);
-  await page.fill('#qEmail', `ux-${stamp}@example.com`);
-  await page.fill('#qWebsite', `https://ux-${stamp}.example.com`);
-  await page.fill('#qMessage', 'Automated usability submission');
-  await page.click('#quizNext');
-  await page.waitForFunction(() => {
-    const text = document.querySelector('#quizBody')?.innerText || '';
-    return /Dzi[eę]kujemy|Thank you|Спасибо/i.test(text);
-  }, { timeout: 12000 });
-  summary.submissionText = short(await page.locator('#quizBody').innerText(), 300);
+  await page.fill('[data-lead-field="name"]', `UX Test ${stamp}`);
+  await page.fill('[data-lead-field="phone"]', `+48555${String(stamp).slice(-6)}`);
+  await page.fill('[data-lead-field="email"]', `ux-${stamp}@example.com`);
+  await page.fill('[data-lead-field="message"]', 'Automated usability submission');
+  await page.click('[data-lead-next]');
+  await page.waitForSelector('.lead-success', { state: 'visible', timeout: 12000 });
+  summary.submissionText = short(await page.locator('.lead-success').innerText(), 300);
   assert(/Dzi[eę]kujemy|Thank you|Спасибо/i.test(summary.submissionText), 'Site form submission must finish with the thank-you state.');
 }
 

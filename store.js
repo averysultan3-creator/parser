@@ -100,6 +100,12 @@ function saveJson(file, data) {
     renameOverTarget(tmpFile, file);
   } catch (error) {
     console.error(`store: failed to save ${file}:`, error.message);
+    // Previously swallowed here, so every mutator reported success to its
+    // Express route even when the disk write actually failed (disk full,
+    // permissions) - the in-memory change looked live but a restart would
+    // silently lose it with no client-visible error. Re-throw so it surfaces
+    // as a 500 through the route's existing try/catch instead.
+    throw error;
   }
 }
 
@@ -404,11 +410,18 @@ const nonCompanyHostFragments = [
   'firmy.net',
   'gowork.pl',
   'aleo.com',
+  'rejestr.io',
+  'regon24.pl',
+  'biznes.gov.pl',
+  'opendatabot.ua',
+  'youcontrol.com.ua',
   'maps.google',
   'yelp.',
   'allegro.pl',
   'olx.pl',
-  'otomoto.pl'
+  'otomoto.pl',
+  'prom.ua',
+  'rozetka.'
 ];
 
 function isKnownNonCompanyHost(host) {
@@ -427,6 +440,8 @@ export function buildCompanyKeys(company) {
   if (nip && nip.length >= 10) keys.push(`nip:${nip}`);
   const regon = cleanIdentifier(company?.regon);
   if (regon && regon.length >= 9) keys.push(`regon:${regon}`);
+  const edrpou = cleanIdentifier(company?.edrpou);
+  if (edrpou && edrpou.length >= 8) keys.push(`edrpou:${edrpou}`);
 
   const phoneCandidates = splitPhoneValues(company?.phone, { city: company?.city, country: company?.country });
   const directPhone = normalizePhone(company?.phone || '');
@@ -447,15 +462,24 @@ export function buildCompanyKeys(company) {
     keys.push(`maps:${mapsKey}`);
   }
 
+  // Address alone is deliberately NOT a strong dedup key: many unrelated
+  // businesses share one physical address (virtual offices, shared business
+  // parks, multi-tenant buildings), so trusting it on its own merges
+  // distinct companies. It's only used combined with a name below
+  // (`nameaddr:`), which is a much safer signal.
   const addressKey = normalizeSearchText([company?.address, company?.street, company?.postal_code, company?.city].filter(Boolean).join(' '));
-  if (addressKey && addressKey.length > 10) keys.push(`addr:${addressKey}`);
 
-  const nameKey = normalizeSearchText(company?.company || company?.legal_name || '');
-  if (nameKey) {
+  // A short or generic name (e.g. the inbound-form fallback "Inbound lead")
+  // must not become a dedup key either - two unrelated anonymous submissions
+  // would otherwise collide and silently drop one of them. Require a
+  // minimum length, matching the guard already used for addressKey.
+  const rawName = company?.company || company?.legal_name || '';
+  const nameKey = rawName.trim() === 'Inbound lead' ? '' : normalizeSearchText(rawName);
+  if (nameKey && nameKey.length > 3) {
     const cityKey = normalizeSearchText(company?.city || '');
     const districtKey = normalizeSearchText(company?.district || '');
     keys.push(`name:${nameKey}|${cityKey}|${districtKey}`);
-    if (addressKey) keys.push(`nameaddr:${nameKey}|${addressKey}`);
+    if (addressKey && addressKey.length > 10) keys.push(`nameaddr:${nameKey}|${addressKey}`);
   }
 
   return [...new Set(keys)];
@@ -529,12 +553,20 @@ export function getAllCompanies({ includeDeleted = false } = {}) {
     .map(serializeCompany);
 }
 
+// Identity fields are kept first-seen-wins (changing them on a re-discovery
+// match would mean the record is describing a different legal entity, which
+// should never happen once matched). Everything else - contact details,
+// site status, socials, ratings - is refreshable: without this, a
+// mis-scraped phone/website captured on first discovery could never be
+// corrected by a later, more accurate re-discovery of the same business.
+const IDENTITY_COMPANY_FIELDS = new Set(['company', 'legal_name', 'nip', 'regon', 'krs', 'edrpou', 'pkd']);
+
 function mergeCompanyData(existing, incoming) {
   const merged = { ...existing };
   for (const [key, value] of Object.entries(incoming || {})) {
     if (value === undefined || value === null || value === '') continue;
     if (Array.isArray(value) && !value.length) continue;
-    if (!merged[key]) merged[key] = value;
+    if (!merged[key] || (!IDENTITY_COMPANY_FIELDS.has(key) && merged[key] !== value)) merged[key] = value;
   }
   return merged;
 }
@@ -572,7 +604,7 @@ export function upsertCompany(company, { runId, stage = 'discovered', deferPersi
   const id = String(state.companies.nextId++);
   const record = {
     id,
-    data: company,
+    data: { ...company },
     website: null,
     heuristic: null,
     analysis: null,
@@ -825,11 +857,16 @@ export function claimCompanyForRun(company, { runId, workerId, stage = 'reserved
     };
   }
 
-  // Parser discovery is a "new companies only" pipeline. Returning a lead to the
-  // worker pool must not erase dedupe memory: an already known company is still a
-  // duplicate for future parser runs, even if it becomes available for manual
-  // processing again in admin.
-  if (!isNew) {
+  // A company already known to us is only a genuine "duplicate" if it's still
+  // actively assigned to a worker or already processed. Once it's been
+  // returned to the pool (available/reset - nobody currently owns it), it's
+  // a legitimate find again: for whoever's search turns it up next it's just
+  // a new lead, not clutter. This keeps dedupe memory meaningful (never
+  // re-creates the record, never loses its history/comments/CRM status)
+  // without permanently blacklisting a company just because it was seen once.
+  const isReclaimablePoolLead = !isNew && !isDeletedRecord(record) && ['available', 'reset'].includes(derivePoolState(record));
+
+  if (!isNew && !isReclaimablePoolLead) {
     record.duplicate_count = (record.duplicate_count || 0) + 1;
     record.last_duplicate_at = now;
     record.last_seen_query_id = runId || record.last_seen_query_id || '';
@@ -851,9 +888,9 @@ export function claimCompanyForRun(company, { runId, workerId, stage = 'reserved
 
   return {
     id,
-    isNew,
+    isNew: isNew || isReclaimablePoolLead,
     isClaimed: true,
-    isNewForRun: Boolean(isNew || (runId && record.first_claimed_run_id === runId && record.seen_count === 1)),
+    isNewForRun: Boolean(isNew || isReclaimablePoolLead || (runId && record.first_claimed_run_id === runId && record.seen_count === 1)),
     record
   };
 }
@@ -1057,7 +1094,7 @@ export function listLeadPool({ q = '', status = '', workerId = '', poolState = '
       if (status && normalizeLeadStatus(record.status || record.stage) !== status) return false;
       if (normalizedPoolState && derivePoolState(record) !== normalizedPoolState) return false;
       if (normalizedWorkerId && record.assigned_worker_id !== normalizedWorkerId) return false;
-      if (normalizedCity && normalizeSearchText(record.data?.city || '') !== normalizedCity) return false;
+      if (normalizedCity && !normalizeSearchText(record.data?.city || '').includes(normalizedCity)) return false;
       if (normalizedCategory && !normalizeSearchText(record.data?.niche || '').includes(normalizedCategory)) return false;
       if (!query) return true;
       const haystack = normalizeSearchText(
@@ -1099,6 +1136,35 @@ function scoreValues(values) {
   return scores.length ? Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length) : 0;
 }
 
+// Quiz-score keys below this threshold are surfaced as "weak spots" in the admin
+// panel (see academySummary().weakSpots) — module/service areas the worker should
+// revisit, not just an overall average that can hide specific gaps.
+const WEAK_SPOT_THRESHOLD = 70;
+
+// Mirrors public/site/data/services.js (33 services) and public/academy/data/scripts.js
+// (scripts + examples). Kept as constants here rather than imported/parsed at
+// runtime to avoid coupling this backend module to browser-only data shapes -
+// update these two numbers if the catalog or the scripts library grows.
+const SERVICES_TOTAL = 33;
+const SCRIPTS_TOTAL = 67;
+
+// Guided learning path thresholds - MUST mirror STAGE_GATES in
+// public/academy/app.js so the admin funnel view matches what actually gates
+// navigation for the worker. See that file for the reasoning.
+const LEARNING_STAGE_GATES = [
+  { key: 'servicesCatalog', label: 'Usługi', threshold: 0, ownPercentKey: 'servicesPercent' },
+  { key: 'training', label: 'Szkolenie', threshold: 20, requiresPercentKey: 'servicesPercent', ownPercentKey: 'completionPercent' },
+  { key: 'scriptsExamples', label: 'Skrypty', threshold: 40, requiresPercentKey: 'completionPercent', ownPercentKey: 'scriptsPercent' },
+  { key: 'aiTraining', label: 'Trener AI', threshold: 30, requiresPercentKey: 'scriptsPercent', ownPercentKey: 'aiTrainingStagePercent' }
+];
+
+function currentLearningStage(percents) {
+  for (const stage of LEARNING_STAGE_GATES) {
+    if ((percents[stage.ownPercentKey] || 0) < 100) return stage.label;
+  }
+  return 'Ukończono';
+}
+
 function academySummary(user) {
   if (!user) {
     return {
@@ -1110,24 +1176,63 @@ function academySummary(user) {
       sectionsVisited: {},
       servicesOpened: 0,
       servicesCompleted: 0,
+      servicesPercent: 0,
       scriptsOpened: 0,
-      aiTrainingSessions: 0
+      scriptsPercent: 0,
+      aiTrainingSessions: 0,
+      aiTrainingCompleted: 0,
+      averageAiTrainingScore: 0,
+      aiMeetingBookedRate: 0,
+      aiTrainingStagePercent: 0,
+      currentStage: 'Usługi',
+      weakSpots: [],
+      quizScores: {}
     };
   }
   const completed = Array.isArray(user.completedModules) ? user.completedModules.length : 0;
   const total = 10;
   const sectionsVisited = user.sectionsVisited && typeof user.sectionsVisited === 'object' ? user.sectionsVisited : {};
+  const quizScores = user.quizScores && typeof user.quizScores === 'object' ? user.quizScores : {};
+
+  const sessions = listAiTrainingSessions({ workerId: user.userId });
+  const completedSessions = sessions.filter((session) => session.status === 'completed');
+  const averageAiTrainingScore = scoreValues(completedSessions.map((session) => session.score || 0));
+  const meetingBookedCount = completedSessions.filter((session) => session.feedback?.meetingBooked).length;
+  const aiMeetingBookedRate = completedSessions.length ? Math.round((meetingBookedCount / completedSessions.length) * 100) : 0;
+
+  const servicesCompletedCount = Array.isArray(user.servicesCompleted) ? user.servicesCompleted.length : 0;
+  const scriptsOpenedCount = Array.isArray(user.scriptsOpened) ? user.scriptsOpened.length : 0;
+  const servicesPercent = SERVICES_TOTAL ? Math.round((servicesCompletedCount / SERVICES_TOTAL) * 100) : 0;
+  const scriptsPercent = SCRIPTS_TOTAL ? Math.min(100, Math.round((scriptsOpenedCount / SCRIPTS_TOTAL) * 100)) : 0;
+  const completionPercent = Math.round((completed / total) * 100);
+  const aiTrainingStagePercent = Math.min(100, completedSessions.length * 34);
+  const currentStage = currentLearningStage({ servicesPercent, completionPercent, scriptsPercent, aiTrainingStagePercent });
+
+  const weakSpots = Object.entries(quizScores)
+    .filter(([, score]) => Number(score) < WEAK_SPOT_THRESHOLD)
+    .map(([key, score]) => ({ key, score: Number(score) || 0 }))
+    .sort((a, b) => a.score - b.score);
+
   return {
     completedModules: completed,
     totalModules: total,
-    completionPercent: Math.round((completed / total) * 100),
-    averageQuizScore: scoreValues(Object.values(user.quizScores || {})),
+    completionPercent,
+    averageQuizScore: scoreValues(Object.values(quizScores)),
     lastActiveAt: user.lastActiveAt || '',
     sectionsVisited,
     servicesOpened: Array.isArray(user.servicesOpened) ? user.servicesOpened.length : 0,
-    servicesCompleted: Array.isArray(user.servicesCompleted) ? user.servicesCompleted.length : 0,
-    scriptsOpened: Array.isArray(user.scriptsOpened) ? user.scriptsOpened.length : 0,
-    aiTrainingSessions: listAiTrainingSessions({ workerId: user.userId }).length
+    servicesCompleted: servicesCompletedCount,
+    servicesPercent,
+    scriptsOpened: scriptsOpenedCount,
+    scriptsPercent,
+    aiTrainingSessions: sessions.length,
+    aiTrainingCompleted: completedSessions.length,
+    averageAiTrainingScore,
+    aiMeetingBookedRate,
+    aiTrainingStagePercent,
+    currentStage,
+    weakSpots,
+    quizScores
   };
 }
 
@@ -1652,6 +1757,25 @@ export function getRun(runId) {
   return state.runs.runs.find((item) => item.id === runId) || null;
 }
 
+// Parses a dateFrom/dateTo filter value as a LOCAL calendar-day boundary when
+// given a bare "YYYY-MM-DD" string (consistent with periodStart()'s local
+// midnight below), instead of the UTC midnight `new Date(str)` would give.
+// endOfDay=true returns 23:59:59.999 local time on that date instead of 00:00.
+function parseDateBoundaryMs(value, endOfDay) {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) return null;
+  const bareDateMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (bareDateMatch) {
+    const [, year, month, day] = bareDateMatch.map(Number);
+    const date = endOfDay
+      ? new Date(year, month - 1, day, 23, 59, 59, 999)
+      : new Date(year, month - 1, day);
+    return Number.isNaN(date.getTime()) ? null : date.getTime();
+  }
+  const date = new Date(trimmed);
+  return Number.isNaN(date.getTime()) ? null : date.getTime();
+}
+
 // Filtered view over query history. Never touches companies — history and the
 // master leads database are separate concerns.
 export function listRunsFiltered({
@@ -1676,16 +1800,18 @@ export function listRunsFiltered({
   const normSource = String(source || '').trim().toLowerCase();
   const normOnly = String(only || '').trim().toLowerCase();
 
-  const fromDate = dateFrom ? new Date(dateFrom) : null;
-  const fromTime = fromDate && !Number.isNaN(fromDate.getTime()) ? fromDate.getTime() : null;
-  const toDate = dateTo ? new Date(dateTo) : null;
-  let toTime = toDate && !Number.isNaN(toDate.getTime()) ? toDate.getTime() : null;
-  // A plain YYYY-MM-DD "to" date should be inclusive up to end of that day.
-  if (toTime !== null && String(dateTo).trim().length <= 10) toTime += 86_399_999;
+  // A bare "YYYY-MM-DD" string parses as UTC midnight per the Date spec,
+  // while periodStart() below (used by the admin summary dashboard's "today"
+  // filter) builds local midnight. In Warsaw (UTC+1/+2) that mismatch shifts
+  // the day boundary by 1-2 hours, so the two "today" filters can disagree
+  // near midnight. Parse bare date-only strings as local midnight here too so
+  // both filters agree on what "today" means.
+  const fromTime = parseDateBoundaryMs(dateFrom, false);
+  let toTime = parseDateBoundaryMs(dateTo, true);
 
   const filtered = state.runs.runs.filter((run) => {
-    if (normCountry && normalizeSearchText(run.country || '') !== normCountry) return false;
-    if (normCity && normalizeSearchText(run.city || '') !== normCity) return false;
+    if (normCountry && !normalizeSearchText(run.country || '').includes(normCountry)) return false;
+    if (normCity && !normalizeSearchText(run.city || '').includes(normCity)) return false;
     if (normCategory && !normalizeSearchText((run.niches || []).join(' ')).includes(normCategory)) return false;
     if (normWorker && normalizeWorkerId(run.worker_id || '') !== normWorker) return false;
     if (normStatus && String(run.status || '').toLowerCase() !== normStatus) return false;
@@ -1892,6 +2018,20 @@ export function destroySession(token) {
   delete state.sessions.sessions[String(token)];
   persistSessions();
   return true;
+}
+
+// Persists a client-side language toggle (e.g. the Academy toolbar
+// [data-set-lang] chips) back onto the worker's active session, so
+// requestAcademyLanguage() in server.js (used by AI-training personas,
+// finish-session feedback, and grade-answer) reflects what the trainee is
+// actually looking at right now instead of only the language captured at
+// login. See round-6 QA finding 3.
+export function setSessionLanguage(token, language) {
+  if (!token || !state.sessions.sessions[String(token)]) return null;
+  const session = state.sessions.sessions[String(token)];
+  session.language = normalizeLanguage(language);
+  persistSessions();
+  return session;
 }
 
 export function getAcademyProgress(userId = 'worker-default') {
@@ -2289,8 +2429,8 @@ export function listSavedCompaniesForWorker(
 
   if (status) rows = rows.filter(({ record }) => record.status === status);
   if (crmStatus) rows = rows.filter(({ record }) => record.crm_status === crmStatus);
-  if (normalizedCity) rows = rows.filter(({ record }) => normalizeSearchText(record.data?.city || '') === normalizedCity);
-  if (normalizedCountry) rows = rows.filter(({ record }) => normalizeSearchText(record.data?.country || '') === normalizedCountry);
+  if (normalizedCity) rows = rows.filter(({ record }) => normalizeSearchText(record.data?.city || '').includes(normalizedCity));
+  if (normalizedCountry) rows = rows.filter(({ record }) => normalizeSearchText(record.data?.country || '').includes(normalizedCountry));
   if (normalizedCategory) rows = rows.filter(({ record }) => normalizeSearchText(record.data?.niche || '').includes(normalizedCategory));
   if (query) {
     rows = rows.filter(({ record }) =>
@@ -2587,4 +2727,57 @@ export function listArchivedRuns({ workerId = '', limit = 200 } = {}) {
   return state.runs.runs
     .filter((run) => Boolean(run.archived_at) && (!normalizedWorkerId || normalizeWorkerId(run.worker_id || '') === normalizedWorkerId))
     .slice(0, limit);
+}
+
+// =====================================================================
+// FILTER AUTOCOMPLETE ("facets") - distinct known values across the FULL
+// history (every run ever recorded, active or archived, plus every company
+// ever seen), never just the currently-loaded/paginated slice. This is what
+// powers the admin's "suggest as you type" filter inputs, so a worker id,
+// city, country or category typed anywhere in history is always findable.
+// =====================================================================
+
+function collectDistinct(values, query, limit) {
+  const q = normalizeSearchText(query);
+  const seen = new Map();
+  for (const raw of values) {
+    const value = String(raw || '').trim();
+    if (!value) continue;
+    const key = normalizeSearchText(value);
+    if (!key) continue;
+    if (q && !key.includes(q)) continue;
+    if (!seen.has(key)) seen.set(key, value);
+  }
+  return [...seen.values()].sort((a, b) => a.localeCompare(b)).slice(0, limit);
+}
+
+export function getFilterFacets({ field = '', q = '', limit = 20 } = {}) {
+  const cappedLimit = Math.max(1, Math.min(50, Number(limit) || 20));
+  if (field === 'city') {
+    const cities = [...state.runs.runs.map((run) => run.city), ...Object.values(state.companies.companies).map((record) => record.data?.city)];
+    return collectDistinct(cities, q, cappedLimit);
+  }
+  if (field === 'country') {
+    const countries = [
+      ...state.runs.runs.map((run) => run.country),
+      ...Object.values(state.companies.companies).map((record) => record.data?.country)
+    ];
+    return collectDistinct(countries, q, cappedLimit);
+  }
+  if (field === 'category') {
+    const categories = [
+      ...state.runs.runs.flatMap((run) => run.niches || []),
+      ...Object.values(state.companies.companies).map((record) => record.data?.niche)
+    ];
+    return collectDistinct(categories, q, cappedLimit);
+  }
+  if (field === 'workerId') {
+    const workers = [
+      ...state.runs.runs.map((run) => run.worker_id),
+      ...Object.values(state.workers.workers).map((account) => account.workerId),
+      ...Object.values(state.companies.companies).map((record) => record.assigned_worker_id || record.first_assigned_worker_id)
+    ];
+    return collectDistinct(workers, q, cappedLimit);
+  }
+  return [];
 }

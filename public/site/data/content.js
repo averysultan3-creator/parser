@@ -156,7 +156,7 @@ const siteContent = {
       { n: '08', title: 'Rozwój', text: 'Mierzymy, poprawiamy i rozwijamy system dalej.' }
     ],
     processNotes: [
-      'Najpierw rozumiemy biznes klienta. Dopiero potem proponujemy rozwiązanie. Nie wciskamy każdej usługi każdemu — wybieramy to, co realnie może pomóc.',
+      'Najpierw rozumiemy biznes klienta. Dopiero potem proponujemy rozwiązanie, wybierając tylko to, co realnie może pomóc.',
       'Przy stronach możemy przygotować wstępny kierunek wizualny lub koncepcję, żeby klient zobaczył, w jakim stylu możemy pracować.',
       'W marketingu skupiamy się na realnym potencjale. Jeśli widzimy, że kampania nie ma sensu na danym etapie, mówimy o tym od razu.'
     ],
@@ -166,7 +166,7 @@ const siteContent = {
         icon: 'monitor',
         label: 'Website',
         title: 'Strona internetowa, która buduje zaufanie.',
-        text: 'Tworzymy strony, które nie tylko wyglądają dobrze, ale prowadzą klienta do kontaktu: pokazują ofertę, realizacje, opinie i ułatwiają wysłanie zapytania.',
+        text: 'Tworzymy strony, które wyglądają dobrze i prowadzą klienta do kontaktu: pokazują ofertę, realizacje, opinie i ułatwiają wysłanie zapytania.',
         accent: 'green'
       },
       {
@@ -181,7 +181,7 @@ const siteContent = {
         id: 'ads',
         icon: 'mouse-pointer-click',
         label: 'Ads',
-        title: 'Reklamy ustawione pod zapytania, nie tylko kliknięcia.',
+        title: 'Reklamy ustawione tak, aby przynosiły realne zapytania.',
         text: 'Google Ads i Meta Ads projektujemy tak, żeby prowadziły użytkownika do konkretnego działania: telefonu, formularza, rezerwacji lub rozmowy.',
         accent: 'lime'
       },
@@ -477,7 +477,7 @@ const siteContent = {
       { n: '08', title: 'Growth', text: 'We measure, improve and continue building the system.' }
     ],
     processNotes: [
-      'We first understand the client’s business. Only then do we propose a solution. We do not push every service to everyone.',
+      'We first understand the client’s business. Only then do we propose a solution, choosing only what can genuinely help.',
       'For websites, we can prepare an initial visual direction or concept so the client sees the style before full production.',
       'In marketing, we focus on real potential. If a campaign does not make sense at the current stage, we say it directly.'
     ],
@@ -502,7 +502,7 @@ const siteContent = {
         id: 'ads',
         icon: 'mouse-pointer-click',
         label: 'Ads',
-        title: 'Ads built for enquiries, not vanity clicks.',
+        title: 'Ads built to bring real enquiries.',
         text: 'We structure Google Ads and Meta Ads to lead the user toward a specific action: a call, form, booking or sales conversation.',
         accent: 'lime'
       },
@@ -774,7 +774,7 @@ const siteContent = {
       { n: '08', title: 'Рост', text: 'Измеряем, улучшаем и развиваем систему дальше.' }
     ],
     processNotes: [
-      'Сначала мы понимаем бизнес клиента. Только после этого предлагаем решение. Мы не продаём всем одно и то же.',
+      'Сначала мы понимаем бизнес клиента. Только после этого предлагаем решение, выбирая то, что реально может помочь.',
       'Для сайтов мы можем подготовить предварительное визуальное направление или концепт, чтобы клиент заранее увидел стиль.',
       'В маркетинге мы смотрим на реальный потенциал. Если кампания сейчас не имеет смысла, мы говорим об этом сразу.'
     ],
@@ -784,7 +784,7 @@ const siteContent = {
         icon: 'monitor',
         label: 'Website',
         title: 'Сайт, который вызывает доверие.',
-        text: 'Мы делаем сайты, которые не просто красиво выглядят, а ведут клиента к контакту через понятную оферту, кейсы, доверие и следующий шаг.',
+        text: 'Мы делаем сайты, которые красиво выглядят и ведут клиента к контакту через понятную оферту, кейсы, доверие и следующий шаг.',
         accent: 'green'
       },
       {
@@ -799,7 +799,7 @@ const siteContent = {
         id: 'ads',
         icon: 'mouse-pointer-click',
         label: 'Ads',
-        title: 'Реклама, заточенная под заявки, а не просто под клики.',
+        title: 'Реклама, нацеленная на реальные заявки.',
         text: 'Google Ads и Meta Ads проектируются так, чтобы вести пользователя к конкретному действию: звонку, форме, бронированию или диалогу.',
         accent: 'lime'
       },

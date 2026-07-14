@@ -7,10 +7,10 @@
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
     <title>Aura Parser</title>
-    <link rel="stylesheet" href="./styles.css?v=20260711-1" />
+    <link rel="stylesheet" href="./styles.css?v=20260711-2" />
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js" defer></script>
     <script src="./patch.js?v=20260707-4" defer></script>
-    <script src="./app.js?v=20260711-1" defer></script>
+    <script src="./app.js?v=20260711-2" defer></script>
   </head>
   <body>
     <div id="authOverlay" class="auth-overlay hidden-field"></div>
@@ -75,8 +75,9 @@
               <label class="model-field wide">
                 <span>Лимит результатов</span>
                 <select id="discoverLimit">
+                  <option value="20" selected>20</option>
                   <option value="50">50</option>
-                  <option value="100" selected>100</option>
+                  <option value="100">100</option>
                   <option value="150">150</option>
                 </select>
               </label>
@@ -116,20 +117,22 @@
                 <input id="sidebarMinScore" type="number" min="0" max="100" value="0" />
               </label>
 
-              <label class="toggle-row compact-toggle">
-                <input id="sidebarHasSocial" type="checkbox" />
-                <span>Есть соц. профили</span>
-              </label>
+              <div class="filter-toggles">
+                <label class="toggle-row compact-toggle">
+                  <input id="sidebarHasSocial" type="checkbox" />
+                  <span>Есть соц. профили</span>
+                </label>
 
-              <label class="toggle-row compact-toggle">
-                <input id="sidebarHasPhone" type="checkbox" />
-                <span>Есть телефон</span>
-              </label>
+                <label class="toggle-row compact-toggle">
+                  <input id="sidebarHasPhone" type="checkbox" />
+                  <span>Есть телефон</span>
+                </label>
 
-              <label class="toggle-row compact-toggle">
-                <input id="sidebarHasEmail" type="checkbox" />
-                <span>Есть email</span>
-              </label>
+                <label class="toggle-row compact-toggle">
+                  <input id="sidebarHasEmail" type="checkbox" />
+                  <span>Есть email</span>
+                </label>
+              </div>
             </div>
 
             <button id="discoverButton" class="primary-button discover-button" type="button">
@@ -154,8 +157,12 @@
           </div>
 
           <details class="csv-drawer">
-            <summary>CSV данные</summary>
+            <summary>CSV данные (продвинутое: свой список компаний)</summary>
             <textarea id="csvInput" spellcheck="false" placeholder="company,niche,district,phone,email,website_url,source_profile,review_count,last_activity"></textarea>
+            <button id="analyzeButton" class="secondary-button wide-button" type="button">
+              <i data-lucide="search-check"></i>
+              Проверить список из CSV
+            </button>
           </details>
 
           <div class="ai-note">
@@ -184,11 +191,6 @@
               <input id="searchModelInput" type="text" autocomplete="off" />
             </label>
           </div>
-
-          <button id="analyzeButton" class="primary-button hidden-field" type="button" aria-hidden="true" tabindex="-1">
-            <i data-lucide="play"></i>
-            Найти сайты и проверить
-          </button>
 
           <div id="runStatus" class="run-status">Готов к запуску</div>
 
@@ -364,21 +366,10 @@
               </div>
             </div>
 
-            <div class="results-filters" aria-label="Result filters">
+            <div class="results-filters" aria-label="Table filters (narrow the loaded results, not a new search)">
               <label class="filter-field wide">
-                <span>Поиск</span>
+                <span>Поиск в таблице</span>
                 <input id="resultFilterText" type="text" placeholder="Компания, ниша, район, источник" autocomplete="off" />
-              </label>
-
-              <label class="filter-field">
-                <span>Сайт</span>
-                <select id="resultFilterSite">
-                  <option value="all">Все</option>
-                  <option value="no_site">Нет своего сайта</option>
-                  <option value="has_site">Сайт найден</option>
-                  <option value="weak_site">Слабый сайт</option>
-                  <option value="uncertain">Нужна проверка</option>
-                </select>
               </label>
 
               <label class="filter-field">
@@ -402,19 +393,9 @@
                 </select>
               </label>
 
-              <label class="filter-field">
-                <span>Score от</span>
-                <input id="resultFilterMinScore" type="number" min="0" max="100" value="0" />
-              </label>
-
-              <button id="quickFindSitesButton" class="secondary-button compact-button" type="button">
-                <i data-lucide="search-check"></i>
-                Найти сайты
-              </button>
-
               <button id="resetFiltersButton" class="secondary-button compact-button" type="button">
                 <i data-lucide="x"></i>
-                Сброс
+                Сброс фильтров таблицы
               </button>
 
               <div id="filterSummary" class="filter-summary">Фильтры не применены</div>

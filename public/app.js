@@ -12,10 +12,8 @@ const state = {
   detailTab: 'overview',
   filters: {
     text: '',
-    site: 'no_site',
     size: 'all',
-    priority: 'all',
-    minScore: 0
+    priority: 'all'
   },
   folders: [],
   foldersLoaded: false,
@@ -45,22 +43,32 @@ const leadStatusOptions = [
 ];
 
 // CRM work status - separate from the parser pool/lead status above. Kept in
-// this fixed order so the dropdown reads as a natural sales pipeline.
+// this fixed order so the dropdown reads as a natural sales pipeline. Values
+// sent to the backend always stay Polish (store.js canonical set); only the
+// on-screen label follows currentLanguage.
 const crmStatusOptions = [
-  { value: 'nowy', label: 'Nowy' },
-  { value: 'do_kontaktu', label: 'Do kontaktu' },
-  { value: 'proba_kontaktu', label: 'Próba kontaktu' },
-  { value: 'brak_odpowiedzi', label: 'Brak odpowiedzi' },
-  { value: 'oddzwonic', label: 'Oddzwonić' },
-  { value: 'zainteresowany', label: 'Zainteresowany' },
-  { value: 'oferta_wyslana', label: 'Oferta wysłana' },
-  { value: 'umowione_spotkanie', label: 'Umówione spotkanie' },
-  { value: 'klient', label: 'Klient' },
-  { value: 'odrzucony', label: 'Odrzucony' }
+  { value: 'nowy', pl: 'Nowy', ru: 'Новый' },
+  { value: 'do_kontaktu', pl: 'Do kontaktu', ru: 'Связаться' },
+  { value: 'proba_kontaktu', pl: 'Próba kontaktu', ru: 'Попытка связи' },
+  { value: 'brak_odpowiedzi', pl: 'Brak odpowiedzi', ru: 'Нет ответа' },
+  { value: 'oddzwonic', pl: 'Oddzwonić', ru: 'Перезвонить' },
+  { value: 'zainteresowany', pl: 'Zainteresowany', ru: 'Заинтересован' },
+  { value: 'oferta_wyslana', pl: 'Oferta wysłana', ru: 'Оффер отправлен' },
+  { value: 'umowione_spotkanie', pl: 'Umówione spotkanie', ru: 'Встреча назначена' },
+  { value: 'klient', pl: 'Klient', ru: 'Клиент' },
+  { value: 'odrzucony', pl: 'Odrzucony', ru: 'Отклонён' }
 ];
 
+// Small inline-translate helper for the newer worker features (Zapisane,
+// comments, CRM status), which don't have entries in the big tr() dictionary.
+function t2(pl, ru) {
+  return currentLanguage === 'pl' ? pl : ru;
+}
+
 function crmStatusLabel(value) {
-  return crmStatusOptions.find((option) => option.value === value)?.label || value || 'Nowy';
+  const option = crmStatusOptions.find((item) => item.value === value);
+  if (!option) return value || (currentLanguage === 'pl' ? 'Nowy' : 'Новый');
+  return currentLanguage === 'pl' ? option.pl : option.ru;
 }
 
 const API_BASE_STORAGE_KEY = 'parserApiBase';
@@ -192,10 +200,6 @@ async function bootstrapSession() {
   return true;
 }
 
-bootstrapSession().then((ok) => {
-  if (ok) init();
-});
-
 const copy = {
   ru: {
     sidebarTitle: 'Поиск компаний',
@@ -247,7 +251,7 @@ const copy = {
     historyLoading: 'Загрузка истории...',
     smartSearch: 'Смарт-поиск: Google -> Amazon -> реестры -> веб',
     internetProfiles: 'Интернет и публичные профили',
-    registries: 'CEIDG / госреестры',
+    registries: 'CEIDG / госреестры (+Panorama Firm, Aleo, PKT, biznes.gov.pl, Regon24; Opendatabot/YouControl для Украины)',
     directories: 'Каталоги и сервисы',
     social: 'Соцсети',
     topCategories: 'Топ-категории для сайтов',
@@ -281,7 +285,8 @@ const copy = {
     noFilterResults: 'По фильтрам ничего не найдено. Отключите фильтры соц. профилей, телефона или снизьте score.',
     overview: 'Обзор',
     sources: 'Источники',
-    aiAnalysis: 'AI-анализ'
+    aiAnalysis: 'AI-анализ',
+    resetTableFilters: 'Сброс фильтров таблицы'
   },
   pl: {
     sidebarTitle: 'Wyszukiwanie firm',
@@ -333,7 +338,7 @@ const copy = {
     historyLoading: 'Ładowanie historii...',
     smartSearch: 'Smart search: Google -> Amazon -> rejestry -> web',
     internetProfiles: 'Internet i publiczne profile',
-    registries: 'CEIDG / rejestry publiczne',
+    registries: 'CEIDG / rejestry publiczne (+Panorama Firm, Aleo, PKT, biznes.gov.pl, Regon24; Opendatabot/YouControl dla Ukrainy)',
     directories: 'Katalogi i serwisy',
     social: 'Social media',
     topCategories: 'Top kategorie dla stron',
@@ -367,7 +372,8 @@ const copy = {
     noFilterResults: 'Brak wyników dla filtrów. Wyłącz filtry profili, telefonu albo obniż score.',
     overview: 'Przegląd',
     sources: 'Źródła',
-    aiAnalysis: 'AI-analiza'
+    aiAnalysis: 'AI-analiza',
+    resetTableFilters: 'Wyczyść filtry tabeli'
   }
 };
 
@@ -716,11 +722,8 @@ const els = {
   reviewMetric: document.querySelector('#reviewMetric'),
   manualReviewMetric: document.querySelector('#manualReviewMetric'),
   resultFilterText: document.querySelector('#resultFilterText'),
-  resultFilterSite: document.querySelector('#resultFilterSite'),
   resultFilterSize: document.querySelector('#resultFilterSize'),
   resultFilterPriority: document.querySelector('#resultFilterPriority'),
-  resultFilterMinScore: document.querySelector('#resultFilterMinScore'),
-  quickFindSitesButton: document.querySelector('#quickFindSitesButton'),
   resetFiltersButton: document.querySelector('#resetFiltersButton'),
   filterSummary: document.querySelector('#filterSummary'),
   sidebarSiteFilter: document.querySelector('#sidebarSiteFilter'),
@@ -873,6 +876,7 @@ const inputCsvHeaders = [
   'nip',
   'regon',
   'krs',
+  'edrpou',
   'pkd',
   'status',
   'registration_date',
@@ -905,8 +909,17 @@ function normalizeLookupValue(value) {
     .trim();
 }
 
-function displayCategory(value) {
-  const option = categoryByLookup.get(normalizeLookupValue(value));
+// `value` is usually input.niche - which is frequently the literal search
+// phrase used to find the lead (often Polish, e.g. "montaż klimatyzacji")
+// rather than a canonical category id, even when a matching category_id
+// (e.g. "hvac") is present on the same record. When a categoryId is passed,
+// always resolve the label through it first, so ru mode doesn't leak a raw
+// Polish search phrase just because the niche string itself didn't match the
+// lookup table. Only fall back to the raw stored phrase when there's truly
+// no category_id and no lookup match.
+function displayCategory(value, categoryId) {
+  const idOption = categoryId ? categoryById.get(String(categoryId)) : null;
+  const option = idOption || categoryByLookup.get(normalizeLookupValue(value));
   if (option) return currentLanguage === 'pl' ? option.labelPl || option.value : option.label || option.value;
   return String(value || '').trim() || '-';
 }
@@ -925,15 +938,15 @@ function displaySourceLabel(value) {
     .map((part) => part.trim())
     .filter(Boolean)
     .map((part) => {
-      if (part === 'all_sources') return 'Смарт-поиск';
+      if (part === 'all_sources') return t2('Smart search', 'Смарт-поиск');
       if (part === 'maps_api' || part.startsWith('google_places')) return 'Google Places API';
       if (part === 'amazon_location' || part.startsWith('amazon_location')) return 'Amazon Location API';
-      if (part === 'internet' || part.startsWith('public_search_')) return 'Интернет и публичные профили';
-      if (part === 'registries' || part.startsWith('public_registry') || part.startsWith('ceidg')) return 'Реестры';
-      if (part === 'directories') return 'Каталоги';
-      if (part === 'booking') return 'Booksy / запись';
-      if (part === 'social') return 'Соцсети';
-      if (part === 'cross_verification') return 'Сверка источников';
+      if (part === 'internet' || part.startsWith('public_search_')) return t2('Internet i publiczne profile', 'Интернет и публичные профили');
+      if (part === 'registries' || part.startsWith('public_registry') || part.startsWith('public_catalog') || part.startsWith('ceidg')) return t2('Rejestry', 'Реестры');
+      if (part === 'directories') return t2('Katalogi', 'Каталоги');
+      if (part === 'booking') return t2('Booksy / zapisy', 'Booksy / запись');
+      if (part === 'social') return t2('Social media', 'Соцсети');
+      if (part === 'cross_verification') return t2('Weryfikacja źródeł', 'Сверка источников');
       return part;
     });
 
@@ -1004,6 +1017,18 @@ function applyLanguage(lang = currentLanguage, { persist = true } = {}) {
     item.classList.toggle('active', item.dataset.langCode === currentLanguage);
   });
 
+  // Same PL/RU wording as shared/i18n.js' nav_academy/nav_logout keys, kept
+  // inline (via t2) since the Parser page uses its own currentLanguage/tr()
+  // mechanism rather than loading the shared AuraI18n script.
+  const academyLink = document.querySelector('#parserAcademyLink');
+  if (academyLink) {
+    academyLink.innerHTML = `<i data-lucide="graduation-cap"></i>${escapeHtml(t2('Akademia', 'Академия'))}`;
+  }
+  const logoutButton = document.querySelector('#parserLogoutButton');
+  if (logoutButton) {
+    logoutButton.innerHTML = `<i data-lucide="log-out"></i>${escapeHtml(t2('Wyloguj', 'Выйти'))}`;
+  }
+
   setText('.sidebar-title h2', tr('sidebarTitle'));
   const stepTitles = document.querySelectorAll('.discover-panel .step-title');
   if (stepTitles[0]) stepTitles[0].textContent = tr('categoryLocation');
@@ -1018,6 +1043,7 @@ function applyLanguage(lang = currentLanguage, { persist = true } = {}) {
     label.innerHTML = `<i data-lucide="${label.classList.contains('file-button') ? 'file-up' : 'upload'}"></i>${escapeHtml(tr('importCsv'))}`;
   });
   setButtonHtml('.history-header .secondary-button', 'refresh-cw', tr('refresh'));
+  setButtonHtml('#resetFiltersButton', 'x', tr('resetTableFilters'));
   setText('.metric-row > div:nth-child(1) .metric-label', tr('totalFound'));
   setText('.metric-row > div:nth-child(1) em', tr('companies'));
   setText('.metric-row > div:nth-child(2) .metric-label', tr('withSite'));
@@ -1025,11 +1051,7 @@ function applyLanguage(lang = currentLanguage, { persist = true } = {}) {
   setText('.metric-row > div:nth-child(4) .metric-label', tr('inReview'));
   setText('.metric-row > div:nth-child(5) .metric-label', tr('needReview'));
   setText('.results-filters label:nth-child(1) span', tr('search'));
-  setText('.results-filters label:nth-child(2) span', tr('site'));
-  setText('.results-filters label:nth-child(3) span', tr('size'));
-  setText('.results-filters label:nth-child(5) span', 'Score od');
-  setButtonHtml('#quickFindSitesButton', 'search-check', tr('findSites'));
-  setButtonHtml('#resetFiltersButton', 'x', tr('reset'));
+  setText('.results-filters label:nth-child(2) span', tr('size'));
   setText('.detail-header .eyebrow', tr('companyCard'));
   setPlaceholder('#resultFilterText', currentLanguage === 'pl' ? 'Firma, nisza, dzielnica, zrodlo' : 'Компания, ниша, район, источник');
   populateCategoryPreset();
@@ -1060,11 +1082,6 @@ function applyLanguage(lang = currentLanguage, { persist = true } = {}) {
 
   setOptionText(els.discoverCountry, '', currentLanguage === 'pl' ? 'Nie wskazano (wedlug miasta)' : 'Не указана (по городу)');
   setOptionText(els.discoverCity, '', currentLanguage === 'pl' ? 'Wlasne / bez miasta (wedlug kraju)' : 'Своя / без города (по стране)');
-  setOptionText(els.resultFilterSite, 'all', tr('all'));
-  setOptionText(els.resultFilterSite, 'no_site', tr('noOwnSite'));
-  setOptionText(els.resultFilterSite, 'has_site', tr('siteFound'));
-  setOptionText(els.resultFilterSite, 'weak_site', tr('weakSite'));
-  setOptionText(els.resultFilterSite, 'uncertain', tr('uncertain'));
   setOptionText(els.sidebarSiteFilter, 'all', tr('allStatuses'));
   setOptionText(els.sidebarSiteFilter, 'no_site', tr('noSite'));
   setOptionText(els.sidebarSiteFilter, 'has_site', tr('withSite'));
@@ -1089,10 +1106,37 @@ function applyLanguage(lang = currentLanguage, { persist = true } = {}) {
     if (historyHeaders[index]) historyHeaders[index].textContent = label;
   });
 
+  setButtonHtml('#viewTabSaved', 'bookmark', t2('Zapisane', 'Сохранённые'));
+  if (els.createFolderButton) els.createFolderButton.title = t2('Nowy folder', 'Новая папка');
+  setPlaceholder('#savedSearchInput', t2('Szukaj zapisanych firm...', 'Поиск сохранённых фирм...'));
+  setOptionText(els.savedSortSelect, 'newest', t2('Najpierw nowe', 'Сначала новые'));
+  setOptionText(els.savedSortSelect, 'oldest', t2('Najpierw stare', 'Сначала старые'));
+  setOptionText(els.savedSortSelect, 'name', t2('Nazwa A-Z', 'Название А-Я'));
+  setOptionText(els.savedSortSelect, 'status', t2('Status', 'Статус'));
+  setButtonHtml('#refreshSavedButton', 'refresh-cw', t2('Odśwież', 'Обновить'));
+  const savedHeaders = document.querySelectorAll('#savedTable thead th');
+  [t2('Firma', 'Фирма'), t2('Status CRM', 'Статус CRM'), t2('Folder', 'Папка'), t2('Ostatni komentarz', 'Последний комментарий'), t2('Zapisano', 'Сохранено')].forEach((label, index) => {
+    if (savedHeaders[index]) savedHeaders[index].textContent = label;
+  });
+
   applyStaticCopy();
-  if (!state.results.length) renderResults();
-  if (!state.selectedId) renderDetail();
+  // Registry/diagnostic cards ("Zrodla gotowe" etc.) are rendered from
+  // /api/config readiness flags, not re-fetched here — re-render from the
+  // last known flags so the card titles/body text pick up the new language
+  // without waiting for another config poll.
+  if (state.configDiagnosticsFlags) renderConfigDiagnostics(state.configDiagnosticsFlags);
+  // Always re-render, not just when empty/nothing-selected: an open lead card
+  // (detail panel) or a populated results table used to freeze on the old
+  // language after a toggle, because these guards skipped the very re-render
+  // that would have refreshed their text.
+  renderResults();
+  renderDetail();
   if (state.historyRuns.length || state.historyLoaded) renderHistory(state.historyRuns);
+  populateSavedStatusFilter();
+  if (els.savedView && !els.savedView.classList.contains('hidden-field')) {
+    renderFolders();
+    renderSaved();
+  }
   renderResultsContext();
   renderIcons();
   updateCrossAppLinks();
@@ -1137,7 +1181,7 @@ function isDiscoveryReady(config = state.config) {
 
 async function handlePrimaryAction() {
   if (!isDiscoveryReady()) {
-    setDiscoverStatus('Переподключаю backend и заново проверяю источники...', 'work');
+    setDiscoverStatus(t2('Ponownie łączę backend i sprawdzam źródła...', 'Переподключаю backend и заново проверяю источники...'), 'work');
     try {
       await bootstrapApiBase();
       await loadConfig();
@@ -1145,7 +1189,13 @@ async function handlePrimaryAction() {
   }
 
   if (!isDiscoveryReady()) {
-    setDiscoverStatus('Backend пока не ответил. Нажмите еще раз через 2-3 секунды или проверьте tunnel/backend.', 'warn');
+    setDiscoverStatus(
+      t2(
+        'Backend jeszcze nie odpowiedział. Kliknij ponownie za 2-3 sekundy lub sprawdź tunnel/backend.',
+        'Backend пока не ответил. Нажмите еще раз через 2-3 секунды или проверьте tunnel/backend.'
+      ),
+      'warn'
+    );
     return;
   }
 
@@ -1186,7 +1236,7 @@ function renderResultsContext() {
 }
 
 async function init() {
-  setDiscoverStatus(currentLanguage === 'pl' ? 'Łączę backend i czytam tunnel.json...' : 'Подключаю backend и читаю tunnel.json...', 'work');
+  setDiscoverStatus(t2('Łączę backend i czytam tunnel.json...', 'Подключаю backend и читаю tunnel.json...'), 'work');
   await bootstrapApiBase();
   ensureResultsContext();
   populateCitySuggestions(localCitySuggestions);
@@ -1197,7 +1247,6 @@ async function init() {
   els.sidebarHasPhone.checked = true;
   els.sidebarHasEmail.checked = false;
   els.sidebarSiteFilter.value = 'no_site';
-  els.resultFilterSite.value = 'no_site';
   applyLanguage(currentLanguage, { persist: false });
   await loadConfig();
   loadCitySuggestions().catch(() => {});
@@ -1210,8 +1259,8 @@ async function init() {
 function populateSavedStatusFilter() {
   if (!els.savedStatusFilter) return;
   els.savedStatusFilter.innerHTML =
-    `<option value="">Wszystkie statusy CRM</option>` +
-    crmStatusOptions.map((option) => `<option value="${escapeAttribute(option.value)}">${escapeHtml(option.label)}</option>`).join('');
+    `<option value="">${escapeHtml(currentLanguage === 'pl' ? 'Wszystkie statusy CRM' : 'Все статусы CRM')}</option>` +
+    crmStatusOptions.map((option) => `<option value="${escapeAttribute(option.value)}">${escapeHtml(crmStatusLabel(option.value))}</option>`).join('');
 }
 
 function populateCitySuggestions(items) {
@@ -1313,8 +1362,14 @@ async function loadConfig() {
     setPill(els.registryStatus, 'Sources unknown', false);
     setDiscoverStatus(
       getApiBase().includes('localhost')
-        ? 'Не могу прочитать /api/config. Откройте http://localhost:4317/ и проверьте, что npm run dev запущен. С другого компьютера укажите публичный адрес backend ниже.'
-        : `Backend по адресу ${getApiBase() || window.location.origin} не отвечает. Проверьте адрес сервера ниже.`,
+        ? t2(
+            'Nie mogę odczytać /api/config. Otwórz http://localhost:4317/ i sprawdź, czy npm run dev jest uruchomiony. Z innego komputera podaj publiczny adres backendu poniżej.',
+            'Не могу прочитать /api/config. Откройте http://localhost:4317/ и проверьте, что npm run dev запущен. С другого компьютера укажите публичный адрес backend ниже.'
+          )
+        : t2(
+            `Backend pod adresem ${getApiBase() || window.location.origin} nie odpowiada. Sprawdź adres serwera poniżej.`,
+            `Backend по адресу ${getApiBase() || window.location.origin} не отвечает. Проверьте адрес сервера ниже.`
+          ),
       'warn'
     );
     renderConfigError(error);
@@ -1327,50 +1382,63 @@ function setPill(element, text, ok) {
   element.className = `status-pill ${ok ? 'ok' : 'warn'}`;
 }
 
-function renderConfigDiagnostics({ openaiReady, amazonReady, googleReady, ceidgReady, internetReady, discoveryReady }) {
+function renderConfigDiagnostics(flags) {
+  // Remember the last known readiness flags so applyLanguage() can re-render
+  // these cards in the newly selected language without re-fetching /api/config.
+  state.configDiagnosticsFlags = flags;
+  const { openaiReady, amazonReady, googleReady, ceidgReady, internetReady, discoveryReady } = flags;
+  const amazonRegion = state.config?.registry?.amazonLocationRegion || 'eu-north-1';
   const rows = [
     {
       ok: openaiReady,
       title: 'OpenAI API',
-      text: openaiReady ? 'подключен, AI-анализ карточки работает' : 'нет OPENAI_API_KEY'
+      text: openaiReady
+        ? t2('połączone, analiza AI karty firmy działa', 'подключен, AI-анализ карточки работает')
+        : t2('brak OPENAI_API_KEY', 'нет OPENAI_API_KEY')
     },
     {
       ok: amazonReady,
       title: 'Amazon Location API',
       text: amazonReady
-        ? `key found; Amazon Places SearchText is used first (${state.config.registry?.amazonLocationRegion || 'eu-north-1'})`
-        : 'no AWS_LOCATION_API_KEY; Amazon Location search is off'
+        ? t2(
+            `klucz znaleziony; najpierw używane jest Amazon Places SearchText (${amazonRegion})`,
+            `ключ найден; сначала используется Amazon Places SearchText (${amazonRegion})`
+          )
+        : t2('brak AWS_LOCATION_API_KEY; wyszukiwanie Amazon Location jest wyłączone', 'нет AWS_LOCATION_API_KEY; поиск Amazon Location выключен')
     },
     {
       ok: googleReady,
       title: 'Google Places API',
-      text: googleReady ? 'подключен, поиск компаний в Google Maps работает' : 'нет GOOGLE_PLACES_API_KEY, поиск из Google Maps выключен'
+      text: googleReady
+        ? t2('klucz znaleziony; Google Maps jest testowany przy uruchomieniu wyszukiwania', 'ключ найден; Google Maps проверяется при запуске поиска')
+        : t2('brak GOOGLE_PLACES_API_KEY; wyszukiwanie Google Maps jest wyłączone', 'нет GOOGLE_PLACES_API_KEY; поиск Google Maps выключен')
     },
     {
       ok: internetReady,
-      title: 'Интернет-поиск',
-      text: internetReady ? 'работает через OpenAI web search без Google Maps API' : 'нет OPENAI_API_KEY, интернет-поиск выключен'
+      title: t2('Wyszukiwanie w internecie', 'Интернет-поиск'),
+      text: internetReady
+        ? t2('publiczny fallback internetowy działa bez OpenAI i bez Google Maps', 'публичный интернет-резерв работает без OpenAI и без Google Maps')
+        : t2('fallback internetowy jest wyłączony', 'интернет-резерв выключен')
     },
     {
-      ok: ceidgReady,
-      title: 'CEIDG / реестры',
-      text: ceidgReady ? 'подключен, поиск по реестрам доступен' : 'нет CEIDG_API_TOKEN, реестры выключены'
+      ok: ceidgReady || internetReady,
+      title: t2('CEIDG / rejestry publiczne', 'CEIDG / публичные реестры'),
+      text: ceidgReady
+        ? t2('znaleziono token CEIDG API; dostępne oficjalne wyszukiwanie przez API', 'найден токен CEIDG API; доступен официальный поиск по API')
+        : t2(
+            'brak tokena CEIDG; używane jest publiczne wyszukiwanie w sieci CEIDG/rejestrów, a potem parsowanie kontaktów',
+            'нет токена CEIDG; используется публичный веб-поиск по CEIDG/реестрам, а затем парсинг контактов'
+          )
     },
     {
       ok: true,
-      title: 'Проверка сайтов',
-      text: 'работает через backend: парсер может заходить на сайты из CSV/Google Places и проверять домены'
+      title: t2('Sprawdzanie stron', 'Проверка сайтов'),
+      text: t2(
+        'działa przez backend: parser może wchodzić na strony z CSV/Google Places i sprawdzać domeny',
+        'работает через backend: парсер может заходить на сайты из CSV/Google Places и проверять домены'
+      )
     }
   ];
-
-  rows[2].text = googleReady ? 'key found; Google Maps is tested on search run' : 'no GOOGLE_PLACES_API_KEY; Google Maps search is off';
-  rows[3].title = 'Internet search';
-  rows[3].text = internetReady ? 'public internet fallback works without OpenAI and without Google Maps' : 'internet fallback is off';
-  rows[4].title = 'CEIDG / public registries';
-  rows[4].ok = ceidgReady || internetReady;
-  rows[4].text = ceidgReady
-    ? 'CEIDG API token found; official API search is available'
-    : 'no CEIDG token; uses public CEIDG/registry web search and then parses contacts';
 
   els.configDiagnostics.innerHTML = `
     <div class="config-diagnostics-title">${escapeHtml(discoveryReady ? tr('sourcesReady') : tr('sourcesMissing'))}</div>
@@ -1397,10 +1465,15 @@ function renderConfigError(error) {
     <div class="config-diagnostic warn">
       <strong>Config API</strong>
       <span>${escapeHtml(message)}. ${escapeHtml(tr('currentBackend'))}: ${escapeHtml(currentBackend)}.</span>
-      <span>Локально: запустите сервер через npm run dev и открывайте http://localhost:4317/. С другого компьютера через GitHub Pages нужен публичный адрес backend (например, туннель cloudflared/ngrok): введите его ниже или откройте страницу с параметром ?api=https://адрес.</span>
+      <span>${escapeHtml(
+        t2(
+          'Lokalnie: uruchom serwer przez npm run dev i otwórz http://localhost:4317/. Z innego komputera przez GitHub Pages potrzebny jest publiczny adres backendu (np. tunel cloudflared/ngrok): wpisz go poniżej lub otwórz stronę z parametrem ?api=https://adres.',
+          'Локально: запустите сервер через npm run dev и открывайте http://localhost:4317/. С другого компьютера через GitHub Pages нужен публичный адрес backend (например, туннель cloudflared/ngrok): введите его ниже или откройте страницу с параметром ?api=https://адрес.'
+        )
+      )}</span>
     </div>
     <div class="api-base-form">
-      <input id="apiBaseInput" type="text" placeholder="https://адрес-вашего-backend" value="${escapeAttribute(getApiBase())}" />
+      <input id="apiBaseInput" type="text" placeholder="${escapeAttribute(t2('https://adres-twojego-backendu', 'https://адрес-вашего-backend'))}" value="${escapeAttribute(getApiBase())}" />
       <button id="apiBaseSaveButton" type="button">${escapeHtml(tr('saveReload'))}</button>
     </div>
   `;
@@ -1426,15 +1499,12 @@ function bindEvents() {
   els.discoverCountry?.addEventListener('change', () => loadCitySuggestions(els.discoverCity.value.trim()).catch(() => {}));
   els.discoverButton.addEventListener('click', handlePrimaryAction);
   els.analyzeButton.addEventListener('click', runAnalysis);
-  els.quickFindSitesButton.addEventListener('click', runAnalysis);
   els.resetFiltersButton.addEventListener('click', resetResultFilters);
   els.resultFilterText.addEventListener('input', updateResultFilters);
-  els.resultFilterSite.addEventListener('change', updateResultFilters);
   els.resultFilterSize.addEventListener('change', updateResultFilters);
   els.resultFilterPriority.addEventListener('change', updateResultFilters);
-  els.resultFilterMinScore.addEventListener('input', updateResultFilters);
-  els.sidebarSiteFilter.addEventListener('change', syncSidebarFilters);
-  els.sidebarMinScore.addEventListener('input', syncSidebarFilters);
+  els.sidebarSiteFilter.addEventListener('change', updateResultFilters);
+  els.sidebarMinScore.addEventListener('input', updateResultFilters);
   els.sidebarHasSocial.addEventListener('change', updateResultFilters);
   els.sidebarHasPhone.addEventListener('change', updateResultFilters);
   els.sidebarHasEmail.addEventListener('change', updateResultFilters);
@@ -1497,9 +1567,19 @@ async function loadHistory() {
 }
 
 function formatRunStatusLabel(status) {
-  if (status === 'duplicates_only') return 'Только дубли / новых нет';
-  if (status === 'cancelled') return 'Отменено';
-  return status || '-';
+  const labels = {
+    discovering: { pl: 'W trakcie', ru: 'В процессе' },
+    running: { pl: 'W trakcie', ru: 'В процессе' },
+    completed: { pl: 'Zakończone', ru: 'Завершено' },
+    exhausted: { pl: 'Wyczerpane', ru: 'Исчерпано' },
+    duplicates_only: { pl: 'Tylko duplikaty / brak nowych', ru: 'Только дубли / новых нет' },
+    cancelled: { pl: 'Anulowano', ru: 'Отменено' },
+    failed: { pl: 'Błąd', ru: 'Ошибка' },
+    timeout: { pl: 'Przekroczono czas', ru: 'Превышено время ожидания' }
+  };
+  const entry = labels[status];
+  if (!entry) return status || '-';
+  return t2(entry.pl, entry.ru);
 }
 
 function renderHistory(runs) {
@@ -1549,13 +1629,13 @@ async function openHistoryRun(runId) {
       headers: { 'x-worker-id': getWorkerId(), ...authHeaders() }
     });
     const data = await response.json();
-    if (!response.ok) throw new Error(data.error || 'Не удалось открыть запуск.');
+    if (!response.ok) throw new Error(data.error || t2('Nie udało się otworzyć zapytania.', 'Не удалось открыть запуск.'));
 
     const records = Array.isArray(data.companies) ? data.companies : [];
     if (!records.length) {
       state.historyLoadingRunId = null;
       renderHistory(state.historyRuns);
-      setStatus('В этом запуске нет сохраненных компаний.', 'warn');
+      setStatus(t2('W tym zapytaniu nie ma zapisanych firm.', 'В этом запуске нет сохраненных компаний.'), 'warn');
       return;
     }
 
@@ -1563,7 +1643,13 @@ async function openHistoryRun(runId) {
     state.historyLoadingRunId = null;
     els.csvInput.value = itemsToCsv(records.map((record) => ({ ...record.data, _companyId: record.id })));
     switchView('results');
-    setStatus(`Открываю сохраненный запуск от ${new Date(data.run.started_at).toLocaleString()}...`, 'work');
+    setStatus(
+      t2(
+        `Otwieram zapisane zapytanie z ${new Date(data.run.started_at).toLocaleString()}...`,
+        `Открываю сохраненный запуск от ${new Date(data.run.started_at).toLocaleString()}...`
+      ),
+      'work'
+    );
     state.results = historyRecordsToResults(records);
     state.selectedId = state.results[0]?.id || null;
     state.detailTab = 'overview';
@@ -1572,21 +1658,17 @@ async function openHistoryRun(runId) {
     // from a previous search) can silently hide every saved company, making the
     // history run look empty/broken even though it opened correctly.
     els.resultFilterText.value = '';
-    els.resultFilterSite.value = 'all';
     els.sidebarSiteFilter.value = 'all';
     els.resultFilterSize.value = 'all';
     els.resultFilterPriority.value = 'all';
-    els.resultFilterMinScore.value = '0';
     els.sidebarMinScore.value = '0';
     els.sidebarHasPhone.checked = false;
     els.sidebarHasSocial.checked = false;
     els.sidebarHasEmail.checked = false;
     state.filters = {
       text: '',
-      site: 'all',
       size: 'all',
-      priority: 'all',
-      minScore: 0
+      priority: 'all'
     };
     renderResultsContext();
     renderHistory(state.historyRuns);
@@ -1596,12 +1678,15 @@ async function openHistoryRun(runId) {
     els.exportCsvButton.disabled = false;
     els.headerExportCsvButton.disabled = false;
     els.exportJsonButton.disabled = false;
-    setStatus(`Открыт запуск из истории: ${state.results.length} компаний.`, 'ok');
+    setStatus(
+      t2(`Otwarto zapytanie z historii: ${state.results.length} firm.`, `Открыт запуск из истории: ${state.results.length} компаний.`),
+      'ok'
+    );
 
   } catch (error) {
     state.historyLoadingRunId = null;
     renderHistory(state.historyRuns);
-    setStatus(error.message || 'Ошибка при открытии запуска.', 'warn');
+    setStatus(error.message || t2('Błąd podczas otwierania zapytania.', 'Ошибка при открытии запуска.'), 'warn');
   } finally {
     renderIcons();
   }
@@ -1619,12 +1704,17 @@ async function loadFolders() {
   try {
     const response = await fetch(apiUrl('/api/saved/folders'), { headers: savedAuthHeaders() });
     const data = await response.json();
-    if (!response.ok) throw new Error(data.error || 'Nie udało się załadować folderów.');
+    if (!response.ok) throw new Error(data.error || 'load folders failed');
     state.folders = Array.isArray(data.folders) ? data.folders : [];
     state.foldersLoaded = true;
     renderFolders();
   } catch (error) {
-    setStatus(error.message || 'Błąd ładowania folderów.', 'warn');
+    // Never surface error.message directly - it can be a raw untranslated
+    // backend string (e.g. "Worker identity is required." for an admin-role
+    // session with no workerId, see Finding 9). Log it for debugging and show
+    // only the localized generic fallback.
+    console.error('loadFolders failed:', error);
+    setStatus(t2('Błąd ładowania folderów.', 'Ошибка загрузки папок.'), 'warn');
   }
 }
 
@@ -1632,18 +1722,18 @@ function renderFolders() {
   if (!els.savedFoldersList) return;
   const items = [
     `<li class="saved-folder-item ${state.activeFolderId === '' ? 'active' : ''}" data-folder-id="">
-      <span>Wszystkie zapisane</span>
+      <span>${t2('Wszystkie zapisane', 'Все сохранённые')}</span>
     </li>`,
     `<li class="saved-folder-item ${state.activeFolderId === 'none' ? 'active' : ''}" data-folder-id="none">
-      <span>Bez folderu</span>
+      <span>${t2('Bez folderu', 'Без папки')}</span>
     </li>`,
     ...state.folders.map(
       (folder) => `
       <li class="saved-folder-item ${state.activeFolderId === folder.id ? 'active' : ''}" data-folder-id="${escapeAttribute(folder.id)}">
         <span>${escapeHtml(folder.name)}</span>
         <span class="folder-actions">
-          <button type="button" data-rename-folder="${escapeAttribute(folder.id)}" title="Zmień nazwę"><i data-lucide="pencil"></i></button>
-          <button type="button" data-delete-folder="${escapeAttribute(folder.id)}" title="Usuń folder"><i data-lucide="trash-2"></i></button>
+          <button type="button" data-rename-folder="${escapeAttribute(folder.id)}" title="${t2('Zmień nazwę', 'Переименовать')}"><i data-lucide="pencil"></i></button>
+          <button type="button" data-delete-folder="${escapeAttribute(folder.id)}" title="${t2('Usuń folder', 'Удалить папку')}"><i data-lucide="trash-2"></i></button>
         </span>
       </li>`
     )
@@ -1667,7 +1757,7 @@ function renderFolders() {
 }
 
 async function handleCreateFolder() {
-  const name = window.prompt(currentLanguage === 'pl' ? 'Nazwa nowego folderu:' : 'Название новой папки:');
+  const name = window.prompt(t2('Nazwa nowego folderu:', 'Название новой папки:'));
   if (!name || !name.trim()) return;
   try {
     const response = await fetch(apiUrl('/api/saved/folders'), {
@@ -1676,17 +1766,18 @@ async function handleCreateFolder() {
       body: JSON.stringify({ name: name.trim() })
     });
     const data = await response.json();
-    if (!response.ok) throw new Error(data.error || 'Nie udało się utworzyć folderu.');
+    if (!response.ok) throw new Error(data.error || 'create folder failed');
     await loadFolders();
-    setStatus(`Folder "${data.folder.name}" utworzony.`, 'ok');
+    setStatus(t2(`Folder "${data.folder.name}" utworzony.`, `Папка "${data.folder.name}" создана.`), 'ok');
   } catch (error) {
-    setStatus(error.message || 'Błąd tworzenia folderu.', 'warn');
+    console.error('handleCreateFolder failed:', error);
+    setStatus(t2('Błąd tworzenia folderu.', 'Ошибка создания папки.'), 'warn');
   }
 }
 
 async function handleRenameFolder(folderId) {
   const folder = state.folders.find((item) => item.id === folderId);
-  const name = window.prompt(currentLanguage === 'pl' ? 'Nowa nazwa folderu:' : 'Новое название папки:', folder?.name || '');
+  const name = window.prompt(t2('Nowa nazwa folderu:', 'Новое название папки:'), folder?.name || '');
   if (!name || !name.trim()) return;
   try {
     const response = await fetch(apiUrl(`/api/saved/folders/${encodeURIComponent(folderId)}`), {
@@ -1695,19 +1786,21 @@ async function handleRenameFolder(folderId) {
       body: JSON.stringify({ name: name.trim() })
     });
     const data = await response.json();
-    if (!response.ok) throw new Error(data.error || 'Nie udało się zmienić nazwy.');
+    if (!response.ok) throw new Error(data.error || 'rename folder failed');
     await loadFolders();
   } catch (error) {
-    setStatus(error.message || 'Błąd zmiany nazwy folderu.', 'warn');
+    console.error('handleRenameFolder failed:', error);
+    setStatus(t2('Błąd zmiany nazwy folderu.', 'Ошибка изменения названия папки.'), 'warn');
   }
 }
 
 async function handleDeleteFolder(folderId) {
   const folder = state.folders.find((item) => item.id === folderId);
   const confirmed = window.confirm(
-    currentLanguage === 'pl'
-      ? `Usunąć folder "${folder?.name || ''}"? Firmy w nim zostaną, tylko stracą przypisanie do tego folderu.`
-      : `Удалить папку "${folder?.name || ''}"? Компании останутся, только потеряют привязку к этой папке.`
+    t2(
+      `Usunąć folder "${folder?.name || ''}"? Firmy w nim zostaną, tylko stracą przypisanie do tego folderu.`,
+      `Удалить папку "${folder?.name || ''}"? Компании останутся, только потеряют привязку к этой папке.`
+    )
   );
   if (!confirmed) return;
   try {
@@ -1717,19 +1810,23 @@ async function handleDeleteFolder(folderId) {
       body: JSON.stringify({})
     });
     const data = await response.json();
-    if (!response.ok) throw new Error(data.error || 'Nie udało się usunąć folderu.');
+    if (!response.ok) throw new Error(data.error || 'delete folder failed');
     if (state.activeFolderId === folderId) state.activeFolderId = '';
     await loadFolders();
     loadSaved({ page: 1 });
-    setStatus(`Folder usunięty. Firmy (${data.unassigned || 0}) zostały bez folderu.`, 'ok');
+    setStatus(
+      t2(`Folder usunięty. Firmy (${data.unassigned || 0}) zostały bez folderu.`, `Папка удалена. Компании (${data.unassigned || 0}) остались без папки.`),
+      'ok'
+    );
   } catch (error) {
-    setStatus(error.message || 'Błąd usuwania folderu.', 'warn');
+    console.error('handleDeleteFolder failed:', error);
+    setStatus(t2('Błąd usuwania folderu.', 'Ошибка удаления папки.'), 'warn');
   }
 }
 
 async function loadSaved({ page } = {}) {
   if (page) state.savedPage = page;
-  els.savedBody.innerHTML = `<tr class="empty-row"><td colspan="6">Ładowanie...</td></tr>`;
+  els.savedBody.innerHTML = `<tr class="empty-row"><td colspan="6">${t2('Ładowanie...', 'Загрузка...')}</td></tr>`;
   try {
     const params = new URLSearchParams({
       folderId: state.activeFolderId || '',
@@ -1741,19 +1838,21 @@ async function loadSaved({ page } = {}) {
     });
     const response = await fetch(apiUrl(`/api/saved?${params.toString()}`), { headers: savedAuthHeaders() });
     const data = await response.json();
-    if (!response.ok) throw new Error(data.error || 'Nie udało się załadować zapisanych firm.');
+    if (!response.ok) throw new Error(data.error || 'load saved failed');
     state.savedItems = Array.isArray(data.items) ? data.items : [];
     state.savedTotal = data.total || 0;
     state.savedPage = data.page || 1;
     renderSaved();
   } catch (error) {
-    els.savedBody.innerHTML = `<tr class="empty-row"><td colspan="6">${escapeHtml(error.message || 'Błąd ładowania.')}</td></tr>`;
+    // Never surface error.message directly - see loadFolders() above (Finding 9).
+    console.error('loadSaved failed:', error);
+    els.savedBody.innerHTML = `<tr class="empty-row"><td colspan="6">${escapeHtml(t2('Błąd ładowania.', 'Ошибка загрузки.'))}</td></tr>`;
   }
 }
 
 function renderSaved() {
   if (!state.savedItems.length) {
-    els.savedBody.innerHTML = `<tr class="empty-row"><td colspan="6">Brak zapisanych firm dla tego filtra.</td></tr>`;
+    els.savedBody.innerHTML = `<tr class="empty-row"><td colspan="6">${t2('Brak zapisanych firm dla tego filtra.', 'Нет сохранённых фирм для этого фильтра.')}</td></tr>`;
     els.savedPagination.innerHTML = '';
     return;
   }
@@ -1772,7 +1871,7 @@ function renderSaved() {
           <td>${folderNames.length ? folderNames.map((name) => `<span class="folder-chip">${escapeHtml(name)}</span>`).join('') : '<span class="muted-text">-</span>'}</td>
           <td class="muted-text">${escapeHtml(item.last_comment?.text?.slice(0, 60) || '-')}</td>
           <td class="muted-text">${escapeHtml(item.saved_at ? new Date(item.saved_at).toLocaleDateString() : '-')}</td>
-          <td><button class="secondary-button compact-button" type="button" data-open-saved="${escapeAttribute(item.id)}">Otwórz</button></td>
+          <td><button class="secondary-button compact-button" type="button" data-open-saved="${escapeAttribute(item.id)}">${t2('Otwórz', 'Открыть')}</button></td>
         </tr>
       `;
     })
@@ -1783,7 +1882,7 @@ function renderSaved() {
 
   const totalPages = Math.max(1, Math.ceil(state.savedTotal / 25));
   els.savedPagination.innerHTML = `
-    <span>${state.savedTotal} firm · strona ${state.savedPage}/${totalPages}</span>
+    <span>${state.savedTotal} ${t2('firm', 'фирм')} · ${t2('strona', 'стр.')} ${state.savedPage}/${totalPages}</span>
     <button type="button" ${state.savedPage <= 1 ? 'disabled' : ''} data-saved-page="prev">←</button>
     <button type="button" ${state.savedPage >= totalPages ? 'disabled' : ''} data-saved-page="next">→</button>
   `;
@@ -1794,10 +1893,16 @@ function renderSaved() {
 function openSavedCompany(companyId) {
   const item = state.savedItems.find((row) => row.id === companyId);
   if (!item) return;
-  const fallback = buildPreviewResult({ ...(item.data || {}), _companyId: item.id }, 0, 'saved');
-  const existingIndex = state.results.findIndex((result) => leadCompanyId(result) === companyId);
-  if (existingIndex === -1) state.results = [...state.results, fallback];
-  state.selectedId = fallback.id;
+  // `item` comes from /api/saved, which serializes the same underlying
+  // company record as /api/history/runs/:id (heuristic/analysis/aiSiteAnalysis
+  // included whenever they exist). Route it through historyRecordsToResults
+  // so a lead that already has real analysis shows that data instead of the
+  // synthetic "not yet analyzed" placeholder from buildPreviewResult.
+  const [result] = historyRecordsToResults([item]);
+  const existingIndex = state.results.findIndex((r) => leadCompanyId(r) === companyId);
+  if (existingIndex === -1) state.results = [...state.results, result];
+  else state.results = state.results.map((r, index) => (index === existingIndex ? result : r));
+  state.selectedId = result.id;
   state.detailTab = 'overview';
   switchView('results');
   renderResults();
@@ -1827,13 +1932,14 @@ async function toggleSaveCompany(result) {
         body: JSON.stringify({ companyIds: [companyId] })
       });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Nie udało się zapisać firmy.');
+      if (!response.ok) throw new Error(data.error || 'save company failed');
       result._savedFolderIds = [null];
     }
     renderTabbedDetail();
-    setStatus(saved ? 'Firma usunięta z zapisanych.' : 'Firma zapisana.', 'ok');
+    setStatus(saved ? t2('Firma usunięta z zapisanych.', 'Компания удалена из сохранённых.') : t2('Firma zapisana.', 'Компания сохранена.'), 'ok');
   } catch (error) {
-    setStatus(error.message || 'Błąd zapisu.', 'warn');
+    console.error('toggleSaveCompany failed:', error);
+    setStatus(t2('Błąd zapisu.', 'Ошибка сохранения.'), 'warn');
   }
 }
 
@@ -1851,12 +1957,13 @@ async function addResultToFolder(result, folderId) {
       body: JSON.stringify({ companyIds: [companyId], folderId: folderId || null })
     });
     const data = await response.json();
-    if (!response.ok) throw new Error(data.error || 'Nie udało się dodać do folderu.');
+    if (!response.ok) throw new Error(data.error || 'add to folder failed');
     result._savedFolderIds = [...new Set([...(result._savedFolderIds || []), folderId || null])];
     renderTabbedDetail();
-    setStatus('Dodano do folderu.', 'ok');
+    setStatus(t2('Dodano do folderu.', 'Добавлено в папку.'), 'ok');
   } catch (error) {
-    setStatus(error.message || 'Błąd dodawania do folderu.', 'warn');
+    console.error('addResultToFolder failed:', error);
+    setStatus(t2('Błąd dodawania do folderu.', 'Ошибка добавления в папку.'), 'warn');
   }
 }
 
@@ -1870,12 +1977,13 @@ async function updateCrmStatus(result, status) {
       body: JSON.stringify({ status })
     });
     const data = await response.json();
-    if (!response.ok) throw new Error(data.error || 'Nie udało się zmienić statusu CRM.');
+    if (!response.ok) throw new Error(data.error || 'update crm status failed');
     result._crmStatus = data.company.crm_status;
     renderTabbedDetail();
-    setStatus(`Status CRM: ${crmStatusLabel(status)}`, 'ok');
+    setStatus(`${t2('Status CRM', 'CRM-статус')}: ${crmStatusLabel(status)}`, 'ok');
   } catch (error) {
-    setStatus(error.message || 'Błąd zmiany statusu CRM.', 'warn');
+    console.error('updateCrmStatus failed:', error);
+    setStatus(t2('Błąd zmiany statusu CRM.', 'Ошибка изменения CRM-статуса.'), 'warn');
   }
 }
 
@@ -1883,9 +1991,10 @@ async function returnLeadToPoolAction(result) {
   const companyId = leadCompanyId(result);
   if (!companyId) return;
   const confirmed = window.confirm(
-    currentLanguage === 'pl'
-      ? 'Wrócić tę firmę do puli? Komentarze, status CRM i folder zostaną zachowane.'
-      : 'Вернуть эту компанию в пул? Комментарии, CRM-статус и папка сохранятся.'
+    t2(
+      'Wrócić tę firmę do puli? Komentarze, status CRM i folder zostaną zachowane.',
+      'Вернуть эту компанию в пул? Комментарии, CRM-статус и папка сохранятся.'
+    )
   );
   if (!confirmed) return;
   try {
@@ -1894,9 +2003,9 @@ async function returnLeadToPoolAction(result) {
       headers: savedAuthHeaders()
     });
     const data = await response.json();
-    if (!response.ok) throw new Error(data.error || 'Nie udało się wrócić do puli.');
+    if (!response.ok) throw new Error(data.error || 'return to pool failed');
     setStatus(
-      data.returned?.length ? 'Firma wróciła do puli.' : 'Firma była już w puli.',
+      data.returned?.length ? t2('Firma wróciła do puli.', 'Компания вернулась в пул.') : t2('Firma była już w puli.', 'Компания уже была в пуле.'),
       'ok'
     );
     state.results = state.results.filter((item) => leadCompanyId(item) !== companyId);
@@ -1904,7 +2013,8 @@ async function returnLeadToPoolAction(result) {
     renderResults();
     renderDetail();
   } catch (error) {
-    setStatus(error.message || 'Błąd zwrotu do puli.', 'warn');
+    console.error('returnLeadToPoolAction failed:', error);
+    setStatus(t2('Błąd zwrotu do puli.', 'Ошибка возврата в пул.'), 'warn');
   }
 }
 
@@ -1914,7 +2024,7 @@ async function loadCommentsForResult(result) {
   try {
     const response = await fetch(apiUrl(`/api/companies/${encodeURIComponent(companyId)}/comments`), { headers: savedAuthHeaders() });
     const data = await response.json();
-    if (!response.ok) throw new Error(data.error || 'Nie udało się załadować komentarzy.');
+    if (!response.ok) throw new Error(data.error || 'load comments failed');
     result._comments = Array.isArray(data.comments) ? data.comments : [];
     return result._comments;
   } catch {
@@ -1932,11 +2042,12 @@ async function submitComment(result, text) {
       body: JSON.stringify({ text: text.trim() })
     });
     const data = await response.json();
-    if (!response.ok) throw new Error(data.error || 'Nie udało się dodać komentarza.');
+    if (!response.ok) throw new Error(data.error || 'add comment failed');
     result._comments = [data.comment, ...(result._comments || [])];
     renderTabbedDetail();
   } catch (error) {
-    setStatus(error.message || 'Błąd dodawania komentarza.', 'warn');
+    console.error('submitComment failed:', error);
+    setStatus(t2('Błąd dodawania komentarza.', 'Ошибка добавления комментария.'), 'warn');
   }
 }
 
@@ -1947,11 +2058,12 @@ async function deleteCommentAction(result, commentId) {
       headers: savedAuthHeaders()
     });
     const data = await response.json();
-    if (!response.ok) throw new Error(data.error || 'Nie udało się usunąć komentarza.');
+    if (!response.ok) throw new Error(data.error || 'delete comment failed');
     result._comments = (result._comments || []).filter((comment) => comment.id !== commentId);
     renderTabbedDetail();
   } catch (error) {
-    setStatus(error.message || 'Błąd usuwania komentarza.', 'warn');
+    console.error('deleteCommentAction failed:', error);
+    setStatus(t2('Błąd usuwania komentarza.', 'Ошибка удаления комментария.'), 'warn');
   }
 }
 
@@ -1959,29 +2071,14 @@ function handleCategoryPresetChange() {
   els.customCategoryField.classList.toggle('hidden-field', els.discoverCategoryPreset.value !== 'custom');
 }
 
-function syncSidebarFilters() {
-  els.resultFilterSite.value = els.sidebarSiteFilter.value;
-  els.resultFilterMinScore.value = els.sidebarMinScore.value;
-  updateResultFilters();
-}
-
 function resetFiltersForDiscovery() {
   els.resultFilterText.value = '';
-  els.resultFilterSite.value = 'all';
-  els.sidebarSiteFilter.value = 'all';
   els.resultFilterSize.value = 'all';
   els.resultFilterPriority.value = 'all';
-  els.resultFilterMinScore.value = '0';
-  els.sidebarMinScore.value = '0';
-  els.sidebarHasPhone.checked = false;
-  els.sidebarHasSocial.checked = false;
-  els.sidebarHasEmail.checked = false;
   state.filters = {
     text: '',
-    site: 'all',
     size: 'all',
-    priority: 'all',
-    minScore: 0
+    priority: 'all'
   };
 }
 
@@ -2022,17 +2119,12 @@ function setCurrentResults(results, { resetDetailTab = false } = {}) {
   els.exportJsonButton.disabled = !hasResults;
 }
 
-function applyDiscoveryPreview(companies) {
-  const previewResults = companiesToPreviewResults(companies);
-  setCurrentResults(previewResults);
-}
-
 async function fetchDiscoveryJob(jobId) {
   const response = await fetch(apiUrl(`/api/discover/jobs/${jobId}`), {
     headers: { 'x-worker-id': getWorkerId(), ...authHeaders() }
   });
   const data = await response.json();
-  if (!response.ok) throw new Error(data.error || 'Ошибка чтения статуса поиска.');
+  if (!response.ok) throw new Error(data.error || t2('Błąd odczytu statusu wyszukiwania.', 'Ошибка чтения статуса поиска.'));
   return data;
 }
 
@@ -2041,7 +2133,7 @@ function buildDiscoveryStatusText(job) {
   const message = String(job?.progress?.message || '').trim();
   const niche = displayCategory(job?.progress?.currentNiche || '');
   const source = displaySourceLabel(job?.progress?.currentSource || job?.meta?.sourceFocus || '');
-  const parts = [message || `Найдено ${foundCount}`];
+  const parts = [message || t2(`Znaleziono ${foundCount}`, `Найдено ${foundCount}`)];
   if (niche && niche !== '-') parts.push(niche);
   if (source && source !== '-') parts.push(source);
   return parts.join(' - ');
@@ -2053,17 +2145,38 @@ async function waitForDiscoveryCompletion(jobId) {
     const companies = Array.isArray(job.companies) ? job.companies : [];
 
     if (companies.length) {
-      els.csvInput.value = itemsToCsv(companies);
-      applyDiscoveryPreview(companies);
+      // job.companies are already fully analyzed (website checked, scored,
+      // AI card written) by the time they arrive here - the backend now
+      // processes each candidate sequentially and appends it only once
+      // complete, so every card rendered below is ready as-is; there is no
+      // separate "preview" stage or follow-up bulk /api/analyze call anymore.
+      els.csvInput.value = itemsToCsv(companies.map((result) => result.input || result));
+      setCurrentResults(companies);
     }
 
     const statusText = buildDiscoveryStatusText(job);
     setDiscoverStatus(statusText, job.status === 'failed' ? 'warn' : job.status === 'completed' ? 'ok' : 'work');
+    // On completion, prefer the server's specific outcome message (it already
+    // distinguishes "found N new" from "everything for these filters is
+    // already known" / "exhausted after N of the requested M") instead of a
+    // generic "search finished" line that hid the duplicates-only/exhausted
+    // case and made an empty result look like nothing happened.
+    const searchStatus = job.result?.meta?.searchStatus || '';
+    const completionMessage =
+      searchStatus === 'duplicates_only'
+        ? t2(
+            'Wszystkie firmy dla tych filtrów są już w bazie. Nowych brak - spróbuj innego miasta, kategorii lub promienia.',
+            'Все компании по этим фильтрам уже есть в базе. Новых нет - попробуйте другой город, категорию или радиус.'
+          )
+        : searchStatus === 'exhausted'
+          ? t2(
+              `Wyszukiwanie wyczerpane: znaleziono ${companies.length} z żądanych ${job.meta?.limit || companies.length}. Więcej nowych firm dla tych filtrów obecnie nie ma.`,
+              `Поиск исчерпан: найдено ${companies.length} из запрошенных ${job.meta?.limit || companies.length}. Больше новых компаний по этим фильтрам сейчас нет.`
+            )
+          : t2(`Wyszukiwanie zakończone. Znaleziono ${companies.length} firm.`, `Поиск завершен. Найдено ${companies.length} компаний.`);
     setStatus(
-      job.status === 'completed'
-        ? `Поиск завершен. Найдено ${companies.length} компаний.`
-        : `${statusText}. Промежуточные результаты уже доступны.`,
-      job.status === 'failed' ? 'warn' : job.status === 'completed' ? 'ok' : 'work'
+      job.status === 'completed' ? completionMessage : `${statusText}. ${t2('Wyniki pośrednie są już dostępne.', 'Промежуточные результаты уже доступны.')}`,
+      job.status === 'failed' ? 'warn' : job.status === 'completed' ? (searchStatus === 'duplicates_only' || searchStatus === 'exhausted' ? 'warn' : 'ok') : 'work'
     );
 
     if (job.status === 'completed') {
@@ -2072,7 +2185,7 @@ async function waitForDiscoveryCompletion(jobId) {
     }
     if (job.status === 'failed') {
       stopDiscoveryPolling();
-      throw new Error(job.error || 'Ошибка поиска компаний.');
+      throw new Error(job.error || t2('Błąd wyszukiwania firm.', 'Ошибка поиска компаний.'));
     }
 
     await new Promise((resolve) => {
@@ -2081,7 +2194,7 @@ async function waitForDiscoveryCompletion(jobId) {
     state.discoveryPollTimer = null;
   }
 
-  throw new Error('Поиск был остановлен.');
+  throw new Error(t2('Wyszukiwanie zostało zatrzymane.', 'Поиск был остановлен.'));
 }
 
 async function runDiscovery() {
@@ -2095,7 +2208,7 @@ async function runDiscovery() {
   // the backend is still busy finding companies (visible in server logs as
   // duplicate repeated queries).
   if (state.discoveryRunning) {
-    setDiscoverStatus('Поиск уже выполняется, дождитесь завершения текущего запроса.', 'warn');
+    setDiscoverStatus(t2('Wyszukiwanie już trwa, poczekaj na zakończenie bieżącego zapytania.', 'Поиск уже выполняется, дождитесь завершения текущего запроса.'), 'warn');
     return;
   }
   state.discoveryRunning = true;
@@ -2106,7 +2219,13 @@ async function runDiscovery() {
   state.historyLoaded = false;
   const discoveryReady = isDiscoveryReady();
   if (!discoveryReady) {
-    setDiscoverStatus('Backend не готов. Запустите локальный сервер; публичный поиск должен работать даже без CEIDG API.', 'warn');
+    setDiscoverStatus(
+      t2(
+        'Backend nie jest gotowy. Uruchom lokalny serwer; publiczne wyszukiwanie powinno działać nawet bez CEIDG API.',
+        'Backend не готов. Запустите локальный сервер; публичный поиск должен работать даже без CEIDG API.'
+      ),
+      'warn'
+    );
     state.discoveryRunning = false;
     return;
   }
@@ -2114,7 +2233,7 @@ async function runDiscovery() {
 
   const niches = selectedDiscoveryNiches();
   if (!niches.length) {
-    setDiscoverStatus('Укажите категорию или выберите набор категорий.', 'warn');
+    setDiscoverStatus(t2('Podaj kategorię lub wybierz zestaw kategorii.', 'Укажите категорию или выберите набор категорий.'), 'warn');
     state.discoveryRunning = false;
     return;
   }
@@ -2122,7 +2241,6 @@ async function runDiscovery() {
   resetFiltersForDiscovery();
   els.discoverButton.disabled = true;
   els.analyzeButton.disabled = true;
-  els.quickFindSitesButton.disabled = true;
   els.exportCsvButton.disabled = true;
   els.headerExportCsvButton.disabled = true;
   els.exportJsonButton.disabled = true;
@@ -2133,7 +2251,10 @@ async function runDiscovery() {
   renderMetrics();
   renderDetail();
   setDiscoverStatus(
-    `Ищу компании: ${niches.length === 1 ? displayCategory(niches[0]) : `${niches.length} категорий`}...`,
+    t2(
+      `Szukam firm: ${niches.length === 1 ? displayCategory(niches[0]) : `${niches.length} kategorii`}...`,
+      `Ищу компании: ${niches.length === 1 ? displayCategory(niches[0]) : `${niches.length} категорий`}...`
+    ),
     'work'
   );
 
@@ -2150,82 +2271,58 @@ async function runDiscovery() {
         radiusKm: Number(els.discoverRadius.value || 0) || undefined,
         limit: Math.min(Number(els.discoverLimit.value || 8), state.config?.maxItems || 100),
         sourceFocus: els.discoverSource.value,
-        workerId: getWorkerId()
+        workerId: getWorkerId(),
+        // Single search settings panel: category/location AND site status /
+        // score / social / phone / email travel together in one request, and
+        // the backend now actually applies all of them (previously these
+        // sidebar fields were captured but silently dropped here).
+        siteStatus: els.sidebarSiteFilter.value,
+        minScore: Number(els.sidebarMinScore.value || 0),
+        hasSocial: els.sidebarHasSocial.checked,
+        hasPhone: els.sidebarHasPhone.checked,
+        hasEmail: els.sidebarHasEmail.checked,
+        language: currentLanguage
       })
     });
 
     const data = await response.json();
-    if (!response.ok) throw new Error(data.error || 'Ошибка поиска компаний.');
+    if (!response.ok) throw new Error(data.error || t2('Błąd wyszukiwania firm.', 'Ошибка поиска компаний.'));
 
-    if (data.jobId) {
-      state.discoveryJobId = data.jobId;
-      await loadHistory().catch(() => {});
-      const job = await waitForDiscoveryCompletion(data.jobId);
-      const companies = Array.isArray(job.companies) ? job.companies : [];
-      if (!companies.length) {
-        await loadHistory();
-        setDiscoverStatus(getEmptyDiscoveryMessage(job), 'warn');
-        setStatus(getEmptyDiscoveryMessage(job), 'warn');
-        return;
-      }
+    if (!data.jobId) throw new Error(t2('Backend nie zwrócił identyfikatora zadania wyszukiwania.', 'Backend не вернул идентификатор задачи поиска.'));
 
-      els.csvInput.value = itemsToCsv(companies);
-      setDiscoverStatus(`Найдено ${companies.length}. Проверяю сайты и готовлю карточки...`, 'work');
-      setStatus(`Проверяю сайты у ${companies.length} компаний...`, 'work');
-      const analyzed = await analyzeCompanies(companies);
-      setCurrentResults(analyzed.results || companiesToPreviewResults(companies), { resetDetailTab: true });
-      const warnings = Array.isArray(job.warnings) ? job.warnings.filter(Boolean).slice(0, 2) : [];
-      const warningText = warnings.length ? ` Предупреждение: ${warnings.join(' ')}` : '';
-      const withPhone = companies.filter((company) => company.phone).length;
-      const withEmail = companies.filter((company) => company.email).length;
-      const withSite = companies.filter((company) => company.website_url).length;
-      setDiscoverStatus(
-        `Найдено ${companies.length}: телефоны ${withPhone}, email ${withEmail}, сайты ${withSite}. CSV заполнен, можно запускать проверку сайтов.${warningText}`,
-        warnings.length ? 'warn' : 'ok'
-      );
-      setStatus('Список компаний готов к анализу.', 'ok');
-      await loadHistory();
-      return;
-    }
-
-    const companies = data.companies || [];
+    state.discoveryJobId = data.jobId;
+    await loadHistory().catch(() => {});
+    const job = await waitForDiscoveryCompletion(data.jobId);
+    const companies = Array.isArray(job.companies) ? job.companies : [];
     if (!companies.length) {
       await loadHistory();
-      setDiscoverStatus(getEmptyDiscoveryMessage(data), 'warn');
+      setDiscoverStatus(getEmptyDiscoveryMessage(job), 'warn');
+      setStatus(getEmptyDiscoveryMessage(job), 'warn');
       return;
     }
 
-    els.csvInput.value = itemsToCsv(companies);
-    setDiscoverStatus(`Найдено ${companies.length}. Проверяю сайты и готовлю карточки...`, 'work');
-    setStatus(`Проверяю сайты у ${companies.length} компаний...`, 'work');
-    const analyzed = await analyzeCompanies(companies);
-    state.results = analyzed.results || companiesToPreviewResults(companies);
-    state.selectedId = state.results[0]?.id || null;
-    state.detailTab = 'overview';
-    renderResults();
-    renderMetrics();
-    renderDetail();
-    els.exportCsvButton.disabled = false;
-    els.headerExportCsvButton.disabled = false;
-    els.exportJsonButton.disabled = false;
-    const warnings = Array.isArray(data.warnings) ? data.warnings.filter(Boolean).slice(0, 2) : [];
-    const warningText = warnings.length ? ` Предупреждение: ${warnings.join(' ')}` : '';
-    const withPhone = companies.filter((company) => company.phone).length;
-    const withEmail = companies.filter((company) => company.email).length;
-    const withSite = companies.filter((company) => company.website_url).length;
+    // Companies are already fully analyzed (see waitForDiscoveryCompletion) -
+    // this is just the final render pass after the job reaches 'completed'.
+    els.csvInput.value = itemsToCsv(companies.map((result) => result.input || result));
+    setCurrentResults(companies, { resetDetailTab: true });
+    const warnings = Array.isArray(job.warnings) ? job.warnings.filter(Boolean).slice(0, 2) : [];
+    const warningText = warnings.length ? ` ${t2('Ostrzeżenie', 'Предупреждение')}: ${warnings.join(' ')}` : '';
     setDiscoverStatus(
-      `Найдено ${companies.length}: телефоны ${withPhone}, email ${withEmail}, сайты ${withSite}. CSV заполнен, можно запускать проверку сайтов.${warningText}`,
+      t2(
+        `Gotowe: ${companies.length} kart w pełni sprawdzonych i przeanalizowanych.${warningText}`,
+        `Готово: ${companies.length} карточек полностью проверено и проанализировано.${warningText}`
+      ),
       warnings.length ? 'warn' : 'ok'
     );
-    setStatus('Список компаний готов к анализу.', 'ok');
+    setStatus(t2(`Gotowe: ${companies.length} firm.`, `Готово: ${companies.length} компаний.`), 'ok');
+    await loadHistory();
   } catch (error) {
-    setDiscoverStatus(error.message || 'Ошибка поиска компаний.', 'warn');
+    setDiscoverStatus(error.message || t2('Błąd wyszukiwania firm.', 'Ошибка поиска компаний.'), 'warn');
   } finally {
     stopDiscoveryPolling();
     state.discoveryRunning = false;
     els.discoverButton.disabled = false;
     els.analyzeButton.disabled = false;
-    els.quickFindSitesButton.disabled = false;
     renderIcons();
   }
 }
@@ -2242,39 +2339,20 @@ function selectedDiscoveryNiches() {
   return [];
 }
 
-async function analyzeCompanies(items) {
-  const response = await fetch(apiUrl('/api/analyze'), {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      items,
-      useAi: false,
-      useWebSearch: false,
-      model: els.modelInput.value.trim(),
-      searchModel: els.searchModelInput.value.trim()
-    })
-  });
-
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.error || 'Ошибка проверки сайтов.');
-  return data;
-}
-
 async function runAnalysis() {
   stopDiscoveryPolling();
   clearHistoryContext();
   const items = parseInput(els.csvInput.value);
   if (!items.length) {
-    setStatus('Добавьте CSV с компаниями.', 'warn');
+    setStatus(t2('Dodaj CSV z firmami.', 'Добавьте CSV с компаниями.'), 'warn');
     return;
   }
 
   els.analyzeButton.disabled = true;
-  els.quickFindSitesButton.disabled = true;
   els.exportCsvButton.disabled = true;
   els.headerExportCsvButton.disabled = true;
   els.exportJsonButton.disabled = true;
-  setStatus(`Проверяю ${items.length} компаний...`, 'work');
+  setStatus(t2(`Sprawdzam ${items.length} firm...`, `Проверяю ${items.length} компаний...`), 'work');
 
   try {
     const response = await fetch(apiUrl('/api/analyze'), {
@@ -2285,12 +2363,13 @@ async function runAnalysis() {
         useAi: false,
         useWebSearch: false,
         model: els.modelInput.value.trim(),
-        searchModel: els.searchModelInput.value.trim()
+        searchModel: els.searchModelInput.value.trim(),
+        language: currentLanguage
       })
     });
 
     const data = await response.json();
-    if (!response.ok) throw new Error(data.error || 'Ошибка анализа.');
+    if (!response.ok) throw new Error(data.error || t2('Błąd analizy.', 'Ошибка анализа.'));
 
     state.results = data.results || [];
     state.selectedId = state.results[0]?.id || null;
@@ -2298,12 +2377,17 @@ async function runAnalysis() {
     renderResults();
     renderMetrics();
     renderDetail();
-    setStatus(`Готово: ${state.results.length} компаний, ${Math.round(data.meta.elapsedMs / 1000)} сек.`, 'ok');
+    setStatus(
+      t2(
+        `Gotowe: ${state.results.length} firm, ${Math.round(data.meta.elapsedMs / 1000)} sek.`,
+        `Готово: ${state.results.length} компаний, ${Math.round(data.meta.elapsedMs / 1000)} сек.`
+      ),
+      'ok'
+    );
   } catch (error) {
-    setStatus(error.message || 'Ошибка анализа.', 'warn');
+    setStatus(error.message || t2('Błąd analizy.', 'Ошибка анализа.'), 'warn');
   } finally {
     els.analyzeButton.disabled = false;
-    els.quickFindSitesButton.disabled = false;
     const hasResults = state.results.length > 0;
     els.exportCsvButton.disabled = !hasResults;
     els.headerExportCsvButton.disabled = !hasResults;
@@ -2430,12 +2514,16 @@ function buildPreviewResult(company, index, idPrefix = 'discovery') {
       actual_business_type: input.actual_business_type || '',
       priority: score >= 75 ? 'A' : score >= 55 ? 'B' : 'C',
       requires_manual_review: true,
-      main_problem:
-        categoryMatch === 'partial'
-          ? 'Компания найдена, но категория требует ручной проверки перед звонком.'
-          : 'Компания найдена. Нажмите "Найти сайты", чтобы проверить сайт, контакты и качество страницы.',
-      recommended_website: 'Лендинг / Визитка',
-      recommended_package: 'Проверить сайт, контакты, услуги, доверие и форму заявки.',
+      // Left blank rather than baked in a fixed language here: this is a
+      // synthetic "not yet analyzed" placeholder (no real AI/heuristic text
+      // exists yet), and the render layer (renderOverviewTab's
+      // mainProblemFallback, and the recommended_website/recommended_package
+      // fallbacks below) fills in a properly bilingual message from the
+      // *current* UI language every render - including after a language
+      // toggle, which a string baked in here at construction time cannot do.
+      main_problem: '',
+      recommended_website: '',
+      recommended_package: '',
       business_activity: 'FOUND_BY_DISCOVERY',
       mini_audit_points: [],
       first_message_ru: '',
@@ -2452,10 +2540,6 @@ function stablePreviewResultId(input, index, idPrefix = 'discovery') {
     String(index);
   const normalized = normalizeLookupValue(base).replace(/\s+/g, '-');
   return `${idPrefix}-${normalized || index}`;
-}
-
-function companiesToPreviewResults(companies) {
-  return companies.map((company, index) => buildPreviewResult(company, index));
 }
 
 function buildFallbackSignals(input = {}, summary = {}) {
@@ -2505,10 +2589,8 @@ function parseList(value) {
 function updateResultFilters() {
   state.filters = {
     text: els.resultFilterText.value.trim().toLowerCase(),
-    site: els.resultFilterSite.value,
     size: els.resultFilterSize.value,
-    priority: els.resultFilterPriority.value,
-    minScore: Number(els.resultFilterMinScore.value || 0)
+    priority: els.resultFilterPriority.value
   };
 
   const filtered = getFilteredResults();
@@ -2525,19 +2607,14 @@ function updateResultFilters() {
 
 function resetResultFilters() {
   els.resultFilterText.value = '';
-  els.resultFilterSite.value = 'no_site';
-  els.sidebarSiteFilter.value = 'no_site';
   els.resultFilterSize.value = 'all';
   els.resultFilterPriority.value = 'all';
-  els.resultFilterMinScore.value = '0';
-  els.sidebarMinScore.value = '0';
-  els.sidebarHasPhone.checked = true;
-  els.sidebarHasSocial.checked = false;
-  els.sidebarHasEmail.checked = false;
   updateResultFilters();
 }
 
 function getFilteredResults() {
+  const siteStatusFilter = els.sidebarSiteFilter.value;
+  const minScoreFilter = Number(els.sidebarMinScore.value || 0);
   return state.results.filter((result) => {
     const input = result.input || {};
     const analysis = result.analysis || {};
@@ -2546,10 +2623,10 @@ function getFilteredResults() {
     const priority = analysis.lead_category === 'A+' ? 'A' : analysis.priority || analysis.lead_category || '';
     const score = Number(analysis.lead_score || 0);
 
-    if (state.filters.minScore && score < state.filters.minScore) return false;
+    if (minScoreFilter && score < minScoreFilter) return false;
     if (state.filters.priority !== 'all' && priority !== state.filters.priority) return false;
     if (state.filters.size !== 'all' && size !== state.filters.size) return false;
-    if (!siteFilterMatches(status, state.filters.site)) return false;
+    if (!siteFilterMatches(status, siteStatusFilter)) return false;
     if (els.sidebarHasSocial.checked && !hasAnySocial(input)) return false;
     if (els.sidebarHasPhone.checked && !input.phone) return false;
     if (els.sidebarHasEmail.checked && !input.email) return false;
@@ -2559,7 +2636,7 @@ function getFilteredResults() {
         input.company,
         input.legal_name,
         input.niche,
-        displayCategory(input.niche),
+        displayCategory(input.niche, input.category_id),
         input.city,
         input.district,
         input.address,
@@ -2653,17 +2730,46 @@ function scoreClass(score) {
 
 function statusLabel(status) {
   const labels = {
-    WEBSITE_FOUND: 'Сайт найден',
-    NO_WEBSITE_CONFIRMED: 'Нет сайта',
-    SOCIAL_ONLY: 'Только соцсети',
-    DIRECTORY_ONLY: 'Каталог',
-    MARKETPLACE_ONLY: 'Маркетплейс',
-    BROKEN_WEBSITE: 'Сайт сломан',
-    FREE_SUBDOMAIN: 'Бесплатный домен',
-    ONE_PAGE_PLACEHOLDER: 'На проверке',
-    UNCERTAIN: 'На проверке'
+    WEBSITE_FOUND: { pl: 'Strona znaleziona', ru: 'Сайт найден' },
+    NO_WEBSITE_CONFIRMED: { pl: 'Brak strony', ru: 'Нет сайта' },
+    SOCIAL_ONLY: { pl: 'Tylko social media', ru: 'Только соцсети' },
+    DIRECTORY_ONLY: { pl: 'Katalog', ru: 'Каталог' },
+    MARKETPLACE_ONLY: { pl: 'Marketplace', ru: 'Маркетплейс' },
+    BROKEN_WEBSITE: { pl: 'Strona uszkodzona', ru: 'Сайт сломан' },
+    FREE_SUBDOMAIN: { pl: 'Darmowa domena', ru: 'Бесплатный домен' },
+    ONE_PAGE_PLACEHOLDER: { pl: 'Do sprawdzenia', ru: 'На проверке' },
+    UNCERTAIN: { pl: 'Do sprawdzenia', ru: 'На проверке' }
   };
-  return labels[status] || status || 'На проверке';
+  const entry = labels[status];
+  if (!entry) return status || t2('Do sprawdzenia', 'На проверке');
+  return t2(entry.pl, entry.ru);
+}
+
+// Human-readable labels for the raw internal `checks_completed` fact keys
+// (resolveWebsite() in server.js) so the Site tab never dumps snake_case
+// keys verbatim - falls back to the raw key for anything not listed here.
+function checkKeyLabel(key) {
+  const labels = {
+    listed_website: { pl: 'Strona podana w profilu', ru: 'Сайт указан в профиле' },
+    registry_website: { pl: 'Strona z rejestru firm', ru: 'Сайт из реестра компаний' },
+    email_domain_found: { pl: 'Domena znaleziona po e-mailu', ru: 'Домен найден по email' },
+    name_search_domain: { pl: 'Domena znaleziona po nazwie firmy', ru: 'Домен найден по названию компании' },
+    phone_search_domain: { pl: 'Domena znaleziona po telefonie', ru: 'Домен найден по телефону' },
+    nip_search_domain: { pl: 'Domena znaleziona po NIP', ru: 'Домен найден по NIP/ИНН' },
+    address_search_domain: { pl: 'Domena znaleziona po adresie', ru: 'Домен найден по адресу' },
+    social_profile_domain: { pl: 'Domena znaleziona przez social media', ru: 'Домен найден через соцсети' },
+    public_search_domain: { pl: 'Domena znaleziona przez wyszukiwanie publiczne', ru: 'Домен найден через публичный поиск' },
+    // Domain-candidate source keys (resolveWebsite()'s addCandidate() calls in
+    // server.js) - a different vocabulary than checks_completed above, but
+    // shown through this same label map on the Sources tab (see Finding 3).
+    corporate_email_domain: { pl: 'Domena firmowego e-maila', ru: 'Домен корпоративного email' },
+    profile_link: { pl: 'Link z profilu firmy', ru: 'Ссылка из профиля компании' },
+    public_website_search: { pl: 'Wyszukiwanie publiczne strony', ru: 'Публичный поиск сайта' },
+    openai_web_search: { pl: 'Wyszukiwanie AI w sieci', ru: 'AI-поиск в интернете' }
+  };
+  const entry = labels[key];
+  if (!entry) return key;
+  return t2(entry.pl, entry.ru);
 }
 
 function siteFilterMatches(status, filter) {
@@ -2690,12 +2796,12 @@ function companySize(result) {
   const reviewCount = Number(input.review_count || 0);
 
   if (input.multiple_locations || teamNumber >= 10 || reviewCount >= 100 || servicesCount >= 7) {
-    return { key: 'large', label: 'Большая' };
+    return { key: 'large', label: tr('large') };
   }
   if (teamNumber >= 3 || reviewCount >= 20 || servicesCount >= 3 || input.physical_location) {
-    return { key: 'medium', label: 'Средняя' };
+    return { key: 'medium', label: tr('medium') };
   }
-  return { key: 'small', label: 'Маленькая' };
+  return { key: 'small', label: tr('small') };
 }
 
 function parseTeamSize(value) {
@@ -2726,6 +2832,7 @@ function rowToItem(headers, row) {
     nip: get('nip'),
     regon: get('regon'),
     krs: get('krs'),
+    edrpou: get('edrpou', 'єдрпоу', 'edrpou_code'),
     pkd: get('pkd'),
     status: get('status', 'registry_status'),
     registration_date: get('registration_date', 'start_date', 'data_rejestracji'),
@@ -2832,7 +2939,7 @@ function renderResults() {
             <strong>${escapeHtml(input.company || result.parsed?.signals?.title || '-')}</strong>
             <span class="company-subline">${companyLine}</span>
           </td>
-          <td>${escapeHtml(displayCategory(input.niche || '-'))}</td>
+          <td>${escapeHtml(displayCategory(input.niche || '-', input.category_id))}</td>
           <td><span class="size-pill ${escapeHtml(size.key)}">${escapeHtml(size.label)}</span></td>
           <td>${contactIcons(input, result)}</td>
           <td><span class="score-badge ${scoreClass(score)}">${escapeHtml(String(score || '-'))}</span></td>
@@ -2866,9 +2973,19 @@ function renderMetrics() {
 
   for (const result of results) {
     const a = result.analysis || {};
-    if (a.website_status === 'WEBSITE_FOUND') counts.withSite += 1;
-    if (noSiteStatuses.has(a.website_status)) counts.noSite += 1;
-    if (['UNCERTAIN', 'ONE_PAGE_PLACEHOLDER'].includes(a.website_status)) counts.review += 1;
+    // Same fallback chain as getFilteredResults()/leadCallingRank() below -
+    // without it, a result whose analysis.website_status was empty (but
+    // websiteResolution.websiteStatus was set, or neither was) fell into
+    // none of the three buckets while still being counted in `total`, so
+    // "С сайтом" + "Без сайта" + "На проверке" silently undercounted
+    // "Всего найдено" instead of always summing to it.
+    const status = a.website_status || result.websiteResolution?.websiteStatus || 'UNCERTAIN';
+    if (status === 'WEBSITE_FOUND') counts.withSite += 1;
+    else if (noSiteStatuses.has(status)) counts.noSite += 1;
+    else counts.review += 1;
+    // requires_manual_review is a separate overlay flag (can be true for a
+    // WEBSITE_FOUND result with a high score, or for an UNCERTAIN one) - it
+    // intentionally is not part of the withSite+noSite+review partition.
     if (a.requires_manual_review) counts.manualReview += 1;
   }
 
@@ -2992,7 +3109,7 @@ function renderDetail() {
 function renderTabbedDetail() {
   const result = state.results.find((item) => item.id === state.selectedId);
   if (!result) {
-    els.detailTitle.textContent = 'Выберите результат';
+    els.detailTitle.textContent = tr('chooseResult');
     els.detailPriority.textContent = '-';
     els.detailPriority.className = 'priority-badge muted';
     els.detailContent.innerHTML =
@@ -3099,33 +3216,40 @@ function renderLeadWorkflowCard(result) {
       </select>
       <p class="muted-text">${escapeHtml(companyId ? helper : missing)}</p>
 
-      <h3 style="margin-top:14px">Status CRM</h3>
+      <h3 style="margin-top:14px">${currentLanguage === 'pl' ? 'Status CRM' : 'Статус CRM'}</h3>
       <select id="leadCrmStatus" ${companyId ? '' : 'disabled'}>
-        ${crmStatusOptions.map((option) => `<option value="${escapeAttribute(option.value)}" ${option.value === crmStatus ? 'selected' : ''}>${escapeHtml(option.label)}</option>`).join('')}
+        ${crmStatusOptions.map((option) => `<option value="${escapeAttribute(option.value)}" ${option.value === crmStatus ? 'selected' : ''}>${escapeHtml(crmStatusLabel(option.value))}</option>`).join('')}
       </select>
 
       <div class="lead-workflow-actions">
         <button id="leadSaveToggle" class="secondary-button compact-button save-toggle ${saved ? 'saved-active' : ''}" type="button" ${companyId ? '' : 'disabled'}>
           <i data-lucide="${saved ? 'bookmark-check' : 'bookmark-plus'}"></i>
-          ${saved ? 'Zapisano' : 'Zapisz'}
+          ${saved ? (currentLanguage === 'pl' ? 'Zapisano' : 'Сохранено') : (currentLanguage === 'pl' ? 'Zapisz' : 'Сохранить')}
         </button>
         <button id="leadAddToFolder" class="secondary-button compact-button" type="button" ${companyId ? '' : 'disabled'}>
           <i data-lucide="folder-plus"></i>
-          Dodaj do folderu
+          ${currentLanguage === 'pl' ? 'Dodaj do folderu' : 'В папку'}
         </button>
         <button id="leadReturnToPool" class="secondary-button compact-button" type="button" ${companyId ? '' : 'disabled'}>
           <i data-lucide="undo-2"></i>
-          Wróć do puli
+          ${currentLanguage === 'pl' ? 'Wróć do puli' : 'Вернуть в пул'}
         </button>
       </div>
-      ${saved ? `<div class="folder-chip-list">${(result._savedFolderIds || []).filter(Boolean).map((id) => `<span class="folder-chip">${escapeHtml(state.folders.find((f) => f.id === id)?.name || id)}</span>`).join('') || '<span class="folder-chip">Bez folderu</span>'}</div>` : ''}
+      ${
+        saved
+          ? `<div class="folder-chip-list">${
+              (result._savedFolderIds || []).filter(Boolean).map((id) => `<span class="folder-chip">${escapeHtml(state.folders.find((f) => f.id === id)?.name || id)}</span>`).join('') ||
+              `<span class="folder-chip">${currentLanguage === 'pl' ? 'Bez folderu' : 'Без папки'}</span>`
+            }</div>`
+          : ''
+      }
     </section>
 
     <section class="detail-card comments-card">
-      <h3>Komentarze</h3>
+      <h3>${currentLanguage === 'pl' ? 'Komentarze' : 'Комментарии'}</h3>
       <div class="comment-form">
-        <textarea id="leadCommentInput" placeholder="np. dodzwonić się jutro, właściciel zainteresowany..." ${companyId ? '' : 'disabled'}></textarea>
-        <button id="leadCommentSubmit" class="secondary-button compact-button" type="button" ${companyId ? '' : 'disabled'}>Dodaj komentarz</button>
+        <textarea id="leadCommentInput" placeholder="${escapeAttribute(currentLanguage === 'pl' ? 'np. dodzwonić się jutro, właściciel zainteresowany...' : 'напр. дозвониться завтра, владелец заинтересован...')}" ${companyId ? '' : 'disabled'}></textarea>
+        <button id="leadCommentSubmit" class="secondary-button compact-button" type="button" ${companyId ? '' : 'disabled'}>${currentLanguage === 'pl' ? 'Dodaj komentarz' : 'Добавить комментарий'}</button>
       </div>
       <div class="comment-list">
         ${
@@ -3140,12 +3264,17 @@ function renderLeadWorkflowCard(result) {
             <p>${escapeHtml(comment.text)}</p>
             ${
               comment.authorRole === 'worker' && comment.authorId === getWorkerId()
-                ? `<div class="comment-item-actions"><button type="button" data-delete-comment="${escapeAttribute(comment.id)}">Usuń</button></div>`
+                ? `<div class="comment-item-actions"><button type="button" data-delete-comment="${escapeAttribute(comment.id)}">${currentLanguage === 'pl' ? 'Usuń' : 'Удалить'}</button></div>`
                 : ''
             }
           </div>`
             )
-            .join('') || `<p class="muted-text">${companyId ? 'Brak komentarzy.' : 'Komentarze dostępne po zapisaniu firmy z parsera/historii.'}</p>`
+            .join('') ||
+          `<p class="muted-text">${
+            companyId
+              ? currentLanguage === 'pl' ? 'Brak komentarzy.' : 'Комментариев пока нет.'
+              : currentLanguage === 'pl' ? 'Komentarze dostępne po zapisaniu firmy z parsera/historii.' : 'Комментарии доступны после сохранения фирмы из парсера/истории.'
+          }</p>`
         }
       </div>
     </section>
@@ -3175,33 +3304,47 @@ function renderOverviewTab(result) {
       : a.category_match === 'partial'
         ? currentLanguage === 'pl' ? 'Sprawdzić ręcznie' : 'Проверить вручную'
         : currentLanguage === 'pl' ? 'Pasuje' : 'Подходит';
+  // Not-yet-analyzed leads (buildPreviewResult's synthetic placeholder) leave
+  // main_problem empty rather than baking in a fixed-language string, so this
+  // fallback is recomputed on every render (and therefore stays correct after
+  // a language toggle, unlike a string baked in at result-construction time).
+  const mainProblemFallback =
+    a.category_match === 'partial'
+      ? t2(
+          'Firma znaleziona, ale kategoria wymaga ręcznej weryfikacji przed telefonem.',
+          'Компания найдена, но категория требует ручной проверки перед звонком.'
+        )
+      : t2(
+          'Firma znaleziona. Kliknij "Znajdź strony", aby sprawdzić stronę, kontakty i jakość strony.',
+          'Компания найдена. Нажмите "Найти сайты", чтобы проверить сайт, контакты и качество страницы.'
+        );
   return `
     <div class="detail-card-grid">
       ${renderLeadWorkflowCard(result)}
 
       <section class="detail-card">
-        <h3>Category match</h3>
+        <h3>${t2('Dopasowanie kategorii', 'Соответствие категории')}</h3>
         <p><strong>${escapeHtml(categoryMatchLabel)}</strong> · ${escapeHtml(String(a.category_relevance_score ?? '-'))}/100</p>
-        <p class="muted-text">${escapeHtml(a.category_relevance_reason || 'Category checked by keywords and source signals.')}</p>
+        <p class="muted-text">${escapeHtml(a.category_relevance_reason || t2('Kategoria sprawdzona na podstawie słów kluczowych i sygnałów źródła.', 'Категория проверена по ключевым словам и сигналам источников.'))}</p>
         ${negativeSignals.length ? `<p><strong>Negative:</strong> ${escapeHtml(negativeSignals.join(', '))}</p>` : ''}
         ${positiveSignals.length ? `<p><strong>Positive:</strong> ${escapeHtml(positiveSignals.join(', '))}</p>` : ''}
-        <p><strong>Should call:</strong> ${a.should_call === false ? 'Nie / Нет' : 'Tak / Да'}</p>
+        <p><strong>${t2('Zadzwonić:', 'Звонить:')}</strong> ${a.should_call === false ? t2('Nie', 'Нет') : t2('Tak', 'Да')}</p>
       </section>
 
       <section class="detail-card">
-        <h3>Краткая информация</h3>
-        <p>${escapeHtml(input.notes || a.main_problem || 'Локальная компания. Данные собраны из импорта, публичного профиля или подключенного источника.')}</p>
-        <p class="muted-text">${escapeHtml([displayCategory(input.niche), input.city, input.district].filter(Boolean).join(' · ') || '-')}</p>
+        <h3>${t2('Podsumowanie', 'Краткая информация')}</h3>
+        <p>${escapeHtml(a.main_problem || mainProblemFallback)}</p>
+        <p class="muted-text">${escapeHtml([displayCategory(input.niche, input.category_id), input.city, input.district].filter(Boolean).join(' · ') || '-')}</p>
       </section>
 
       <section class="detail-card">
-        <h3>Статус сайта</h3>
+        <h3>${t2('Status strony', 'Статус сайта')}</h3>
         <p><span class="status-tag ${statusClass(status)}">${escapeHtml(statusLabel(status))}</span></p>
-        <p class="muted-text">${escapeHtml(a.main_problem || 'Статус рассчитан без AI по найденным сайтам, соцсетям и публичным профилям.')}</p>
+        <p class="muted-text">${escapeHtml(a.main_problem || t2('Status obliczony bez AI na podstawie znalezionych stron, social mediów i publicznych profili.', 'Статус рассчитан без AI по найденным сайтам, соцсетям и публичным профилям.'))}</p>
       </section>
 
       <section class="detail-card">
-        <h3>Контакты</h3>
+        <h3>${t2('Kontakty', 'Контакты')}</h3>
         <p><i data-lucide="phone"></i>${escapeHtml(input.phone || '-')}</p>
         <p><i data-lucide="mail"></i>${escapeHtml(input.email || '-')}</p>
         <p><i data-lucide="map-pin"></i>${escapeHtml(input.address || [input.city, input.district].filter(Boolean).join(', ') || '-')}</p>
@@ -3209,21 +3352,21 @@ function renderOverviewTab(result) {
       </section>
 
       <section class="detail-card">
-        <h3>Услуги</h3>
-        ${services.length ? `<ul>${services.slice(0, 6).map((service) => `<li>${escapeHtml(service)}</li>`).join('')}</ul>` : '<p class="muted-text">Услуги не указаны в источнике.</p>'}
+        <h3>${t2('Usługi', 'Услуги')}</h3>
+        ${services.length ? `<ul>${services.slice(0, 6).map((service) => `<li>${escapeHtml(service)}</li>`).join('')}</ul>` : `<p class="muted-text">${t2('Usługi nie są podane w źródle.', 'Услуги не указаны в источнике.')}</p>`}
       </section>
 
       <section class="detail-card">
-        <h3>Сигналы активности</h3>
-        <p><strong>Последняя активность:</strong> ${escapeHtml(input.last_activity || 'UNKNOWN')}</p>
-        <p><strong>Отзывы:</strong> ${escapeHtml(String(input.review_count || 0))}; rating: ${escapeHtml(String(input.rating || 0))}</p>
-        <p><strong>Размер:</strong> ${escapeHtml(size.label)} · ${escapeHtml(input.team_size || 'UNKNOWN')}</p>
+        <h3>${t2('Sygnały aktywności', 'Сигналы активности')}</h3>
+        <p><strong>${t2('Ostatnia aktywność:', 'Последняя активность:')}</strong> ${escapeHtml(input.last_activity || 'UNKNOWN')}</p>
+        <p><strong>${t2('Opinie:', 'Отзывы:')}</strong> ${escapeHtml(String(input.review_count || 0))}; rating: ${escapeHtml(String(input.rating || 0))}</p>
+        <p><strong>${t2('Rozmiar:', 'Размер:')}</strong> ${escapeHtml(size.label)} · ${escapeHtml(input.team_size || 'UNKNOWN')}</p>
       </section>
 
       <section class="detail-card">
-        <h3>Рекомендованный тип сайта</h3>
-        <p><strong>${escapeHtml(a.recommended_website || 'Лендинг / Визитка')}</strong></p>
-        <p class="muted-text">${escapeHtml(a.recommended_package || 'Быстрый сайт под услуги, контакты, портфолио и заявки.')}</p>
+        <h3>${t2('Rekomendowany typ strony', 'Рекомендованный тип сайта')}</h3>
+        <p><strong>${escapeHtml(a.recommended_website || t2('Landing / Wizytówka', 'Лендинг / Визитка'))}</strong></p>
+        <p class="muted-text">${escapeHtml(a.recommended_package || t2('Szybka strona pod usługi, kontakty, portfolio i zgłoszenia.', 'Быстрый сайт под услуги, контакты, портфолио и заявки.'))}</p>
       </section>
     </div>
   `;
@@ -3292,21 +3435,21 @@ function renderSiteTab(result) {
 
   return `
     <section class="detail-section">
-      <h3>Факты о сайте</h3>
+      <h3>${t2('Fakty o stronie', 'Факты о сайте')}</h3>
       <p><span class="status-tag ${statusClass(status)}">${escapeHtml(statusLabel(status))}</span></p>
-      <p><strong>Уверенность:</strong> ${escapeHtml(formatPercent(a.website_confidence ?? resolution.websiteConfidence))}</p>
-      <p><strong>Найденный домен:</strong> ${linkOrDash(resolution.selectedUrl || input.website_url)}</p>
-      <p><strong>Подтверждение домена:</strong> ${escapeHtml(String(resolution.domainVerification?.score ?? 0))}/100 (${escapeHtml((resolution.domainVerification?.matched || []).join(', ') || 'no matches')})</p>
-      <p><strong>Страниц:</strong> ${escapeHtml(String(signals.pageCount || 0))}; HTTPS: ${resolution.selectedUrl?.startsWith('https://') ? 'yes' : 'UNKNOWN'}; forms: ${escapeHtml(String(signals.forms || 0))}; photos: ${escapeHtml(String(signals.nonSvgImages || 0))}</p>
+      <p><strong>${t2('Pewność:', 'Уверенность:')}</strong> ${escapeHtml(formatPercent(a.website_confidence ?? resolution.websiteConfidence))}</p>
+      <p><strong>${t2('Znaleziona domena:', 'Найденный домен:')}</strong> ${linkOrDash(resolution.selectedUrl || input.website_url)}</p>
+      <p><strong>${t2('Potwierdzenie domeny:', 'Подтверждение домена:')}</strong> ${escapeHtml(String(resolution.domainVerification?.score ?? 0))}/100 (${escapeHtml((resolution.domainVerification?.matched || []).join(', ') || t2('brak dopasowań', 'нет совпадений'))})</p>
+      <p><strong>${t2('Stron:', 'Страниц:')}</strong> ${escapeHtml(String(signals.pageCount || 0))}; HTTPS: ${resolution.selectedUrl?.startsWith('https://') ? t2('tak', 'да') : 'UNKNOWN'}; forms: ${escapeHtml(String(signals.forms || 0))}; photos: ${escapeHtml(String(signals.nonSvgImages || 0))}</p>
     </section>
 
     <section class="detail-section">
-      <h3>Проверки без AI</h3>
-      <ul>${Object.entries(resolution.checks_completed || {}).map(([key, value]) => `<li>${escapeHtml(key)}: ${value ? 'yes' : 'no'}</li>`).join('')}</ul>
+      <h3>${t2('Kontrole bez AI', 'Проверки без AI')}</h3>
+      <ul>${Object.entries(resolution.checks_completed || {}).map(([key, value]) => `<li>${escapeHtml(checkKeyLabel(key))}: ${value ? t2('tak', 'да') : t2('nie', 'нет')}</li>`).join('')}</ul>
     </section>
 
     <section class="detail-section">
-      <h3>Автоматический вывод</h3>
+      <h3>${t2('Wniosek automatyczny', 'Автоматический вывод')}</h3>
       <p>${escapeHtml(a.main_problem || '-')}</p>
       <p class="muted-text">${escapeHtml(a.why_it_matters || '')}</p>
       <ul>${(a.mini_audit_points || []).map((point) => `<li>${escapeHtml(point)}</li>`).join('')}</ul>
@@ -3319,16 +3462,16 @@ function renderAiTab(result) {
   const aiData = ai.data || (ai.ai_analysis_status ? ai : null);
   const aiStatusText = ai.status || ai.ai_analysis_status || 'NOT_REQUESTED';
   const aiReady = Boolean(state.config?.hasOpenAiKey);
-  const aiButtonText = aiData ? 'Перегенерировать AI-анализ' : 'Запустить AI-анализ';
+  const aiButtonText = aiData ? t2('Zregeneruj AI-analizę', 'Перегенерировать AI-анализ') : t2('Uruchom AI-analizę', 'Запустить AI-анализ');
 
   return `
     <section class="detail-section ai-panel">
-      <h3>AI-анализ и рекомендации</h3>
-      <p><strong>Статус:</strong> ${escapeHtml(aiStatusText)}</p>
-      <p class="muted-text">OpenAI используется только здесь, внутри карточки компании. В интернет он не ходит: на вход получает уже собранные факты, источники, контакты и результат проверки сайта.</p>
+      <h3>${t2('AI-analiza i rekomendacje', 'AI-анализ и рекомендации')}</h3>
+      <p><strong>${t2('Status:', 'Статус:')}</strong> ${escapeHtml(aiStatusText)}</p>
+      <p class="muted-text">${t2('OpenAI jest używane tylko tutaj, wewnątrz karty firmy. Nie łączy się z internetem: na wejściu dostaje już zebrane fakty, źródła, kontakty i wynik sprawdzenia strony.', 'OpenAI используется только здесь, внутри карточки компании. В интернет он не ходит: на вход получает уже собранные факты, источники, контакты и результат проверки сайта.')}</p>
       <button id="siteAiButton" class="copy-button ai-action-button" type="button" ${aiReady && aiStatusText !== 'PROCESSING' ? '' : 'disabled'}>
         <i data-lucide="sparkles"></i>
-        ${escapeHtml(aiReady ? aiButtonText : 'Нужен OPENAI_API_KEY')}
+        ${escapeHtml(aiReady ? aiButtonText : t2('Potrzebny OPENAI_API_KEY', 'Нужен OPENAI_API_KEY'))}
       </button>
       ${ai.error ? `<p class="error-text">${escapeHtml(ai.error)}</p>` : ''}
       ${aiData ? renderAiAnalysisBlock(aiData) : ''}
@@ -3339,25 +3482,25 @@ function renderAiTab(result) {
 function renderAiAnalysisBlock(ai) {
   return `
     <div class="ai-result">
-      <p><strong>Потенциал:</strong> ${escapeHtml(ai.commercial_potential || 'UNKNOWN')} · <strong>Тип:</strong> ${escapeHtml(ai.recommended_site_type || '-')} · <strong>Размер:</strong> ${escapeHtml(ai.recommended_page_count || '-')}</p>
-      <p><strong>Кратко:</strong> ${escapeHtml(ai.company_summary || '-')}</p>
-      <p><strong>Главная проблема:</strong> ${escapeHtml(ai.main_problem || '-')}</p>
-      <h4>Почему нужен сайт</h4>
+      <p><strong>${t2('Potencjał:', 'Потенциал:')}</strong> ${escapeHtml(ai.commercial_potential || 'UNKNOWN')} · <strong>${t2('Typ:', 'Тип:')}</strong> ${escapeHtml(ai.recommended_site_type || '-')} · <strong>${t2('Rozmiar:', 'Размер:')}</strong> ${escapeHtml(ai.recommended_page_count || '-')}</p>
+      <p><strong>${t2('Krótko:', 'Кратко:')}</strong> ${escapeHtml(ai.company_summary || '-')}</p>
+      <p><strong>${t2('Główny problem:', 'Главная проблема:')}</strong> ${escapeHtml(ai.main_problem || '-')}</p>
+      <h4>${t2('Dlaczego potrzebna jest strona', 'Почему нужен сайт')}</h4>
       ${listItems(ai.why_website_needed)}
-      <h4>Что решит сайт</h4>
+      <h4>${t2('Co rozwiąże strona', 'Что решит сайт')}</h4>
       ${listItems(ai.problems_solved_by_site)}
-      <h4>Структура</h4>
+      <h4>${t2('Struktura', 'Структура')}</h4>
       ${listItems(ai.recommended_structure)}
-      <h4>Материалы уже есть</h4>
+      <h4>${t2('Materiały już są', 'Материалы уже есть')}</h4>
       ${listItems(ai.existing_materials)}
-      <h4>Чего не хватает</h4>
+      <h4>${t2('Czego brakuje', 'Чего не хватает')}</h4>
       ${listItems(ai.missing_materials)}
-      <p><strong>Оффер:</strong> ${escapeHtml(ai.recommended_offer || '-')}</p>
+      <p><strong>${t2('Oferta:', 'Оффер:')}</strong> ${escapeHtml(ai.recommended_offer || '-')}</p>
       <div class="message-box">
         <p>${escapeHtml(ai.personal_argument || '-')}</p>
         <button class="copy-button" type="button" data-copy="${escapeAttribute(ai.personal_argument || '')}">
           <i data-lucide="copy"></i>
-          Копировать аргумент
+          ${t2('Kopiuj argument', 'Копировать аргумент')}
         </button>
       </div>
     </div>
@@ -3370,12 +3513,11 @@ function renderSourcesTab(result) {
   const candidates = resolution.candidates || [];
   return `
     <section class="detail-section">
-      <h3>Источники</h3>
-      <p><strong>Источник:</strong> ${escapeHtml(displaySourceLabel(input.source || '-'))}</p>
-      <p><strong>Профиль:</strong> ${linkOrDash(input.source_profile)}</p>
-      <p><strong>Кандидаты домена:</strong></p>
-      <ul>${candidates.length ? candidates.map((candidate) => `<li>${linkOrDash(candidate.url)} · ${escapeHtml(candidate.source || '')} · ${escapeHtml(String(candidate.confidence || 0))}</li>`).join('') : '<li>Нет кандидатов</li>'}</ul>
-      <p class="muted-text">${escapeHtml(input.notes || '')}</p>
+      <h3>${t2('Źródła', 'Источники')}</h3>
+      <p><strong>${t2('Źródło:', 'Источник:')}</strong> ${escapeHtml(displaySourceLabel(input.source || '-'))}</p>
+      <p><strong>${t2('Profil:', 'Профиль:')}</strong> ${linkOrDash(input.source_profile)}</p>
+      <p><strong>${t2('Kandydaci domeny:', 'Кандидаты домена:')}</strong></p>
+      <ul>${candidates.length ? candidates.map((candidate) => `<li>${linkOrDash(candidate.url)} · ${escapeHtml(checkKeyLabel(candidate.source || ''))} · ${escapeHtml(String(candidate.confidence || 0))}</li>`).join('') : `<li>${t2('Brak kandydatów', 'Нет кандидатов')}</li>`}</ul>
     </section>
   `;
 }
@@ -3385,11 +3527,11 @@ function renderHistoryTab(result) {
   const aiData = ai.data || (ai.ai_analysis_status ? ai : null);
   return `
     <section class="detail-section">
-      <h3>История</h3>
-      <p><strong>AI status:</strong> ${escapeHtml(ai.status || ai.ai_analysis_status || 'NOT_REQUESTED')}</p>
-      <p><strong>AI version:</strong> ${escapeHtml(String(ai.version || aiData?.ai_analysis_version || 1))}</p>
-      <p><strong>Analyzed at:</strong> ${escapeHtml(ai.analyzed_at || aiData?.ai_analyzed_at || '-')}</p>
-      <p><strong>Company data version:</strong> ${escapeHtml(String(ai.company_data_version || aiData?.company_data_version || 1))}</p>
+      <h3>${t2('Historia', 'История')}</h3>
+      <p><strong>${t2('Status AI:', 'AI-статус:')}</strong> ${escapeHtml(ai.status || ai.ai_analysis_status || 'NOT_REQUESTED')}</p>
+      <p><strong>${t2('Wersja AI:', 'Версия AI:')}</strong> ${escapeHtml(String(ai.version || aiData?.ai_analysis_version || 1))}</p>
+      <p><strong>${t2('Przeanalizowano:', 'Проанализировано:')}</strong> ${escapeHtml(ai.analyzed_at || aiData?.ai_analyzed_at || '-')}</p>
+      <p><strong>${t2('Wersja danych firmy:', 'Версия данных компании:')}</strong> ${escapeHtml(String(ai.company_data_version || aiData?.company_data_version || 1))}</p>
     </section>
   `;
 }
@@ -3436,9 +3578,9 @@ function bindDetailActions(result) {
   els.detailContent.querySelectorAll('[data-copy]').forEach((button) => {
     button.addEventListener('click', async () => {
       await navigator.clipboard.writeText(button.dataset.copy || '');
-      button.textContent = 'Скопировано';
+      button.textContent = t2('Skopiowano', 'Скопировано');
       setTimeout(() => {
-        button.innerHTML = '<i data-lucide="copy"></i>Копировать';
+        button.innerHTML = `<i data-lucide="copy"></i>${t2('Kopiuj', 'Копировать')}`;
         renderIcons();
       }, 1200);
     });
@@ -3459,14 +3601,19 @@ async function updateLeadWorkflowStatus(result, status) {
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    setStatus(data.error || 'Не удалось сохранить статус лида.', 'warn');
+    // Never surface data.error directly - it can be a raw untranslated
+    // backend string (e.g. "Worker identity is required." for an admin-role
+    // session with no workerId, see Finding 9). Log it for debugging and show
+    // only the localized generic fallback, same as the Saved/folders actions.
+    console.error('updateLeadWorkflowStatus failed:', data.error);
+    setStatus(t2('Nie udało się zapisać statusu leada.', 'Не удалось сохранить статус лида.'), 'warn');
     return;
   }
   result.lead_status = data.company?.status || status;
   if (result.input) result.input.lead_status = data.company?.status || status;
   renderResults();
   renderTabbedDetail();
-  setStatus(`${currentLanguage === 'pl' ? 'Status zapisany' : 'Статус сохранен'}: ${leadStatusLabel(status)}`, 'ok');
+  setStatus(`${t2('Status zapisany', 'Статус сохранен')}: ${leadStatusLabel(status)}`, 'ok');
 }
 
 async function runSiteAiAnalysis(resultId) {
@@ -3683,3 +3830,14 @@ function escapeAttribute(value) {
 function renderIcons() {
   if (window.lucide) window.lucide.createIcons();
 }
+
+// Invoked at the bottom of the file (not at the top) so that every value it
+// transitively depends on — apiBase/getApiBase/apiUrl in particular — has
+// already been declared and initialized by the time this runs. Calling this
+// before `let apiBase = resolveApiBase();` executes throws a temporal-dead-zone
+// ReferenceError inside fetchSessionProfile()'s try/catch, which used to be
+// silently swallowed and made every returning worker with a valid token look
+// logged-out on each page load.
+bootstrapSession().then((ok) => {
+  if (ok) init();
+});

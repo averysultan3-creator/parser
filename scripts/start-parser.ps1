@@ -270,7 +270,27 @@ function Remove-StalePid() {
   }
 }
 
+function Get-Pm2Command() {
+  $localPm2 = Join-Path $proj 'node_modules\.bin\pm2.cmd'
+  if (Test-Path $localPm2) { return $localPm2 }
+  $globalPm2 = Get-Command pm2 -ErrorAction SilentlyContinue
+  if ($globalPm2) { return $globalPm2.Source }
+  return $null
+}
+
 function Stop-BackendIfOwned() {
+  $pm2 = Get-Pm2Command
+  if ($pm2) {
+    # pm2 exits non-zero when there is no aura-parser process yet (first run) -
+    # that is an expected, non-fatal outcome here, not a real failure, so this
+    # must not trip the script's global $ErrorActionPreference = 'Stop'.
+    try {
+      & $pm2 delete aura-parser *> $null
+    } catch {}
+  }
+  # Also clear out any pre-pm2 raw `node server.js` process still tracked by
+  # the legacy PID file, so upgrading an already-running install doesn't leave
+  # two backends fighting over the same port.
   Stop-ProcessFromPidFile $pidFile 'parser'
 }
 
@@ -318,9 +338,19 @@ function Start-Backend() {
   Remove-StalePid
   Remove-Item $outLog, $errLog -ErrorAction SilentlyContinue
 
-  Write-Host '[2/5] Starting parser backend in background...' -ForegroundColor Yellow
-  $process = Start-Process $script:nodeCommand.Source -ArgumentList 'server.js' -WorkingDirectory $proj -WindowStyle Hidden -RedirectStandardOutput $outLog -RedirectStandardError $errLog -PassThru
-  Set-Content -Path $pidFile -Value $process.Id -Encoding ASCII
+  $pm2 = Get-Pm2Command
+  $pm2ErrLog = Join-Path $runtimeDir 'pm2-err.log'
+
+  if ($pm2) {
+    Write-Host '[2/5] Starting parser backend under pm2 supervision (auto-restart on crash)...' -ForegroundColor Yellow
+    Remove-Item $pm2ErrLog -ErrorAction SilentlyContinue
+    & $pm2 start (Join-Path $proj 'ecosystem.config.cjs') | Out-Null
+    & $pm2 save | Out-Null
+  } else {
+    Write-Host '[2/5] pm2 not found - starting parser backend WITHOUT crash supervision (run npm install to get pm2).' -ForegroundColor Yellow
+    $process = Start-Process $script:nodeCommand.Source -ArgumentList 'server.js' -WorkingDirectory $proj -WindowStyle Hidden -RedirectStandardOutput $outLog -RedirectStandardError $errLog -PassThru
+    Set-Content -Path $pidFile -Value $process.Id -Encoding ASCII
+  }
 
   for ($i = 0; $i -lt 30; $i++) {
     Start-Sleep -Seconds 1
@@ -331,10 +361,11 @@ function Start-Backend() {
   }
 
   $tail = ''
-  if (Test-Path $errLog) {
-    $tail = (Get-Content $errLog -Tail 20 -ErrorAction SilentlyContinue | Out-String).Trim()
+  $logToCheck = if ($pm2) { $pm2ErrLog } else { $errLog }
+  if (Test-Path $logToCheck) {
+    $tail = (Get-Content $logToCheck -Tail 20 -ErrorAction SilentlyContinue | Out-String).Trim()
   }
-  throw ("Parser did not start within 30 seconds. Check {0}`n{1}" -f $errLog, $tail)
+  throw ("Parser did not start within 30 seconds. Check {0}`n{1}" -f $logToCheck, $tail)
 }
 
 function Start-CloudflaredTunnel() {

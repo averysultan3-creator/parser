@@ -14,7 +14,12 @@
     "usability": "node scripts/usability-test.mjs",
     "usability:public": "node scripts/usability-test.mjs https://parser.auraglobal-merchants.com",
     "test:site": "node scripts/aura-site-e2e.mjs",
-    "capture:site": "node scripts/capture-aura-site.mjs"
+    "capture:site": "node scripts/capture-aura-site.mjs",
+    "supervise": "pm2 start ecosystem.config.cjs",
+    "supervise:restart": "pm2 restart aura-parser",
+    "supervise:stop": "pm2 stop aura-parser",
+    "supervise:logs": "pm2 logs aura-parser",
+    "supervise:status": "pm2 status"
   },
   "dependencies": {
     "cheerio": "^1.0.0",
@@ -24,7 +29,8 @@
     "robots-parser": "^3.0.1"
   },
   "devDependencies": {
-    "playwright": "^1.61.1"
+    "playwright": "^1.61.1",
+    "pm2": "^7.0.3"
   },
   "engines": {
     "node": ">=20"

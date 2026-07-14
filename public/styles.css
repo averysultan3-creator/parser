@@ -234,6 +234,11 @@ h2 {
   grid-column: 1 / -1;
 }
 
+.filter-toggles {
+  display: grid;
+  gap: 10px;
+}
+
 .discover-button {
   width: 100%;
 }
@@ -634,7 +639,7 @@ svg {
   border-radius: 8px;
   display: grid;
   gap: 10px;
-  grid-template-columns: minmax(180px, 1.4fr) repeat(4, minmax(110px, 0.8fr)) auto auto;
+  grid-template-columns: minmax(180px, 1.4fr) repeat(2, minmax(110px, 0.8fr)) auto;
   margin-bottom: 12px;
   padding: 12px;
 }
@@ -1207,6 +1212,21 @@ tbody tr.selected {
     gap: 12px;
   }
 
+  .main-view-tabs {
+    /* Результаты / История / Zapisane labels together are a few px wider
+       than narrow phones (~390px) once icons/gaps are included, which used
+       to push the whole page into horizontal overflow. Scoping the overflow
+       to this strip (like a mobile tab bar) keeps the page itself fixed
+       width regardless of label length in either language. */
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .view-tab {
+    flex: 0 0 auto;
+  }
+
   .control-panel,
   .results-panel,
   .detail-panel {
@@ -1215,6 +1235,18 @@ tbody tr.selected {
 
   .control-panel {
     padding-bottom: 96px;
+  }
+
+  /* On mobile, .detail-panel loses its own scroll region (see the 1180px
+     breakpoint, which sets max-height: none) and just flows in the single
+     page column below the results table - so the fixed .discover-button CTA
+     floats over whatever detail content is scrolled to the bottom of the
+     viewport, hiding the AI tab's action button and truncating the Sources
+     tab's candidate list. Reserve the same bottom band as .control-panel so
+     the last card/button in the lead detail is always scrollable clear of
+     the CTA. */
+  .detail-panel {
+    padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px));
   }
 
   .control-panel,
@@ -1243,7 +1275,14 @@ tbody tr.selected {
   }
 
   .main-actions {
+    /* Without an explicit width, a wrapping flex container still sizes
+       itself to the unwrapped max-content width of its children (all
+       header buttons in one row), which is wider than the mobile viewport
+       and forces page-level horizontal overflow. Constraining it to the
+       parent's available width lets flex-wrap actually break the buttons
+       onto multiple rows instead of pushing the page wider. */
     flex-wrap: wrap;
+    width: 100%;
   }
 
   .main-actions .secondary-button,
@@ -1279,6 +1318,16 @@ tbody tr.selected {
 
   .discover-status {
     margin-bottom: 60px;
+  }
+
+  .filter-toggles {
+    /* The "Znajdz firmy" button becomes a fixed floating CTA on mobile,
+       pinned to the last ~64px band of the viewport height. On short/medium
+       phones the filter checkboxes (has-social/has-phone/has-email) used to
+       land in that exact band on initial load, so the button visually
+       covered the "Ma telefon" checkbox. Push the checkbox group down so it
+       clears the button's floating band with a comfortable gap. */
+    margin-top: 84px;
   }
 
   .metric-row {
@@ -1340,7 +1389,14 @@ tbody tr.selected {
 .saved-layout {
   display: grid;
   gap: 16px;
-  grid-template-columns: 240px 1fr;
+  /* A bare `1fr` track has an implicit min size of `auto` (its content's
+     min-content), so the saved-companies table (min-width: 940px, scoped
+     to scroll inside .table-wrap) was forcing this whole column - and the
+     page itself - wider than the viewport instead of staying inside its
+     own scrollable container. minmax(0, 1fr) lets the track shrink below
+     its content's intrinsic width and defers overflow handling to
+     .table-wrap's own overflow:auto. */
+  grid-template-columns: 240px minmax(0, 1fr);
 }
 
 .saved-folders {
@@ -1454,7 +1510,7 @@ tbody tr.selected {
 
 @media (max-width: 860px) {
   .saved-layout {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .saved-folders {

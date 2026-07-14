@@ -4,14 +4,15 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Aura Sales Academy</title>
-    <link rel="stylesheet" href="./styles.css?v=20260708-2" />
+    <link rel="stylesheet" href="./styles.css?v=20260713-2" />
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js" defer></script>
-    <script src="../shared/i18n.js?v=20260708-2"></script>
-    <script src="./data/scripts.js?v=20260708-2"></script>
-    <script src="./app.js?v=20260708-4" defer></script>
+    <script src="../shared/i18n.js?v=20260713-2"></script>
+    <script src="./data/scripts.js?v=20260712-3"></script>
+    <script src="./app.js?v=20260713-2" defer></script>
   </head>
   <body>
     <div id="authOverlay" class="auth-overlay hidden-field"></div>
+    <div id="academyLockToast" class="lock-toast hidden-field" role="status"></div>
     <div class="academy-shell hidden-field" id="appShell">
       <nav id="academyToolbar" class="academy-toolbar" aria-label="Sekcje Akademii"></nav>
       <div class="academy-body">
@@ -20,20 +21,20 @@
           <span class="brand-mark">A</span>
           <span>
             <strong>Aura Sales OS</strong>
-            <small>Akademia dzwoniącego</small>
+            <small id="sidebarTagline">Akademia dzwoniącego</small>
           </span>
         </a>
 
         <label class="worker-card">
-          <span>Zalogowany jako</span>
+          <span id="workerLabel">Zalogowany jako</span>
           <input id="workerName" autocomplete="off" readonly />
         </label>
 
         <nav id="moduleNav" class="module-nav hidden-field" aria-label="Moduły szkolenia"></nav>
 
         <div class="side-actions">
-          <a id="academyParserLink" href="../" class="ghost-link"><i data-lucide="radar"></i> Parser</a>
-          <button id="academyLogoutButton" type="button" class="ghost-link"><i data-lucide="log-out"></i> Wyloguj</button>
+          <a id="academyParserLink" href="../" class="ghost-link"><i data-lucide="radar"></i> <span id="sidebarParserLabel">Parser</span></a>
+          <button id="academyLogoutButton" type="button" class="ghost-link"><i data-lucide="log-out"></i> <span id="logoutLabel">Wyloguj</span></button>
         </div>
       </aside>
 
@@ -41,29 +42,29 @@
         <section class="hero-card">
           <div>
             <p class="eyebrow">Aura Global Merchants</p>
-            <h1>Interaktywne wdrożenie dla nowych callerów</h1>
-            <p class="hero-copy">
+            <h1 id="heroTitle">Interaktywne wdrożenie dla nowych callerów</h1>
+            <p class="hero-copy" id="heroCopy">
               Nie uczysz się sprzedaży z tekstu. Przechodzisz realny proces: rozumiesz usługę,
               wybierasz dobry lead, prowadzisz rozmowę i umawiasz spotkanie.
             </p>
           </div>
           <div class="progress-orb">
             <strong id="overallProgress">0%</strong>
-            <span>ukończone</span>
+            <span id="progressOrbLabel">ukończone</span>
           </div>
         </section>
 
         <section class="stats-grid">
           <div class="stat-card">
-            <span>Moduły</span>
+            <span id="statModulesLabel">Moduły</span>
             <strong id="completedModules">0 / 10</strong>
           </div>
           <div class="stat-card">
-            <span>Najbliższy krok</span>
+            <span id="statNextLabel">Najbliższy krok</span>
             <strong id="nextLesson">Start</strong>
           </div>
           <div class="stat-card">
-            <span>Wynik testów</span>
+            <span id="statScoreLabel">Wynik testów</span>
             <strong id="avgScore">0%</strong>
           </div>
         </section>

@@ -4,11 +4,11 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <base href="/site/" />
-    <title>Aura Global — strony i digital systems, które prowadzą do zapytania</title>
+    <title>Aura Global — strony i systemy digital, które prowadzą do zapytania</title>
     <meta
       id="metaDescription"
       name="description"
-      content="Strategia, design, development, marketing i AI automation. Aura Global buduje strony i digital systems wokół realnego zadania firmy."
+      content="Strategia, design, development, marketing i automatyzacje AI. Zaczynamy od realnego zadania firmy."
     />
     <meta name="theme-color" content="#f2f0e9" />
     <meta name="color-scheme" content="light" />
@@ -16,21 +16,26 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Aura Global" />
     <meta property="og:type" content="website" />
-    <meta id="ogTitle" property="og:title" content="Aura Global — digital systems built around a real business task" />
+    <meta id="ogTitle" property="og:title" content="Aura Global — strony i systemy digital, które prowadzą do zapytania" />
     <meta
       id="ogDescription"
       property="og:description"
-      content="Websites, product experiences, marketing and AI automation — from diagnosis to a working launch."
+      content="Strategia, design, development, marketing i automatyzacje AI. Zaczynamy od realnego zadania firmy."
     />
     <meta id="ogUrl" property="og:url" content="https://parser.auraglobal-merchants.com/site/" />
     <meta id="ogImage" property="og:image" content="https://parser.auraglobal-merchants.com/site/og-image.png" />
+    <meta property="og:image:type" content="image/png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <meta id="ogImageAlt" property="og:image:alt" content="Aura Global digital studio" />
+    <meta id="ogImageAlt" property="og:image:alt" content="Aura Global — premium digital engine for modern businesses" />
+    <meta property="og:locale" content="pl_PL" />
+    <meta property="og:locale:alternate" content="en_US" />
+    <meta property="og:locale:alternate" content="ru_RU" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta id="twitterTitle" name="twitter:title" content="Aura Global" />
-    <meta id="twitterDescription" name="twitter:description" content="Digital systems built around a real business task." />
+    <meta id="twitterTitle" name="twitter:title" content="Aura Global — strony i systemy digital, które prowadzą do zapytania" />
+    <meta id="twitterDescription" name="twitter:description" content="Strategia, design, development, marketing i automatyzacje AI. Zaczynamy od realnego zadania firmy." />
     <meta name="twitter:image" content="https://parser.auraglobal-merchants.com/site/og-image.png" />
+    <meta name="twitter:image:alt" content="Aura Global — premium digital engine for modern businesses" />
     <link id="canonicalLink" rel="canonical" href="https://parser.auraglobal-merchants.com/site/" />
     <link rel="alternate" hreflang="pl" href="https://parser.auraglobal-merchants.com/site/?lang=pl" />
     <link rel="alternate" hreflang="en" href="https://parser.auraglobal-merchants.com/site/?lang=en" />
@@ -40,11 +45,11 @@
     <link rel="icon" type="image/png" sizes="32x32" href="./favicon-32.png" />
     <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
     <link rel="manifest" href="./manifest.webmanifest" />
-    <link rel="preload" href="./media/hero/aura-chameleon.webp" as="image" type="image/webp" fetchpriority="high" />
+    <link rel="modulepreload" href="./hero-saturn.js" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="./styles.css?v=20260711-layoutfix" />
+    <link rel="stylesheet" href="./styles.css?v=20260712-saturn2" />
     <script id="structuredData" type="application/ld+json">
       {"@context":"https://schema.org","@type":"Organization","name":"Aura Global","url":"https://parser.auraglobal-merchants.com/site/"}
     </script>
@@ -57,7 +62,7 @@
         }
         var url = normalise(new URLSearchParams(location.search).get('lang'));
         var stored = '';
-        try { ['auraSiteLanguage', 'auraLanguage', 'parserLanguage'].some(function (key) { stored = normalise(localStorage.getItem(key)); return !!stored; }); } catch (e) {}
+        try { stored = normalise(localStorage.getItem('auraSiteLanguage')); } catch (e) {}
         var browser = (navigator.languages || [navigator.language]).map(normalise).find(Boolean) || normalise(navigator.language);
         document.documentElement.lang = url || stored || browser || 'pl';
       })();
@@ -117,7 +122,8 @@
     </div>
 
     <div class="live-region" id="liveRegion" aria-live="polite" aria-atomic="true"></div>
+    <div class="sticky-cta" id="stickyCta" inert></div>
 
-    <script type="module" src="./app.js?v=20260711-layoutfix"></script>
+    <script type="module" src="./app.js?v=20260712-saturn2"></script>
   </body>
 </html>

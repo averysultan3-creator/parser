@@ -44,378 +44,128 @@ function getWorkerId() {
 }
 
 const modules = [
-  { id: 'start', title: 'Start', type: 'start' },
-  { id: 'services', title: 'Services Academy', type: 'services' },
-  { id: 'call-logic', title: 'Logika rozmowy', type: 'article' },
-  { id: 'scripts', title: 'Script Trainer', type: 'scenario', scenarioSet: 'scripts' },
-  { id: 'objections', title: 'Obiekcje', type: 'scenario', scenarioSet: 'objections' },
-  { id: 'qualification', title: 'Kwalifikacja leadów', type: 'qualification' },
-  { id: 'numbers', title: 'Efekt dużych liczb', type: 'calculator' },
-  { id: 'workday', title: 'Dzień pracy', type: 'workday' },
-  { id: 'statuses', title: 'Statusy', type: 'scenario', scenarioSet: 'statuses' },
-  { id: 'final', title: 'Final Test', type: 'final' }
+  { id: 'start', titleKey: 'academy_module_start', type: 'start' },
+  { id: 'services', titleKey: 'academy_module_services', type: 'services' },
+  { id: 'call-logic', titleKey: 'academy_module_call_logic', type: 'article' },
+  { id: 'scripts', titleKey: 'academy_module_scripts', type: 'scenario', scenarioSet: 'scripts' },
+  { id: 'objections', titleKey: 'academy_module_objections', type: 'scenario', scenarioSet: 'objections' },
+  { id: 'qualification', titleKey: 'academy_module_qualification', type: 'qualification' },
+  { id: 'numbers', titleKey: 'academy_module_numbers', type: 'calculator' },
+  { id: 'workday', titleKey: 'academy_module_workday', type: 'workday' },
+  { id: 'statuses', titleKey: 'academy_module_statuses', type: 'scenario', scenarioSet: 'statuses' },
+  { id: 'final', titleKey: 'academy_module_final', type: 'final' }
 ];
 
-const serviceLessons = {
-  websites: {
-    title: 'Strony internetowe',
-    badge: 'Najczęstsza potrzeba',
-    steps: [
-      {
-        title: 'Co to jest',
-        body: 'Strona internetowa to nie wizytówka. To miejsce, które ma przejąć część pracy sprzedawcy: wyjaśnić ofertę, zbudować zaufanie, pokazać realizacje i ułatwić kontakt.',
-        bullets: ['Klient widzi dowody jakości przed rozmową.', 'Firma wygląda stabilniej niż konkurencja bez strony.', 'Reklamy Google i Meta mają gdzie kierować ruch.']
-      },
-      {
-        title: 'Kto tego potrzebuje',
-        body: 'Najlepszy lead to firma usługowa, która ma telefon, działa lokalnie, ma aktywność w Google lub social media, ale nie ma własnej strony albo ma stronę starą, wolną i nieczytelną.',
-        bullets: ['Klimatyzacja, remonty, stomatologia, beauty, auto detailing.', 'Firmy z opiniami, ale bez mocnego miejsca do sprzedaży.', 'Firmy, które już płacą za ruch, ale tracą zapytania.']
-      },
-      {
-        title: 'Jaki problem rozwiązuje',
-        body: 'Problemem nie jest brak strony sam w sobie. Problemem jest brak zaufania i brak jasnej ścieżki kontaktu. Dobra strona skraca drogę od zainteresowania do telefonu.',
-        bullets: ['Mniej pytań podstawowych w rozmowie.', 'Więcej zapytań z Google.', 'Lepszy efekt z reklam.']
-      },
-      {
-        title: 'Jak rozpoznać potrzebę',
-        body: 'Patrzysz na Google Business, profil Facebook/Instagram, opinie, zdjęcia i stronę. Jeśli firma wygląda realnie, ale klient nie ma gdzie spokojnie zobaczyć oferty, to jest dobry sygnał.',
-        bullets: ['Brak domeny albo tylko Facebook.', 'Strona bez realizacji i formularza.', 'Nieaktualne informacje, brak mobile, wolne ładowanie.']
-      },
-      {
-        title: 'Jak powiedzieć przez telefon',
-        body: 'Nie sprzedajesz strony. Umawiasz krótką rozmowę o tym, czy firma traci klientów przez słabą prezentację online.',
-        bullets: ['“Widzę, że macie dobre opinie, ale klienci przed kontaktem nie widzą pełnej oferty.”', '“Możemy pokazać, jak strona może zbierać zapytania bez dokładania pracy.”', 'Celem jest spotkanie, nie wycena w pierwszej minucie.']
-      },
-      {
-        title: 'Kiedy nie oferować',
-        body: 'Nie ciśnij, jeśli firma ma nowoczesną stronę, jasną ofertę, szybki kontakt, aktualne realizacje i dobrą widoczność. Wtedy lepszym tematem może być SEO, reklama albo automatyzacja.',
-        bullets: ['Nie obiecuj efektów bez audytu.', 'Nie krytykuj agresywnie obecnej strony.', 'Nie mów, że “wszystko jest źle”.']
-      }
-    ],
-    quiz: {
-      question: 'Jaki jest najlepszy pierwszy cel rozmowy o stronie?',
-      answers: ['Od razu sprzedać pakiet strony', 'Umówić krótkie spotkanie/audyt sytuacji online', 'Wysłać cennik bez rozmowy'],
-      correct: 1
-    }
-  },
-  seo: {
-    title: 'SEO',
-    badge: 'Widoczność organiczna',
-    steps: [
-      {
-        title: 'Co to jest',
-        body: 'SEO to proces poprawy widoczności firmy w wynikach Google. Nie jest jednorazową sztuczką, tylko stałym wzmacnianiem strony, treści, techniki i lokalnych sygnałów.',
-        bullets: ['Działa wolniej niż reklama, ale buduje długoterminowy kanał.', 'Najlepiej działa z dobrą stroną.', 'W usługach lokalnych łączy się z Google Business Profile.']
-      },
-      {
-        title: 'Kto tego potrzebuje',
-        body: 'Firmy, które mają usługę wyszukiwaną w Google i chcą regularnych zapytań bez płacenia za każde kliknięcie.',
-        bullets: ['Branże lokalne z wysoką wartością klienta.', 'Firmy z dobrą ofertą, ale słabą pozycją w Google.', 'Firmy z konkurencją, która mocno działa online.']
-      },
-      {
-        title: 'Jak rozpoznać potrzebę',
-        body: 'Sprawdź, czy firma pojawia się na ważne frazy w mieście. Jeśli ma stronę, ale nie ma treści usługowych i lokalnych podstron, to SEO może być dobrym tematem.',
-        bullets: ['Brak podstron usług.', 'Tytuły typu “Home”.', 'Mało treści, brak FAQ, brak realizacji.']
-      },
-      {
-        title: 'Jak wyjaśnić przez telefon',
-        body: 'Mów językiem klienta: “chodzi o to, żeby osoby szukające usługi w mieście częściej trafiały do was, a nie tylko do konkurencji”.',
-        bullets: ['Nie obiecuj pierwszego miejsca.', 'Mów o audycie i planie.', 'Podkreśl, że SEO wymaga czasu.']
-      }
-    ],
-    quiz: {
-      question: 'Czego nie wolno obiecywać w rozmowie o SEO?',
-      answers: ['Analizy widoczności', 'Planu działań', 'Gwarantowanego pierwszego miejsca w Google'],
-      correct: 2
-    }
-  },
-  gbp: {
-    title: 'Google Business Profile',
-    badge: 'Lokalne zaufanie',
-    steps: [
-      {
-        title: 'Co to jest',
-        body: 'Google Business Profile to wizytówka firmy w Mapach Google: opinie, telefon, godziny, zdjęcia, trasa, usługi i posty. Dla firm lokalnych bywa ważniejsza niż sama strona.',
-        bullets: ['Klient często dzwoni bez wejścia na stronę.', 'Opinie mocno wpływają na decyzję.', 'Aktualność profilu zwiększa zaufanie.']
-      },
-      {
-        title: 'Kto tego potrzebuje',
-        body: 'Każda firma lokalna, która obsługuje klientów w mieście albo ma punkt stacjonarny.',
-        bullets: ['Stomatologia, beauty, warsztaty, remonty, HVAC.', 'Firmy z małą liczbą opinii.', 'Firmy z niepełną wizytówką.']
-      },
-      {
-        title: 'Jak rozpoznać potrzebę',
-        body: 'Słaby profil ma mało zdjęć, brak usług, brak postów, stare godziny lub niską liczbę opinii w porównaniu do konkurencji.',
-        bullets: ['Brak kategorii pomocniczych.', 'Opinie bez odpowiedzi.', 'Nieaktualne zdjęcia lub brak realizacji.']
-      },
-      {
-        title: 'Jak powiedzieć przez telefon',
-        body: '“Zauważyłem, że w Google macie potencjał, ale profil nie pokazuje pełnej oferty. Część klientów może wybierać konkurencję, bo widzi więcej dowodów i opinii.”',
-        bullets: ['Nie strasz blokadą konta.', 'Nie udawaj przedstawiciela Google.', 'Proponuj krótką analizę profilu.']
-      }
-    ],
-    quiz: {
-      question: 'Co jest najmocniejszym sygnałem potrzeby GBP?',
-      answers: ['Firma lokalna ma mało opinii i niepełny profil', 'Firma ma ładne logo', 'Firma ma długi opis na Facebooku'],
-      correct: 0
-    }
-  },
-  googleAds: {
-    title: 'Google Ads',
-    badge: 'Szybki ruch',
-    steps: [
-      {
-        title: 'Co to jest',
-        body: 'Google Ads to płatne kampanie dla osób, które już szukają usługi. Najlepiej działa, gdy firma ma stronę lub landing, który szybko zamienia kliknięcie w telefon.',
-        bullets: ['Szybki start ruchu.', 'Płatność za kliknięcia.', 'Wymaga mierzenia zapytań.']
-      },
-      {
-        title: 'Kto tego potrzebuje',
-        body: 'Firmy z usługą o wysokiej wartości, które mogą obsłużyć więcej zapytań i mają jasną ofertę.',
-        bullets: ['Klimatyzacja, fotowoltaika, stomatologia, remonty.', 'Firmy sezonowe.', 'Firmy, które chcą szybko testować rynek.']
-      },
-      {
-        title: 'Jak rozpoznać potrzebę',
-        body: 'Jeśli firma nie jest wysoko organicznie, a usługa jest często wyszukiwana, Google Ads może szybko dostarczyć rozmowy.',
-        bullets: ['Brak widoczności na frazy zakupowe.', 'Konkurencja reklamuje się w Google.', 'Firma ma wolne terminy lub chce rosnąć.']
-      },
-      {
-        title: 'Jak wyjaśnić',
-        body: '“Można sprawdzić, ile zapytań da się pozyskać z osób, które już wpisują konkretną usługę w Google. Najpierw warto zobaczyć, czy strona jest gotowa na taki ruch.”',
-        bullets: ['Nie obiecuj tanich kliknięć.', 'Nie sprzedawaj budżetu bez strategii.', 'Pytaj, czy firma ma moce przerobowe.']
-      }
-    ],
-    quiz: {
-      question: 'Kiedy Google Ads ma największy sens?',
-      answers: ['Gdy firma ma usługę aktywnie wyszukiwaną i może obsłużyć leady', 'Gdy firma nie odbiera telefonów', 'Gdy nie ma żadnej oferty'],
-      correct: 0
-    }
-  },
-  metaAds: {
-    title: 'Meta Ads',
-    badge: 'Popyt i remarketing',
-    steps: [
-      {
-        title: 'Co to jest',
-        body: 'Meta Ads to reklamy na Facebooku i Instagramie. Dobre do budowania popytu, remarketingu, promocji realizacji i ofert wizualnych.',
-        bullets: ['Działa świetnie z branżami wizualnymi.', 'Może zbierać formularze.', 'Wymaga dobrego zdjęcia, wideo lub oferty.']
-      },
-      {
-        title: 'Kto tego potrzebuje',
-        body: 'Firmy, których oferta dobrze wygląda na zdjęciach albo wymaga pokazania efektu przed/po.',
-        bullets: ['Beauty, detailing, remonty, ogrody, eventy.', 'Firmy z aktywnym Instagramem.', 'Firmy z promocjami sezonowymi.']
-      },
-      {
-        title: 'Jak rozpoznać potrzebę',
-        body: 'Jeśli firma ma dobre realizacje, ale mało zapytań z social mediów, można zaproponować kampanię albo remarketing.',
-        bullets: ['Dużo zdjęć, mało komentarzy i leadów.', 'Brak formularza kontaktowego.', 'Brak kampanii na odbiorców lokalnych.']
-      },
-      {
-        title: 'Jak powiedzieć',
-        body: '“Macie materiał, który można pokazać osobom z okolicy. Warto sprawdzić, czy z tych realizacji da się zrobić stały dopływ zapytań.”',
-        bullets: ['Nie mów, że Meta zastępuje Google.', 'Nie obiecuj wirali.', 'Mów o testach i mierzeniu.']
-      }
-    ],
-    quiz: {
-      question: 'Dla jakiej firmy Meta Ads jest szczególnie mocne?',
-      answers: ['Firma z wizualnymi realizacjami', 'Firma bez zdjęć i bez oferty', 'Firma, która nie chce odbierać leadów'],
-      correct: 0
-    }
-  },
-  chatbot: {
-    title: 'Chatbot AI',
-    badge: 'Obsługa zapytań',
-    steps: [
-      {
-        title: 'Co to jest',
-        body: 'Chatbot AI pomaga odpowiadać na powtarzalne pytania, kwalifikować klienta i przekazywać gotowe zgłoszenia do właściciela lub zespołu.',
-        bullets: ['Działa na stronie lub w komunikatorze.', 'Może zbierać dane klienta.', 'Nie zastępuje całej sprzedaży, ale skraca obsługę.']
-      },
-      {
-        title: 'Kto tego potrzebuje',
-        body: 'Firmy, które dostają podobne pytania: cena, termin, lokalizacja, zakres usługi, dostępność.',
-        bullets: ['Dużo zapytań poza godzinami pracy.', 'Powtarzalne kwalifikowanie klientów.', 'Właściciel nie ma czasu odpowiadać wszystkim.']
-      },
-      {
-        title: 'Jak rozpoznać potrzebę',
-        body: 'Jeśli oferta wymaga kilku pytań zanim klient dostanie odpowiedź, chatbot może zebrać dane i przygotować rozmowę.',
-        bullets: ['Brak formularza lub zbyt prosty formularz.', 'Długie odpowiedzi w Messengerze.', 'Dużo pytań o wycenę.']
-      },
-      {
-        title: 'Jak powiedzieć',
-        body: '“Możemy zrobić tak, żeby część pytań klienta była obsługiwana automatycznie, a do was trafiały już uporządkowane zgłoszenia.”',
-        bullets: ['Nie obiecuj, że AI zawsze odpowie idealnie.', 'Mów o kontroli i scenariuszach.', 'Podkreśl oszczędność czasu.']
-      }
-    ],
-    quiz: {
-      question: 'Najlepszy argument za chatbotem AI to:',
-      answers: ['Mniej chaosu i lepiej przygotowane zgłoszenia', 'Zastąpi wszystkich ludzi', 'Nie trzeba już mieć oferty'],
-      correct: 0
-    }
-  },
-  automation: {
-    title: 'Automatyzacje AI',
-    badge: 'Procesy w tle',
-    steps: [
-      {
-        title: 'Co to jest',
-        body: 'Automatyzacje AI łączą formularze, CRM, powiadomienia, podsumowania rozmów, wiadomości follow-up i raporty. Celem jest mniej ręcznej pracy i mniej zgubionych leadów.',
-        bullets: ['Automatyczny follow-up.', 'Porządkowanie leadów.', 'Raporty i przypomnienia.']
-      },
-      {
-        title: 'Kto tego potrzebuje',
-        body: 'Firmy, które mają już zapytania, ale tracą kontrolę: ktoś nie oddzwonił, nie wpisał notatki, nie wysłał oferty albo zapomniał o terminie.',
-        bullets: ['Kilka osób obsługuje klientów.', 'Dużo kanałów kontaktu.', 'Brak jednej listy leadów.']
-      },
-      {
-        title: 'Jak rozpoznać potrzebę',
-        body: 'Pytaj o proces: co dzieje się po zapytaniu? Kto oddzwania? Gdzie trafia notatka? Kiedy wysyłają follow-up?',
-        bullets: ['Brak CRM.', 'Lead trafia tylko na maila.', 'Brak statusów i przypomnień.']
-      },
-      {
-        title: 'Jak powiedzieć',
-        body: '“Nie chodzi tylko o więcej leadów. Chodzi też o to, żeby te leady nie ginęły i żeby zespół wiedział, co zrobić dalej.”',
-        bullets: ['Nie zaczynaj od technicznych integracji.', 'Mów o procesie i stratach.', 'Proponuj mapę procesu jako pierwszy krok.']
-      }
-    ],
-    quiz: {
-      question: 'Kiedy automatyzacja ma największy sens?',
-      answers: ['Gdy firma gubi leady lub robi follow-up ręcznie', 'Gdy firma nie ma żadnych klientów', 'Gdy nie ma internetu'],
-      correct: 0
-    }
+// Sidebar/nav-facing module title, localized via the i18n dictionary (see
+// each module's titleKey above and the matching academy_module_* entries).
+function moduleTitle(module) {
+  const tr = window.AuraI18n?.tr || ((key) => key);
+  return tr(module.titleKey);
+}
+
+// --- Bilingual content helpers --------------------------------------------
+// Deep Academy content (service lessons, scenarios, exam, scripts) is authored
+// as {pl, ru} pairs. UI chrome still goes through window.AuraI18n; these helpers
+// resolve a bilingual field/array to the current academy content language, which
+// tracks the same language as the chrome (see AuraI18n.getLanguage()) but always
+// falls back to Polish (the studio's working language) if a translation is missing.
+function contentLang() {
+  const lang = window.AuraI18n?.getLanguage ? window.AuraI18n.getLanguage() : 'pl';
+  return lang === 'ru' ? 'ru' : 'pl';
+}
+
+function bi(value) {
+  if (value == null) return '';
+  if (typeof value === 'string') return value;
+  const lang = contentLang();
+  return value[lang] ?? value.pl ?? value.ru ?? '';
+}
+
+function biList(value) {
+  if (!value) return [];
+  if (Array.isArray(value)) return value;
+  const lang = contentLang();
+  return value[lang] ?? value.pl ?? value.ru ?? [];
+}
+
+// --- Deep content data (loaded from ./data/*.js, see loadAcademyContentData) --
+let SERVICE_LESSONS = {};
+let SCENARIO_BANK = { scripts: [], objections: [], statuses: [] };
+let QUALIFICATION_LEADS = [];
+let SERVICE_MATCH_CASES = [];
+let FINAL_EXAM = [];
+
+let academyContentLoaded = false;
+
+async function loadAcademyContentData() {
+  if (academyContentLoaded) return;
+  try {
+    const [serviceLessonsMod, scenarioBankMod, qualificationMod, finalExamMod] = await Promise.all([
+      import('./data/service-lessons.js'),
+      import('./data/scenario-bank.js'),
+      import('./data/qualification-leads.js'),
+      import('./data/final-exam.js')
+    ]);
+    SERVICE_LESSONS = serviceLessonsMod.SERVICE_LESSONS || {};
+    SCENARIO_BANK = scenarioBankMod.SCENARIO_BANK || { scripts: [], objections: [], statuses: [] };
+    QUALIFICATION_LEADS = qualificationMod.QUALIFICATION_LEADS || [];
+    SERVICE_MATCH_CASES = qualificationMod.SERVICE_MATCH_CASES || [];
+    FINAL_EXAM = finalExamMod.FINAL_EXAM || [];
+    academyContentLoaded = true;
+  } catch (error) {
+    console.error('Nie udalo sie zaladowac tresci Akademii', error);
   }
-};
+  if (!state.activeService || !SERVICE_LESSONS[state.activeService]) {
+    state.activeService = Object.keys(SERVICE_LESSONS)[0] || state.activeService;
+  }
+}
 
 const articles = {
   'call-logic': {
-    title: 'Logika zimnej rozmowy',
-    intro: 'Twoim celem nie jest sprzedać usługę przez telefon. Twoim celem jest znaleźć realny problem, wzbudzić ciekawość i umówić rozmowę z osobą decyzyjną.',
+    title: { pl: 'Logika zimnej rozmowy', ru: 'Логика холодного звонка' },
+    intro: {
+      pl: 'Twoim celem nie jest sprzedać usługę przez telefon. Twoim celem jest znaleźć realny problem, wzbudzić ciekawość i umówić rozmowę z osobą decyzyjną.',
+      ru: 'Твоя цель — не продать услугу по телефону. Твоя цель — найти реальную проблему, вызвать интерес и договориться о разговоре с человеком, принимающим решения.'
+    },
     sections: [
-      ['Dlaczego dzwonimy', 'Wiele firm nie widzi, że traci klientów przez słabą obecność online. Telefon jest szybkim sposobem, żeby pokazać konkretną obserwację i zaproponować krótką analizę.'],
-      ['Czego nie robimy', 'Nie czytamy ulotki, nie naciskamy na zakup, nie podajemy przypadkowej ceny i nie obiecujemy efektów bez audytu.'],
-      ['Jak tworzyć ciekawość', 'Zaczynasz od obserwacji: opinie, brak strony, słaby profil Google, stara strona, brak formularza. Potem pytasz, czy właściciel chce zobaczyć, co można poprawić.'],
-      ['Jak kwalifikować', 'Sprawdzasz, czy firma działa aktywnie, ma telefon, przyjmuje klientów, ma wartość klienta i czy problem online faktycznie może kosztować ją pieniądze.'],
-      ['Jak kończyć', 'Najlepszy koniec rozmowy to konkretny termin spotkania lub jasny status: oddzwonić, nie pasuje, brak decydenta, dobry lead do managera.']
+      [
+        { pl: 'Dlaczego dzwonimy', ru: 'Почему мы звоним' },
+        {
+          pl: 'Wiele firm nie widzi, że traci klientów przez słabą obecność online. Telefon jest szybkim sposobem, żeby pokazać konkretną obserwację i zaproponować krótką analizę.',
+          ru: 'Многие компании не замечают, что теряют клиентов из-за слабого присутствия онлайн. Звонок — быстрый способ показать конкретное наблюдение и предложить короткий разбор ситуации.'
+        }
+      ],
+      [
+        { pl: 'Czego nie robimy', ru: 'Чего мы не делаем' },
+        {
+          pl: 'Nie czytamy ulotki, nie naciskamy na zakup, nie podajemy przypadkowej ceny i nie obiecujemy efektów bez audytu.',
+          ru: 'Не читаем «по бумажке», не давим на покупку, не называем случайную цену и не обещаем результат без предварительного анализа.'
+        }
+      ],
+      [
+        { pl: 'Jak tworzyć ciekawość', ru: 'Как вызвать интерес' },
+        {
+          pl: 'Zaczynasz od obserwacji: opinie, brak strony, słaby profil Google, stara strona, brak formularza. Potem pytasz, czy właściciel chce zobaczyć, co można poprawić.',
+          ru: 'Начинаешь с наблюдения: отзывы, отсутствие сайта, слабый профиль в Google, устаревший сайт, отсутствие формы заявки. Затем спрашиваешь, хочет ли владелец узнать, что можно улучшить.'
+        }
+      ],
+      [
+        { pl: 'Jak kwalifikować', ru: 'Как квалифицировать' },
+        {
+          pl: 'Sprawdzasz, czy firma działa aktywnie, ma telefon, przyjmuje klientów, ma wartość klienta i czy problem online faktycznie może kosztować ją pieniądze.',
+          ru: 'Проверяешь, активна ли компания, есть ли телефон, принимает ли она клиентов, какова ценность одного клиента и правда ли онлайн-проблема стоит компании денег.'
+        }
+      ],
+      [
+        { pl: 'Jak kończyć', ru: 'Как заканчивать разговор' },
+        {
+          pl: 'Najlepszy koniec rozmowy to konkretny termin spotkania lub jasny status: oddzwonić, nie pasuje, brak decydenta, dobry lead do managera.',
+          ru: 'Лучшее завершение разговора — конкретная дата встречи или чёткий статус: перезвонить, не подходит, нет лица, принимающего решение, хороший лид для менеджера.'
+        }
+      ]
     ]
   }
 };
-
-const scenarios = {
-  scripts: [
-    {
-      client: 'Dzień dobry, o co chodzi?',
-      choices: [
-        ['Dzwonię sprzedać stronę internetową, mamy promocję.', false, 'Za wcześnie. Brzmi jak zwykła sprzedaż i klient będzie się bronił.'],
-        ['Krótko: sprawdzamy lokalne firmy, które mogą tracić zapytania przez słabszą obecność w Google. Chcę tylko zadać jedno pytanie.', true, 'Dobrze. Jest krótko, konkretnie i nie sprzedajesz od razu.'],
-        ['Proszę wejść na naszą stronę i zobaczyć ofertę.', false, 'To oddaje kontrolę klientowi i nie buduje rozmowy.']
-      ]
-    },
-    {
-      client: 'Nie mam teraz czasu.',
-      choices: [
-        ['Rozumiem. Czy lepiej zadzwonić dziś po 16:00 czy jutro rano?', true, 'Dobrze. Dajesz dwie proste opcje i idziesz do następnego kroku.'],
-        ['To ja wyślę ofertę.', false, 'Bez kontekstu oferta zwykle zginie. Najpierw ustal kolejny kontakt.'],
-        ['Ale to zajmie tylko 20 minut.', false, 'Za dużo. Klient powiedział, że nie ma czasu.']
-      ]
-    }
-  ],
-  objections: [
-    {
-      client: 'Nie jestem zainteresowany.',
-      choices: [
-        ['Rozumiem. Nie chcę nic sprzedawać teraz. Chodzi tylko o krótkie sprawdzenie, czy nie tracicie zapytań przez stronę lub Google. Mogę zadać jedno pytanie?', true, 'Dobrze. Obniżasz presję i wracasz do diagnozy.'],
-        ['Dlaczego nie? Przecież to ważne.', false, 'Brzmi konfrontacyjnie.'],
-        ['To proszę dać maila.', false, 'Mail bez zgody na temat nie ma wartości.']
-      ]
-    },
-    {
-      client: 'Mamy stronę.',
-      choices: [
-        ['Super. Właśnie dlatego pytam: czy ta strona realnie daje wam zapytania, czy raczej tylko jest w internecie?', true, 'Dobrze. Nie kłócisz się, tylko otwierasz temat efektu.'],
-        ['Ale pewnie jest słaba.', false, 'Nie oceniaj agresywnie bez audytu.'],
-        ['To nie potrzebujecie nic.', false, 'Możesz stracić dobrego leada, bo problemem może być jakość, SEO albo reklamy.']
-      ]
-    },
-    {
-      client: 'Proszę wysłać ofertę.',
-      choices: [
-        ['Mogę wysłać, tylko żeby nie wysłać czegoś przypadkowego: czy chodzi bardziej o stronę, Google czy pozyskiwanie zapytań?', true, 'Dobrze. Warunkujesz ofertę krótką kwalifikacją.'],
-        ['Dobrze, wyślę wszystko.', false, 'Za szeroko. Klient nie dostanie konkretu.'],
-        ['Nie wysyłamy ofert.', false, 'Za twardo i niepotrzebnie.']
-      ]
-    },
-    {
-      client: 'Ile to kosztuje?',
-      choices: [
-        ['Zależy od zakresu. Najpierw trzeba zobaczyć, co realnie jest potrzebne. Możemy umówić 15 minut i wtedy podać sensowny wariant.', true, 'Dobrze. Nie rzucasz ceny bez diagnozy.'],
-        ['Od 500 zł.', false, 'Przypadkowa cena obniża wartość i może być nieprawdziwa.'],
-        ['Drogo, ale warto.', false, 'Nieprofesjonalne i bez konkretu.']
-      ]
-    }
-  ],
-  statuses: [
-    {
-      client: 'Nikt nie odebrał telefonu.',
-      choices: [
-        ['Ustaw status: Nie odebrał i zaplanuj ponowny kontakt.', true, 'Poprawnie. Taki lead nie jest stracony.'],
-        ['Usuń firmę.', false, 'Nie usuwaj tylko dlatego, że nikt nie odebrał.'],
-        ['Oznacz jako nie pasuje.', false, 'Brak odpowiedzi to nie kwalifikacja.']
-      ]
-    },
-    {
-      client: 'Klient chce rozmowę jutro o 11:00.',
-      choices: [
-        ['Status: Spotkanie umówione, notatka z terminem i tematem.', true, 'Poprawnie. To najważniejszy pozytywny status.'],
-        ['Status: Zainteresowany bez notatki.', false, 'Za mało. Termin musi być zapisany.'],
-        ['Status: Completed.', false, 'Proces nie jest zakończony, tylko przekazany dalej.']
-      ]
-    }
-  ]
-};
-
-const qualificationLeads = [
-  {
-    name: 'Klimatyzacja Nowak Warszawa',
-    facts: ['47 opinii, ocena 4.8', 'Brak własnej strony', 'Telefon widoczny', 'Aktywny sezon'],
-    answer: 'good',
-    why: 'Dobry lead: usługa lokalna, opinie, telefon i brak strony. Jest konkretny powód rozmowy.'
-  },
-  {
-    name: 'Studio brandingowe premium',
-    facts: ['Nowoczesna strona', 'Silny Instagram', 'Nie jest lokalną usługą dla obecnego parsera'],
-    answer: 'weak',
-    why: 'Słabszy lead dla callera od stron lokalnych. Może być B2B, ale nie jest priorytetem.'
-  },
-  {
-    name: 'Firma bez telefonu i bez profilu',
-    facts: ['Brak numeru', 'Brak strony', 'Brak aktywności', 'Nie wiadomo czy działa'],
-    answer: 'skip',
-    why: 'Nie dzwonimy, jeśli nie ma kontaktu i sygnałów aktywności.'
-  }
-];
-
-const finalQuestions = [
-  ['Jaki jest główny cel pierwszej rozmowy?', ['Sprzedać usługę', 'Umówić wartościowe spotkanie', 'Wysłać jak najwięcej ofert'], 1],
-  ['Co robisz, gdy klient mówi “mamy stronę”?', ['Pytasz, czy strona daje zapytania', 'Kończysz rozmowę', 'Krytykujesz stronę'], 0],
-  ['Kiedy lead z brakiem strony jest dobry?', ['Gdy firma jest aktywna i ma kontakt', 'Zawsze', 'Gdy nie ma telefonu'], 0],
-  ['Czego nie obiecywać w SEO?', ['Analizy', 'Planu działań', 'Pierwszego miejsca w Google'], 2],
-  ['Co oznacza status “Spotkanie umówione”?', ['Jest termin i temat rozmowy', 'Klient nie odebrał', 'Nie pasuje'], 0],
-  ['Najlepszy argument za Google Business Profile?', ['Lepsze lokalne zaufanie i widoczność', 'Ładniejsze logo', 'Niższy abonament telefonu'], 0],
-  ['Kiedy Meta Ads ma sens?', ['Przy wizualnej ofercie i realizacjach', 'Bez zdjęć', 'Bez odbierania leadów'], 0],
-  ['Co robi chatbot AI?', ['Porządkuje część pytań i kwalifikuje leady', 'Zastępuje całą firmę', 'Gwarantuje sprzedaż'], 0],
-  ['Co robisz przy “nie mam czasu”?', ['Ustalasz konkretny termin powrotu', 'Naciskasz 20 minut', 'Wysyłasz pustą ofertę'], 0],
-  ['Dlaczego nie rzucać ceny od razu?', ['Bez diagnozy cena jest przypadkowa', 'Bo cena jest tajna', 'Bo klient nie pytał'], 0],
-  ['Co sprawdzasz przy kwalifikacji?', ['Aktywność, kontakt, problem online', 'Tylko nazwę', 'Tylko kolor logo'], 0],
-  ['Co robi globalny lead pool?', ['Chroni przed dublami między pracownikami', 'Zmienia język strony', 'Robi reklamy'], 0],
-  ['Co jest lepsze niż “sprzedajemy strony”?', ['Pomagamy firmom pozyskiwać klientów online', 'Robimy wszystko tanio', 'Nie wiem'], 0],
-  ['Kiedy nie oferować strony?', ['Gdy strona jest dobra i problem jest gdzie indziej', 'Nigdy', 'Zawsze oferować'], 0],
-  ['Co wpisujesz po rozmowie?', ['Status i notatkę', 'Nic', 'Tylko imię klienta'], 0],
-  ['Co oznacza “proszę wysłać ofertę”?', ['Trzeba krótko doprecyzować potrzebę', 'Koniec rozmowy', 'Wysyłamy wszystko'], 0],
-  ['Jaki lead pominąć?', ['Brak telefonu i brak sygnałów aktywności', 'Firma z opiniami', 'Firma bez strony, ale z telefonem'], 0],
-  ['Co daje efekt dużych liczb?', ['Pokazuje, że wynik wynika z regularności', 'Gwarantuje każdą sprzedaż', 'Zastępuje jakość rozmowy'], 0],
-  ['Po co jest akademia?', ['Żeby rozumieć logikę pracy, nie tylko tekst', 'Żeby ominąć rozmowy', 'Żeby nie używać parsera'], 0],
-  ['Kiedy przekazać lead managerowi?', ['Gdy jest zainteresowanie i konkretny następny krok', 'Po każdym nieodebranym', 'Nigdy'], 0]
-];
 
 const ACADEMY_VIEWS = ['home', 'training', 'servicesCatalog', 'scriptsExamples', 'parserGuide', 'aiTraining'];
 
@@ -437,6 +187,7 @@ const state = {
   serviceStep: 0,
   scenarioIndex: 0,
   feedback: '',
+  feedbackOk: null,
   progress: {
     userId: getWorkerId(),
     displayName: '',
@@ -449,6 +200,13 @@ const state = {
     scriptsOpened: []
   },
   finalAnswers: {},
+  finalResult: null,
+  finalSubmitting: false,
+  finalSubmitError: '',
+  serviceQuizAnswers: {},
+  openAnswers: {},
+  qualificationTab: 'leads',
+  matchAnswers: {},
   catalogServiceId: null,
   scriptsExpandedIds: [],
   scriptsTab: 'scripts',
@@ -476,8 +234,37 @@ const els = {
   nextLesson: document.querySelector('#nextLesson'),
   avgScore: document.querySelector('#avgScore'),
   workerName: document.querySelector('#workerName'),
-  academyLogoutButton: document.querySelector('#academyLogoutButton')
+  academyLogoutButton: document.querySelector('#academyLogoutButton'),
+  lockToast: document.querySelector('#academyLockToast'),
+  sidebarTagline: document.querySelector('#sidebarTagline'),
+  workerLabel: document.querySelector('#workerLabel'),
+  sidebarParserLabel: document.querySelector('#sidebarParserLabel'),
+  logoutLabel: document.querySelector('#logoutLabel'),
+  heroTitle: document.querySelector('#heroTitle'),
+  heroCopy: document.querySelector('#heroCopy'),
+  progressOrbLabel: document.querySelector('#progressOrbLabel'),
+  statModulesLabel: document.querySelector('#statModulesLabel'),
+  statNextLabel: document.querySelector('#statNextLabel'),
+  statScoreLabel: document.querySelector('#statScoreLabel')
 };
+
+// Static shell chrome baked into index.html (sidebar tagline, hero heading/copy,
+// stat card labels) never went through window.AuraI18n — it just sat in the HTML
+// as Polish literals. Re-apply translations on every render() so language
+// switches reach this chrome the same way they reach the toolbar/nav labels.
+function applyShellChrome() {
+  const tr = window.AuraI18n?.tr || ((key) => key);
+  if (els.sidebarTagline) els.sidebarTagline.textContent = tr('academy_tagline');
+  if (els.workerLabel) els.workerLabel.textContent = tr('academy_logged_in_as');
+  if (els.sidebarParserLabel) els.sidebarParserLabel.textContent = tr('nav_parser');
+  if (els.logoutLabel) els.logoutLabel.textContent = tr('nav_logout');
+  if (els.heroTitle) els.heroTitle.textContent = tr('academy_hero_title');
+  if (els.heroCopy) els.heroCopy.textContent = tr('academy_hero_copy');
+  if (els.progressOrbLabel) els.progressOrbLabel.textContent = tr('academy_completed_caption');
+  if (els.statModulesLabel) els.statModulesLabel.textContent = tr('academy_stat_modules');
+  if (els.statNextLabel) els.statNextLabel.textContent = tr('academy_stat_next');
+  if (els.statScoreLabel) els.statScoreLabel.textContent = tr('academy_stat_score');
+}
 
 function normalizeApiBase(value) {
   if (!value) return '';
@@ -687,6 +474,27 @@ async function api(path, options = {}) {
   return data;
 }
 
+// Persists the toolbar language toggle to the worker's server-side session
+// (see /api/academy/session-language in server.js) so requestAcademyLanguage()
+// - used by AI-training personas, finish-session feedback, and grade-answer -
+// reflects what the trainee is actually looking at, not just the language
+// captured at login. Best-effort: the UI language has already switched
+// locally via AuraI18n.setLanguage() regardless of whether this call
+// succeeds, and it's only attempted for a signed-in worker. See round-6 QA
+// finding 3.
+async function syncSessionLanguage(lang) {
+  if (!session || !lang) return;
+  try {
+    await api('/api/academy/session-language', {
+      method: 'POST',
+      body: JSON.stringify({ language: lang })
+    });
+  } catch {
+    // Non-fatal - the server will pick up the current language on next login
+    // or next successful toggle.
+  }
+}
+
 async function loadProgress() {
   state.progress.userId = getWorkerId();
   state.progress.displayName = session?.role === 'admin' ? state.progress.userId || session?.displayName || '' : session?.displayName || '';
@@ -760,7 +568,7 @@ function renderShellStats() {
   const next = modules.find((module, index) => !done.has(module.id) && isUnlocked(index)) || modules[modules.length - 1];
   els.overallProgress.textContent = `${percent}%`;
   els.completedModules.textContent = `${done.size} / ${modules.length}`;
-  els.nextLesson.textContent = next.title;
+  els.nextLesson.textContent = moduleTitle(next);
   els.avgScore.textContent = `${scoreAverage()}%`;
 }
 
@@ -780,34 +588,41 @@ function renderNav() {
       return `
         <button class="${className}" data-module="${index}" ${unlocked ? '' : 'disabled'}>
           <span class="module-index">${done.has(module.id) ? '✓' : index + 1}</span>
-          <span>${escapeHtml(module.title)}</span>
+          <span>${escapeHtml(moduleTitle(module))}</span>
         </button>
       `;
     })
     .join('');
 }
 
+// Order mirrors the guided learning path (services -> training -> scripts ->
+// AI trainer). Home is always the dashboard; the parser guide is a separate,
+// always-unlocked operational reference and stays last.
 const TOOLBAR_TABS = [
   { view: 'home', icon: 'house', key: 'nav_home' },
-  { view: 'training', icon: 'graduation-cap', key: 'nav_training' },
   { view: 'servicesCatalog', icon: 'briefcase-business', key: 'nav_services' },
+  { view: 'training', icon: 'graduation-cap', key: 'nav_training' },
   { view: 'scriptsExamples', icon: 'messages-square', key: 'nav_scripts' },
-  { view: 'parserGuide', icon: 'radar', key: 'nav_parser_guide' },
-  { view: 'aiTraining', icon: 'bot', key: 'nav_ai_training' }
+  { view: 'aiTraining', icon: 'bot', key: 'nav_ai_training' },
+  { view: 'parserGuide', icon: 'radar', key: 'nav_parser_guide' }
 ];
 
 function renderToolbar() {
   if (!els.academyToolbar) return;
   const tr = window.AuraI18n?.tr || ((key) => key);
   const lang = window.AuraI18n?.getLanguage ? window.AuraI18n.getLanguage() : 'pl';
-  const tabsHtml = TOOLBAR_TABS.map(
-    (tab) => `
-      <button class="toolbar-tab ${state.academyView === tab.view ? 'active' : ''}" data-academy-view="${tab.view}">
-        <i data-lucide="${tab.icon}"></i>
+  const tabsHtml = TOOLBAR_TABS.map((tab) => {
+    const unlocked = isViewUnlocked(tab.view);
+    const className = ['toolbar-tab', state.academyView === tab.view ? 'active' : '', unlocked ? '' : 'locked']
+      .filter(Boolean)
+      .join(' ');
+    return `
+      <button class="${className}" data-academy-view="${tab.view}">
+        <i data-lucide="${unlocked ? tab.icon : 'lock'}"></i>
         <span>${escapeHtml(tr(tab.key))}</span>
       </button>
-    `
-  ).join('');
+    `;
+  }).join('');
   const langHtml = `
     <div class="toolbar-lang" data-lang-switch>
       ${['pl', 'ru', 'en']
@@ -835,7 +650,7 @@ function trainingPercent() {
 }
 
 function servicesPercent() {
-  const total = Array.isArray(window.AURA_SERVICES) ? window.AURA_SERVICES.length : 22;
+  const total = Array.isArray(window.AURA_SERVICES) ? window.AURA_SERVICES.length : 33;
   const done = (state.progress.servicesCompleted || []).length;
   return total ? Math.round((done / total) * 100) : 0;
 }
@@ -855,11 +670,59 @@ function aiTrainingPercent() {
   return Math.min(100, sessions * 34);
 }
 
+// Guided learning path: services -> training -> scripts -> AI trainer. Each
+// stage stays locked until the previous one has real engagement behind it, so
+// a new hire can't skip straight to the fun AI roleplay without first
+// learning what Aura sells and how to talk about it. Thresholds are
+// deliberately well under 100% - the goal is "drag them through the material
+// in order", not "block them for weeks on one section".
+const STAGE_LABELS = {
+  servicesCatalog: { pl: 'Katalog usług', ru: 'Каталог услуг' },
+  training: { pl: 'Szkolenie', ru: 'Обучение' },
+  scriptsExamples: { pl: 'Skrypty i przykłady', ru: 'Скрипты и примеры' },
+  aiTraining: { pl: 'Trener AI', ru: 'AI-тренер' }
+};
+
+const STAGE_GATES = {
+  servicesCatalog: null,
+  training: { requires: 'servicesCatalog', percentFn: servicesPercent, threshold: 20 },
+  scriptsExamples: { requires: 'training', percentFn: trainingPercent, threshold: 40 },
+  aiTraining: { requires: 'scriptsExamples', percentFn: scriptsPercent, threshold: 30 }
+};
+
+function isViewUnlocked(view) {
+  const gate = STAGE_GATES[view];
+  if (!gate) return true;
+  return gate.percentFn() >= gate.threshold;
+}
+
+function viewUnlockHint(view) {
+  const gate = STAGE_GATES[view];
+  if (!gate) return '';
+  const tr = window.AuraI18n?.tr || ((key) => key);
+  const have = gate.percentFn();
+  return tr('academy_unlock_hint_template')
+    .replace('{stage}', bi(STAGE_LABELS[gate.requires]))
+    .replace('{have}', have)
+    .replace('{threshold}', gate.threshold);
+}
+
+let lockToastTimer = null;
+function showLockToast(message) {
+  if (!els.lockToast || !message) return;
+  els.lockToast.textContent = message;
+  els.lockToast.classList.remove('hidden-field');
+  clearTimeout(lockToastTimer);
+  lockToastTimer = setTimeout(() => els.lockToast.classList.add('hidden-field'), 3800);
+}
+
 function portalCard({ title, body, icon, view, percent = 0 }) {
   const tr = window.AuraI18n?.tr || ((key) => key);
+  const unlocked = isViewUnlocked(view);
+  const className = ['portal-card', unlocked ? '' : 'locked'].filter(Boolean).join(' ');
   return `
-    <a class="portal-card" href="#" data-academy-view="${escapeHtml(view)}">
-      <span class="portal-icon"><i data-lucide="${escapeHtml(icon || 'circle-dot')}"></i></span>
+    <a class="${className}" href="#" data-academy-view="${escapeHtml(view)}">
+      <span class="portal-icon"><i data-lucide="${unlocked ? escapeHtml(icon || 'circle-dot') : 'lock'}"></i></span>
       <h3>${escapeHtml(title)}</h3>
       <p>${escapeHtml(body)}</p>
       <div class="portal-card-progress">
@@ -869,9 +732,27 @@ function portalCard({ title, body, icon, view, percent = 0 }) {
           <span>${escapeHtml(sectionStatusLabel(percent))}</span>
         </div>
       </div>
-      <span class="portal-card-open">${escapeHtml(tr('btn_open'))}</span>
+      ${unlocked ? `<span class="portal-card-open">${escapeHtml(tr('btn_open'))}</span>` : `<p class="portal-card-lock-hint">${escapeHtml(viewUnlockHint(view))}</p>`}
     </a>
   `;
+}
+
+// The guided path in order. Used to pick "what's next" for the home CTA and
+// to compute an overall funnel position, independent of the free-access
+// parser guide.
+const LEARNING_PATH = ['servicesCatalog', 'training', 'scriptsExamples', 'aiTraining'];
+const STAGE_PERCENT_FNS = {
+  servicesCatalog: servicesPercent,
+  training: trainingPercent,
+  scriptsExamples: scriptsPercent,
+  aiTraining: aiTrainingPercent
+};
+
+function nextLearningStage() {
+  for (const view of LEARNING_PATH) {
+    if (STAGE_PERCENT_FNS[view]() < 100) return view;
+  }
+  return LEARNING_PATH[LEARNING_PATH.length - 1];
 }
 
 function renderPortalHome() {
@@ -879,65 +760,117 @@ function renderPortalHome() {
   const overall = Math.round(
     (trainingPercent() + servicesPercent() + scriptsPercent() + parserGuidePercent() + aiTrainingPercent()) / 5
   );
+  const nextStage = nextLearningStage();
   return `
     <div class="lesson-top">
       <div>
         <p class="eyebrow">Aura Sales Academy</p>
-        <h2>Witaj, ${escapeHtml(state.progress.displayName || state.progress.userId)}</h2>
-        <p>
-          Akademia to Twój portal wdrożeniowy: poznajesz nasze usługi, uczysz się rozmawiać z klientem,
-          trenujesz z AI i wiesz, jak pracować z parserem. Postęp zapisuje się automatycznie i jest
-          widoczny dla administratora.
-        </p>
-        <p class="portal-overall">Ogólny postęp: <strong>${overall}%</strong></p>
+        <h2>${escapeHtml(tr('academy_home_greeting_prefix'))}, ${escapeHtml(state.progress.displayName || state.progress.userId)}</h2>
+        <p>${escapeHtml(tr('academy_home_intro'))}</p>
+        <p class="portal-overall">${escapeHtml(tr('academy_home_overall_progress_label'))} <strong>${overall}%</strong></p>
       </div>
       <div class="lesson-top-actions">
-        <button class="primary" data-academy-view="training">${escapeHtml(tr('btn_continue_learning'))}</button>
+        <button class="primary" data-academy-view="${nextStage}">${escapeHtml(tr('btn_continue_learning'))}</button>
         <a class="secondary-link" href="../">${escapeHtml(tr('btn_go_to_parser'))}</a>
       </div>
     </div>
     <div class="portal-grid">
       ${portalCard({
-        title: tr('nav_training'),
-        body: 'Moduły od startu pracy do finalnego testu. Ten wynik widzi administrator.',
-        icon: 'graduation-cap',
-        view: 'training',
-        percent: trainingPercent()
-      })}
-      ${portalCard({
         title: tr('nav_services'),
-        body: 'Pełny katalog usług: co to jest, komu proponować, ile to może kosztować i jak o tym mówić.',
+        body: tr('academy_card_services_body'),
         icon: 'briefcase-business',
         view: 'servicesCatalog',
         percent: servicesPercent()
       })}
       ${portalCard({
+        title: tr('nav_training'),
+        body: tr('academy_card_training_body'),
+        icon: 'graduation-cap',
+        view: 'training',
+        percent: trainingPercent()
+      })}
+      ${portalCard({
         title: tr('nav_scripts'),
-        body: 'Gotowe skrypty rozmów, obsługa obiekcji i przykłady prawdziwych rozmów z klientami.',
+        body: tr('academy_card_scripts_body'),
         icon: 'messages-square',
         view: 'scriptsExamples',
         percent: scriptsPercent()
       })}
       ${portalCard({
-        title: tr('nav_parser_guide'),
-        body: 'Jak wybrać kategorię, czytać AI score i poprawnie ustawiać statusy leadów.',
-        icon: 'radar',
-        view: 'parserGuide',
-        percent: parserGuidePercent()
-      })}
-      ${portalCard({
         title: tr('nav_ai_training'),
-        body: 'Trenuj rozmowy z AI, które gra różne typy klientów, i otrzymuj ocenę po każdej sesji.',
+        body: tr('academy_card_ai_training_body'),
         icon: 'bot',
         view: 'aiTraining',
         percent: aiTrainingPercent()
+      })}
+      ${portalCard({
+        title: tr('nav_parser_guide'),
+        body: tr('academy_card_parser_guide_body'),
+        icon: 'radar',
+        view: 'parserGuide',
+        percent: parserGuidePercent()
       })}
     </div>
   `;
 }
 
-const PRICE_DEFLECTION_PHRASE_PL =
-  '„Dokładna cena zależy od zakresu, ale proste projekty zaczynają się od około 400–500 EUR. Najlepiej krótko sprawdzić, czego Państwo potrzebują, i wtedy przygotować konkretną propozycję.”';
+const PRICE_DEFLECTION_PHRASE = {
+  pl: '„Dokładna cena zależy od zakresu, ale proste projekty zaczynają się od około 400–500 EUR. Najlepiej krótko sprawdzić, czego Państwo potrzebują, i wtedy przygotować konkretną propozycję.”',
+  ru: '«Точная цена зависит от объёма работ, но простые проекты начинаются примерно от 400–500 EUR. Лучше всего коротко уточнить, что именно нужно, и тогда подготовить конкретное предложение.»'
+};
+
+// Fallback shown when the site catalog doesn't provide a price for a service
+// (see mapSiteServiceToAcademyService priceRange/packages below).
+const INDIVIDUAL_PRICE_LABEL = { pl: 'indywidualnie', ru: 'индивидуально' };
+
+// "What to propose" sentence template (see mapSiteServiceToAcademyService below).
+// `name` is already resolved to the current content language by the caller, so
+// each language gets its own full sentence scaffolding around it (rather than
+// gluing a Polish template onto a Russian noun).
+const WHAT_TO_PROPOSE_TEMPLATE = {
+  pl: (name) => `Krótka konsultacja i sprawdzenie, czy usługa „${name}” ma sens dla tej firmy.`,
+  ru: (name) => `Короткая консультация и проверка, имеет ли смысл услуга «${name}» для этой компании.`
+};
+
+// preCallSignals fallback sentence scaffolding - only used when a service's
+// lesson has no `problem`-step bullets (see preCallSignals below). Same
+// pattern as WHAT_TO_PROPOSE_TEMPLATE: a full per-language sentence, not a
+// Polish scaffold with a translated value glued in. See round-5 QA finding 3.
+const PRE_CALL_SIGNAL_FOR_WHO_TEMPLATE = {
+  pl: (forWho) => `Firma pasuje do grupy: ${forWho}`,
+  ru: (forWho) => `Компания подходит группе: ${forWho}`
+};
+const PRE_CALL_SIGNAL_PRICE_FACTORS_TEMPLATE = {
+  pl: (priceFactors) => `Cena zależy od: ${priceFactors}`,
+  ru: (priceFactors) => `Цена зависит от: ${priceFactors}`
+};
+
+// exampleDialogue default opener - only used when a service's lesson has no
+// `opener.say` (see base.exampleDialogue below, overridden further down when
+// lesson.opener.say exists). Same {pl,ru} full-sentence pattern as above.
+// See round-5 QA finding 3.
+const EXAMPLE_DIALOGUE_DEFAULT_TEMPLATE = {
+  pl: (title) =>
+    `Sprzedawca: Dzień dobry, widzę że firma działa aktywnie online. Chciałem krótko sprawdzić, czy ${title.toLowerCase()} jest teraz dla Państwa tematem.\nKlient: A o co dokładnie chodzi?\nSprzedawca: Nie chcę sprzedawać przez telefon. Najpierw sprawdzamy, czy jest konkretny problem i czy warto przygotować propozycję. Możemy umówić 15 minut konsultacji?`,
+  ru: (title) =>
+    `Продавец: Здравствуйте, вижу, что компания активно работает онлайн. Хотел коротко узнать, актуальна ли сейчас для вас тема «${title.toLowerCase()}».\nКлиент: А о чём именно речь?\nПродавец: Не хочу продавать по телефону. Сначала проверим, есть ли конкретная проблема и стоит ли готовить предложение. Можем договориться на 15 минут консультации?`
+};
+
+// exampleDialogue WITH an authored opener - used when a service's lesson has
+// a real opener.say line (see base.exampleDialogue override below). Unlike
+// EXAMPLE_DIALOGUE_DEFAULT_TEMPLATE, the opener line itself is NOT translated
+// here - lesson.opener.say is an authored Polish verbatim call-script line
+// (same convention as scenario-bank.js/SERVICE_LESSONS objections, see the
+// comment near base.objections below) and is inserted as-is into either
+// language's scaffolding. Only the surrounding scaffold (speaker labels +
+// the "A o co dokładnie chodzi?" / "Nie chcę sprzedawać..." lines) is
+// localized. See round-6 QA finding 2.
+const EXAMPLE_DIALOGUE_WITH_OPENER_TEMPLATE = {
+  pl: (say) =>
+    `Sprzedawca: ${say}\nKlient: A o co dokładnie chodzi?\nSprzedawca: Nie chcę sprzedawać przez telefon. Najpierw sprawdzamy, czy jest konkretny problem i czy warto przygotować propozycję. Możemy umówić 15 minut konsultacji?`,
+  ru: (say) =>
+    `Продавец: ${say}\nКлиент: А о чём именно речь?\nПродавец: Не хочу продавать по телефону. Сначала проверим, есть ли конкретная проблема и стоит ли готовить предложение. Можем договориться на 15 минут консультации?`
+};
 
 function mapSiteServiceToAcademyService(service, category = {}) {
   const details = service.details || {};
@@ -945,68 +878,131 @@ function mapSiteServiceToAcademyService(service, category = {}) {
   const short = service.short || details.what || '';
   const problem = details.problem || 'Klient nie ma jasnego systemu pozyskiwania zapytań online.';
   const gives = details.gives || 'Więcej zaufania, lepszy kontakt i większą szansę na zapytanie.';
-  return {
+  const lesson = SERVICE_LESSONS[service.id];
+  const lessonStep = (key) => lesson?.steps.find((step) => step.key === key);
+
+  const base = {
     id: service.id,
     icon: service.icon || 'briefcase-business',
     title,
-    whatIsIt: details.what || short,
+    whatIsIt: bi(lessonStep('what')?.body) || details.what || short,
     howWeDoIt: details.process || 'Najpierw sprawdzamy obecną sytuację firmy, potem dobieramy zakres i wdrażamy rozwiązanie krok po kroku.',
-    whoItsFor: details.forWho || 'Firmy usługowe i lokalne biznesy, które chcą wyglądać profesjonalnie i zdobywać więcej zapytań.',
-    problemSolved: problem,
+    whoItsFor: bi(lessonStep('who')?.body) || details.forWho || 'Firmy usługowe i lokalne biznesy, które chcą wyglądać profesjonalnie i zdobywać więcej zapytań.',
+    problemSolved: bi(lessonStep('problem')?.body) || problem,
     whyClientNeedsIt: gives,
     howItBringsSales: gives,
-    preCallSignals: [
-      problem,
-      details.forWho ? `Firma pasuje do grupy: ${details.forWho}` : '',
-      details.priceFactors ? `Cena zależy od: ${details.priceFactors}` : ''
-    ].filter(Boolean),
+    preCallSignals: (biList(lessonStep('problem')?.bullets).length
+      ? biList(lessonStep('problem')?.bullets)
+      : [
+          problem,
+          details.forWho ? PRE_CALL_SIGNAL_FOR_WHO_TEMPLATE[contentLang()](details.forWho) : '',
+          details.priceFactors ? PRE_CALL_SIGNAL_PRICE_FACTORS_TEMPLATE[contentLang()](details.priceFactors) : ''
+        ]
+    ).filter(Boolean),
     whatToCheck: {
-      website: 'Czy firma ma własną stronę i czy jasno pokazuje ofertę.',
-      googleBusiness: 'Czy profil Google ma aktualne dane, zdjęcia i opinie.',
-      leadForms: 'Czy klient ma prostą drogę do kontaktu: telefon, formularz, rezerwacja.',
-      automation: 'Czy zapytania nie giną między mailem, telefonem i wiadomościami.'
+      website: { pl: 'Czy firma ma własną stronę i czy jasno pokazuje ofertę.', ru: 'Есть ли у компании собственный сайт и понятно ли он показывает предложение.' },
+      googleBusiness: { pl: 'Czy profil Google ma aktualne dane, zdjęcia i opinie.', ru: 'Актуальны ли данные, фото и отзывы в профиле Google.' },
+      leadForms: { pl: 'Czy klient ma prostą drogę do kontaktu: telefon, formularz, rezerwacja.', ru: 'Есть ли у клиента простой способ связи: телефон, форма, запись.' },
+      automation: { pl: 'Czy zapytania nie giną między mailem, telefonem i wiadomościami.', ru: 'Не теряются ли заявки между почтой, телефоном и сообщениями.' }
     },
     simpleExplanation: short || `To usługa z kategorii ${category.label || 'Aura Global'}, która pomaga firmie zdobywać i obsługiwać zapytania.`,
-    whatToPropose: `Krótka konsultacja i sprawdzenie, czy ${title.toLowerCase()} ma sens dla tej firmy.`,
-    priceRange: service.price || 'indywidualnie',
+    whatToPropose: WHAT_TO_PROPOSE_TEMPLATE[contentLang()](title),
+    priceRange: service.price || INDIVIDUAL_PRICE_LABEL,
     priceDepends: [details.priceFactors || 'Zakres projektu, liczba elementów i integracje.'],
     packages: [
-      { tier: 'Start', price: service.price || 'indywidualnie', description: short || details.what || title },
-      { tier: 'Growth', price: 'po konsultacji', description: 'Szerszy zakres dopasowany do celu biznesowego klienta.' }
+      { tier: 'Start', price: service.price || INDIVIDUAL_PRICE_LABEL, description: short || details.what || title },
+      {
+        tier: 'Growth',
+        price: { pl: 'po konsultacji', ru: 'после консультации' },
+        description: { pl: 'Szerszy zakres dopasowany do celu biznesowego klienta.', ru: 'Более широкий объём, подобранный под бизнес-цель клиента.' }
+      }
     ],
     faq: [
       {
-        question: 'Czy można podać dokładną cenę przez telefon?',
-        answer: 'Nie. Caller podaje widełki i umawia konsultację, bo cena zależy od zakresu.'
+        question: { pl: 'Czy można podać dokładną cenę przez telefon?', ru: 'Можно ли назвать точную цену по телефону?' },
+        answer: {
+          pl: 'Nie. Caller podaje widełki i umawia konsultację, bo cena zależy od zakresu.',
+          ru: 'Нет. Звонящий называет вилку цен и договаривается о консультации, потому что цена зависит от объёма.'
+        }
       },
       {
-        question: 'Co jest celem rozmowy?',
-        answer: 'Zrozumieć sytuację klienta i umówić krótką rozmowę ze specjalistą.'
+        question: { pl: 'Co jest celem rozmowy?', ru: 'Какова цель разговора?' },
+        answer: {
+          pl: 'Zrozumieć sytuację klienta i umówić krótką rozmowę ze specjalistą.',
+          ru: 'Понять ситуацию клиента и договориться о коротком разговоре со специалистом.'
+        }
       }
     ],
     objections: [
       {
-        objection: 'Proszę wysłać ofertę.',
-        response: 'Żeby oferta miała sens, najlepiej najpierw krótko sprawdzić, czego firma realnie potrzebuje.'
+        objection: { pl: 'Proszę wysłać ofertę.', ru: 'Пришлите, пожалуйста, предложение.' },
+        response: {
+          pl: 'Żeby oferta miała sens, najlepiej najpierw krótko sprawdzić, czego firma realnie potrzebuje.',
+          ru: 'Чтобы предложение имело смысл, лучше сначала коротко узнать, что компании реально нужно.'
+        }
       },
       {
-        objection: 'Ile to kosztuje?',
-        response: PRICE_DEFLECTION_PHRASE_PL
+        objection: { pl: 'Ile to kosztuje?', ru: 'Сколько это стоит?' },
+        response: bi(PRICE_DEFLECTION_PHRASE)
       }
     ],
-    exampleDialogue: `Sprzedawca: Dzień dobry, widzę że firma działa aktywnie online. Chciałem krótko sprawdzić, czy ${title.toLowerCase()} jest teraz dla Państwa tematem.\nKlient: A o co dokładnie chodzi?\nSprzedawca: Nie chcę sprzedawać przez telefon. Najpierw sprawdzamy, czy jest konkretny problem i czy warto przygotować propozycję. Możemy umówić 15 minut konsultacji?`,
+    exampleDialogue: EXAMPLE_DIALOGUE_DEFAULT_TEMPLATE[contentLang()](title),
     whenNotToPitch: 'Nie proponuj, jeśli firma ma już mocne rozwiązanie w tym obszarze, dobrą widoczność, kontakt działa bez problemu i nie ma jasnego powodu do rozmowy.'
   };
+
+  if (!lesson) return base;
+
+  // Real authored content from SERVICE_LESSONS (see loadAcademyContentData) upgrades
+  // the generic templated fields above with service-specific objections/dialogue.
+  const avoidStep = lessonStep('avoid');
+  if (avoidStep) base.whenNotToPitch = bi(avoidStep.body);
+  if (lesson.objections?.length) {
+    // item.say/item.response are authored Polish call-script lines (kept
+    // Polish-only by design, same convention as scenario-bank.js). item.ru/
+    // item.responseRu are separate Russian-only COACHING COMMENTARY (not a
+    // translation of say/response) explaining the tactic to the trainee, and
+    // item.why is {pl,ru}. All three are preserved here so the service-detail
+    // "Obiekcje" card can render them (see renderServiceDetailObjection) -
+    // previously this mapping silently dropped ru/responseRu/why.
+    base.objections = lesson.objections.map((item) => ({
+      objection: item.say,
+      objectionRu: item.ru,
+      response: item.response,
+      responseRu: item.responseRu,
+      why: item.why
+    }));
+  }
+  if (lesson.opener?.say) {
+    base.exampleDialogue = EXAMPLE_DIALOGUE_WITH_OPENER_TEMPLATE[contentLang()](lesson.opener.say);
+  }
+  if (lesson.crossSell) base.crossSellNote = bi(lesson.crossSell);
+  return base;
 }
 
-async function loadServicesCatalog() {
-  if (Array.isArray(window.AURA_SERVICES) && window.AURA_SERVICES.length) return;
+let siteServicesModule = null;
+
+function buildServicesCatalog() {
+  if (!siteServicesModule) return;
   try {
-    const module = await import('../site/data/services.js');
-    const categories = Array.isArray(module.serviceCategories) ? module.serviceCategories : [];
+    const categories = siteServicesModule.getServiceCategories
+      ? siteServicesModule.getServiceCategories(contentLang())
+      : siteServicesModule.serviceCategories || [];
     window.AURA_SERVICES = categories.flatMap((category) =>
       (category.services || []).map((service) => mapSiteServiceToAcademyService(service, category))
     );
+  } catch {
+    window.AURA_SERVICES = window.AURA_SERVICES || [];
+  }
+}
+
+async function loadServicesCatalog() {
+  if (siteServicesModule) {
+    buildServicesCatalog();
+    return;
+  }
+  try {
+    siteServicesModule = await import('../site/data/services.js');
+    buildServicesCatalog();
   } catch {
     window.AURA_SERVICES = [];
   }
@@ -1040,13 +1036,13 @@ function renderServiceDetail(service) {
   const completed = (state.progress.servicesCompleted || []).includes(service.id);
   const checkList = service.whatToCheck || {};
   const checkLabels = {
-    website: 'Strona internetowa',
-    googleBusiness: 'Google Business Profile',
-    ads: 'Reklamy',
-    socialMedia: 'Social media',
-    leadForms: 'Formularze zgłoszeniowe',
-    siteSpeed: 'Szybkość strony',
-    automation: 'Brak automatyzacji'
+    website: tr('academy_check_website'),
+    googleBusiness: tr('academy_check_google_business'),
+    ads: tr('academy_check_ads'),
+    socialMedia: tr('academy_check_social_media'),
+    leadForms: tr('academy_check_lead_forms'),
+    siteSpeed: tr('academy_check_site_speed'),
+    automation: tr('academy_check_automation')
   };
   return `
     <div class="lesson-top">
@@ -1055,45 +1051,45 @@ function renderServiceDetail(service) {
         <h2>${escapeHtml(service.title)}</h2>
       </div>
       <div class="lesson-top-actions">
-        <button class="secondary" data-back-to-services>← Wszystkie usługi</button>
-        ${completed ? '' : `<button class="primary" data-complete-service="${escapeHtml(service.id)}">Oznacz jako przerobione</button>`}
+        <button class="secondary" data-back-to-services>${escapeHtml(tr('academy_service_detail_back'))}</button>
+        ${completed ? '' : `<button class="primary" data-complete-service="${escapeHtml(service.id)}">${escapeHtml(tr('academy_service_detail_mark_completed'))}</button>`}
       </div>
     </div>
     <div class="service-detail">
-      <div class="content-card"><h3>1. Co to jest?</h3><p>${escapeHtml(service.whatIsIt)}</p></div>
-      <div class="content-card"><h3>2. Jak robimy to dla klienta?</h3><p>${escapeHtml(service.howWeDoIt)}</p></div>
-      <div class="content-card"><h3>3. Dla kogo to jest?</h3><p>${escapeHtml(service.whoItsFor)}</p></div>
-      <div class="content-card"><h3>4. Jaki problem klienta rozwiązuje?</h3><p>${escapeHtml(service.problemSolved)}</p></div>
-      <div class="content-card"><h3>5. Dlaczego klientowi jest to potrzebne?</h3><p>${escapeHtml(service.whyClientNeedsIt)}</p></div>
-      <div class="content-card"><h3>6. Jak to pomaga zdobywać więcej zapytań/sprzedaży?</h3><p>${escapeHtml(service.howItBringsSales)}</p></div>
+      <div class="content-card"><h3>${escapeHtml(tr('academy_service_h1'))}</h3><p>${escapeHtml(service.whatIsIt)}</p></div>
+      <div class="content-card"><h3>${escapeHtml(tr('academy_service_h2'))}</h3><p>${escapeHtml(service.howWeDoIt)}</p></div>
+      <div class="content-card"><h3>${escapeHtml(tr('academy_service_h3'))}</h3><p>${escapeHtml(service.whoItsFor)}</p></div>
+      <div class="content-card"><h3>${escapeHtml(tr('academy_service_h4'))}</h3><p>${escapeHtml(service.problemSolved)}</p></div>
+      <div class="content-card"><h3>${escapeHtml(tr('academy_service_h5'))}</h3><p>${escapeHtml(service.whyClientNeedsIt)}</p></div>
+      <div class="content-card"><h3>${escapeHtml(tr('academy_service_h6'))}</h3><p>${escapeHtml(service.howItBringsSales)}</p></div>
       <div class="content-card">
-        <h3>7. Jak rozpoznać przed telefonem, że klient tego potrzebuje?</h3>
+        <h3>${escapeHtml(tr('academy_service_h7'))}</h3>
         <ul>${(service.preCallSignals || []).map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>
       </div>
       <div class="content-card">
-        <h3>8. Na co patrzeć u klienta?</h3>
+        <h3>${escapeHtml(tr('academy_service_h8'))}</h3>
         <ul>${Object.entries(checkList)
-          .map(([key, value]) => `<li><strong>${escapeHtml(checkLabels[key] || key)}:</strong> ${escapeHtml(value)}</li>`)
+          .map(([key, value]) => `<li><strong>${escapeHtml(checkLabels[key] || key)}:</strong> ${escapeHtml(bi(value))}</li>`)
           .join('')}</ul>
       </div>
-      <div class="content-card"><h3>9. Jak wytłumaczyć prostymi słowami?</h3><p>${escapeHtml(service.simpleExplanation)}</p></div>
-      <div class="content-card"><h3>10. Co konkretnie proponować?</h3><p>${escapeHtml(service.whatToPropose)}</p></div>
+      <div class="content-card"><h3>${escapeHtml(tr('academy_service_h9'))}</h3><p>${escapeHtml(service.simpleExplanation)}</p></div>
+      <div class="content-card"><h3>${escapeHtml(tr('academy_service_h10'))}</h3><p>${escapeHtml(service.whatToPropose)}</p></div>
       <div class="content-card">
-        <h3>11-12. Ile to kosztuje i od czego zależy cena?</h3>
-        <p><strong>${escapeHtml(service.priceRange)}</strong></p>
+        <h3>${escapeHtml(tr('academy_service_h11_12'))}</h3>
+        <p><strong>${escapeHtml(bi(service.priceRange))}</strong></p>
         <ul>${(service.priceDepends || []).map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>
-        <p class="price-deflection">${PRICE_DEFLECTION_PHRASE_PL}</p>
+        <p class="price-deflection">${bi(PRICE_DEFLECTION_PHRASE)}</p>
       </div>
       <div class="content-card">
-        <h3>13. Typowe pakiety</h3>
+        <h3>${escapeHtml(tr('academy_service_h13'))}</h3>
         <div class="package-grid">
           ${(service.packages || [])
             .map(
               (pkg) => `
                 <div class="package-card">
                   <span class="package-tier">${escapeHtml(pkg.tier)}</span>
-                  <strong>${escapeHtml(pkg.price)}</strong>
-                  <p>${escapeHtml(pkg.description)}</p>
+                  <strong>${escapeHtml(bi(pkg.price))}</strong>
+                  <p>${escapeHtml(bi(pkg.description))}</p>
                 </div>
               `
             )
@@ -1101,25 +1097,38 @@ function renderServiceDetail(service) {
         </div>
       </div>
       <div class="content-card">
-        <h3>14. Częste pytania klienta</h3>
-        ${(service.faq || []).map((item) => `<p><strong>${escapeHtml(item.question)}</strong><br>${escapeHtml(item.answer)}</p>`).join('')}
+        <h3>${escapeHtml(tr('academy_service_h14'))}</h3>
+        ${(service.faq || []).map((item) => `<p><strong>${escapeHtml(bi(item.question))}</strong><br>${escapeHtml(bi(item.answer))}</p>`).join('')}
       </div>
       <div class="content-card">
-        <h3>15-16. Obiekcje i jak na nie odpowiedzieć</h3>
-        ${(service.objections || [])
-          .map((item) => `<p><strong>„${escapeHtml(item.objection)}”</strong><br>→ ${escapeHtml(item.response)}</p>`)
-          .join('')}
+        <h3>${escapeHtml(tr('academy_service_h15_16'))}</h3>
+        ${(service.objections || []).map(renderServiceDetailObjection).join('')}
       </div>
       <div class="content-card">
-        <h3>17. Przykład krótkiej rozmowy</h3>
+        <h3>${escapeHtml(tr('academy_service_h17'))}</h3>
         <pre class="dialogue-block">${escapeHtml(service.exampleDialogue)}</pre>
       </div>
-      <div class="content-card"><h3>18. Kiedy NIE proponować tej usługi?</h3><p>${escapeHtml(service.whenNotToPitch)}</p></div>
+      <div class="content-card"><h3>${escapeHtml(tr('academy_service_h18'))}</h3><p>${escapeHtml(service.whenNotToPitch)}</p></div>
+      ${service.crossSellNote ? `<div class="content-card"><h3>${escapeHtml(tr('academy_service_h19'))}</h3><p>${escapeHtml(service.crossSellNote)}</p></div>` : ''}
     </div>
   `;
 }
 
+// Objection entries mapped in mapSiteServiceToAcademyService carry optional
+// objectionRu/responseRu (Russian-only coaching commentary - no Polish
+// equivalent field exists, so it always shows regardless of active UI
+// language, same convention as renderObjectionCard/renderPhraseCard's
+// "phrase-note" asides) and why ({pl,ru}, resolved via bi()).
+function renderServiceDetailObjection(item) {
+  return `
+    <p><strong>„${escapeHtml(bi(item.objection))}”</strong>${item.objectionRu ? `<br><span class="phrase-note muted">${escapeHtml(item.objectionRu)}</span>` : ''}</p>
+    <p>→ ${escapeHtml(bi(item.response))}${item.responseRu ? `<br><span class="phrase-note muted">${escapeHtml(item.responseRu)}</span>` : ''}</p>
+    ${item.why ? `<p class="phrase-why">💡 ${escapeHtml(bi(item.why))}</p>` : ''}
+  `;
+}
+
 function renderServicesCatalogSection() {
+  const tr = window.AuraI18n?.tr || ((key) => key);
   const services = Array.isArray(window.AURA_SERVICES) ? window.AURA_SERVICES : [];
   if (state.catalogServiceId) {
     const service = services.find((item) => item.id === state.catalogServiceId);
@@ -1131,23 +1140,19 @@ function renderServicesCatalogSection() {
   return `
     <div class="lesson-top">
       <div>
-        <p class="eyebrow">Baza wiedzy</p>
-        <h2>Nasze usługi</h2>
-        <p>
-          Poznaj każdą usługę na tyle, żeby nie brzmieć jak robot: rozumieć problem klienta, umieć
-          wytłumaczyć wartość i doprowadzić rozmowę do spotkania. Dokładnej ceny nie obiecujemy przez
-          telefon — zadaniem rozmowy jest umówić konsultację.
-        </p>
-        <p class="price-deflection">${PRICE_DEFLECTION_PHRASE_PL}</p>
+        <p class="eyebrow">${escapeHtml(tr('academy_eyebrow_knowledge_base'))}</p>
+        <h2>${escapeHtml(tr('academy_services_h2'))}</h2>
+        <p>${escapeHtml(tr('academy_services_intro'))}</p>
+        <p class="price-deflection">${bi(PRICE_DEFLECTION_PHRASE)}</p>
         <div class="action-row">
-          <a class="primary" href="${escapeAttribute(SITE_PAGE_URL)}" target="_blank" rel="noreferrer">Otwórz stronę z ofertą</a>
+          <a class="primary" href="${escapeAttribute(SITE_PAGE_URL)}" target="_blank" rel="noreferrer">${escapeHtml(tr('academy_services_cta'))}</a>
         </div>
       </div>
     </div>
     ${
       services.length
         ? `<div class="portal-grid services-grid">${services.map(renderServiceCard).join('')}</div>`
-        : `<p class="muted">Ładowanie katalogu usług...</p>`
+        : `<p class="muted">${escapeHtml(tr('academy_loading_catalog'))}</p>`
     }
   `;
 }
@@ -1161,76 +1166,79 @@ function markScriptOpened(itemId) {
 }
 
 function renderScriptCard(script) {
+  const tr = window.AuraI18n?.tr || ((key) => key);
   const expanded = state.scriptsExpandedIds.includes(script.id);
   if (!expanded) {
     return `
       <a class="portal-card script-card" href="#" data-toggle-script="${escapeHtml(script.id)}">
         <span class="portal-icon"><i data-lucide="message-circle"></i></span>
-        <h3>${escapeHtml(script.title)}</h3>
-        <p>${escapeHtml(script.situation)}</p>
-        <span class="portal-card-open">Rozwiń</span>
+        <h3>${escapeHtml(bi(script.title))}</h3>
+        <p>${escapeHtml(bi(script.situation))}</p>
+        <span class="portal-card-open">${escapeHtml(tr('btn_open'))}</span>
       </a>
     `;
   }
   return `
     <div class="content-card script-card-expanded">
       <div class="lesson-top">
-        <h3>${escapeHtml(script.title)}</h3>
-        <button class="secondary" data-toggle-script="${escapeHtml(script.id)}">Zwiń</button>
+        <h3>${escapeHtml(bi(script.title))}</h3>
+        <button class="secondary" data-toggle-script="${escapeHtml(script.id)}">${escapeHtml(tr('btn_collapse'))}</button>
       </div>
-      <p><strong>Sytuacja:</strong> ${escapeHtml(script.situation)}</p>
-      <p><strong>Cel:</strong> ${escapeHtml(script.goal)}</p>
-      <p><strong>Gotowa fraza:</strong> „${escapeHtml(script.readyPhrase)}”</p>
-      <p class="feedback bad"><strong>Zły przykład:</strong> ${escapeHtml(script.badExample)}</p>
-      <p class="feedback ok"><strong>Dobry przykład:</strong> ${escapeHtml(script.goodExample)}</p>
-      <p><strong>Logika:</strong> ${escapeHtml(script.logic)}</p>
-      <p><strong>Czego nie mówić:</strong> ${escapeHtml(script.whatNotToSay)}</p>
-      <p><strong>Jak przejść dalej:</strong> ${escapeHtml(script.howToTransition)}</p>
+      <p><strong>${escapeHtml(tr('academy_script_label_situation'))}</strong> ${escapeHtml(bi(script.situation))}</p>
+      <p><strong>${escapeHtml(tr('academy_script_label_goal'))}</strong> ${escapeHtml(bi(script.goal))}</p>
+      <p><strong>${escapeHtml(tr('academy_script_label_ready_phrase'))}</strong> „${escapeHtml(bi(script.readyPhrase))}”</p>
+      <p class="feedback bad"><strong>${escapeHtml(tr('academy_script_label_bad_example'))}</strong> ${escapeHtml(bi(script.badExample))}</p>
+      <p class="feedback ok"><strong>${escapeHtml(tr('academy_script_label_good_example'))}</strong> ${escapeHtml(bi(script.goodExample))}</p>
+      <p><strong>${escapeHtml(tr('academy_script_label_logic'))}</strong> ${escapeHtml(bi(script.logic))}</p>
+      <p><strong>${escapeHtml(tr('academy_script_label_what_not_to_say'))}</strong> ${escapeHtml(bi(script.whatNotToSay))}</p>
+      <p><strong>${escapeHtml(tr('academy_script_label_how_to_transition'))}</strong> ${escapeHtml(bi(script.howToTransition))}</p>
     </div>
   `;
 }
 
 function renderExampleCard(example) {
+  const tr = window.AuraI18n?.tr || ((key) => key);
   const expanded = state.scriptsExpandedIds.includes(example.id);
   if (!expanded) {
     return `
       <a class="portal-card script-card" href="#" data-toggle-script="${escapeHtml(example.id)}">
         <span class="portal-icon"><i data-lucide="scroll-text"></i></span>
-        <h3>${escapeHtml(example.title)}</h3>
-        <p>${escapeHtml((example.transcript || '').slice(0, 90))}…</p>
-        <span class="portal-card-open">Rozwiń</span>
+        <h3>${escapeHtml(bi(example.title))}</h3>
+        <p>${escapeHtml((bi(example.transcript) || '').slice(0, 90))}…</p>
+        <span class="portal-card-open">${escapeHtml(tr('btn_open'))}</span>
       </a>
     `;
   }
   return `
     <div class="content-card script-card-expanded">
       <div class="lesson-top">
-        <h3>${escapeHtml(example.title)}</h3>
-        <button class="secondary" data-toggle-script="${escapeHtml(example.id)}">Zwiń</button>
+        <h3>${escapeHtml(bi(example.title))}</h3>
+        <button class="secondary" data-toggle-script="${escapeHtml(example.id)}">${escapeHtml(tr('btn_collapse'))}</button>
       </div>
-      <pre class="dialogue-block">${escapeHtml(example.transcript)}</pre>
-      <p class="feedback ok"><strong>Co zrobił dobrze:</strong> ${escapeHtml(example.whatWasGood)}</p>
-      <p class="feedback bad"><strong>Co zrobił źle:</strong> ${escapeHtml(example.whatWasBad)}</p>
-      <p><strong>Jak mogło być lepiej:</strong> ${escapeHtml(example.howItCouldBeBetter)}</p>
-      <p><strong>Wynik rozmowy:</strong> ${escapeHtml(example.outcome)}</p>
-      <p><strong>Status do ustawienia w parserze:</strong> ${escapeHtml(example.parserStatusToSet)}</p>
+      <pre class="dialogue-block">${escapeHtml(bi(example.transcript))}</pre>
+      <p class="feedback ok"><strong>${escapeHtml(tr('academy_example_label_what_good'))}</strong> ${escapeHtml(bi(example.whatWasGood))}</p>
+      <p class="feedback bad"><strong>${escapeHtml(tr('academy_example_label_what_bad'))}</strong> ${escapeHtml(bi(example.whatWasBad))}</p>
+      <p><strong>${escapeHtml(tr('academy_example_label_how_better'))}</strong> ${escapeHtml(bi(example.howItCouldBeBetter))}</p>
+      <p><strong>${escapeHtml(tr('academy_example_label_outcome'))}</strong> ${escapeHtml(bi(example.outcome))}</p>
+      <p><strong>${escapeHtml(tr('academy_example_label_status'))}</strong> ${escapeHtml(example.parserStatusToSet)}</p>
     </div>
   `;
 }
 
 function renderScriptsExamplesSection() {
+  const tr = window.AuraI18n?.tr || ((key) => key);
   const data = window.AURA_SCRIPTS || { scripts: [], examples: [] };
   const tab = state.scriptsTab === 'examples' ? 'examples' : 'scripts';
   return `
     <div class="lesson-top">
       <div>
-        <p class="eyebrow">Baza wiedzy</p>
-        <h2>Skrypty i przykłady rozmów</h2>
-        <p>Gotowe frazy na typowe sytuacje oraz prawdziwe przykłady rozmów — ucz się logiki, nie tylko tekstu na pamięć.</p>
+        <p class="eyebrow">${escapeHtml(tr('academy_eyebrow_knowledge_base'))}</p>
+        <h2>${escapeHtml(tr('academy_scripts_h2'))}</h2>
+        <p>${escapeHtml(tr('academy_scripts_intro'))}</p>
       </div>
       <div class="lesson-top-actions">
-        <button class="${tab === 'scripts' ? 'primary' : 'secondary'}" data-scripts-tab="scripts">A. Skrypty</button>
-        <button class="${tab === 'examples' ? 'primary' : 'secondary'}" data-scripts-tab="examples">B. Przykłady rozmów</button>
+        <button class="${tab === 'scripts' ? 'primary' : 'secondary'}" data-scripts-tab="scripts">${escapeHtml(tr('academy_scripts_tab_scripts'))}</button>
+        <button class="${tab === 'examples' ? 'primary' : 'secondary'}" data-scripts-tab="examples">${escapeHtml(tr('academy_scripts_tab_examples'))}</button>
       </div>
     </div>
     <div class="portal-grid scripts-grid">
@@ -1244,19 +1252,97 @@ function renderScriptsExamplesSection() {
 }
 
 const PARSER_GUIDE_POINTS = [
-  { title: 'Jak wybrać kategorię', body: 'Wybierz branżę zgodną z tym, co realnie sprzedajemy (np. Klimatyzacja, Auto detailing). Zła kategoria = słabe leady.' },
-  { title: 'Jak wybrać miasto', body: 'Wybierz miasto lub dzielnicę, w której szukasz firm. Im węższy obszar, tym trafniejsze wyniki.' },
-  { title: 'Jak czytać listę leadów', body: 'Każdy wiersz to firma z podstawowymi danymi: nazwa, telefon, status strony, AI score. Sortuj wg score, żeby dzwonić od najlepszych.' },
-  { title: 'Co znaczy AI score', body: 'Liczba 0–100 pokazująca, jak dobrym leadem jest firma (brak strony, aktywność, potencjał). Wyżej = warto zadzwonić w pierwszej kolejności.' },
-  { title: 'Co znaczy category match', body: 'AI potwierdza, że firma faktycznie działa w wybranej branży. Zielony = pasuje, można dzwonić bez obaw.' },
-  { title: 'Co znaczy wrong category', body: 'AI podejrzewa, że firma NIE pasuje do wybranej kategorii (np. trafił się warsztat zamiast salonu kosmetycznego). Zweryfikuj przed telefonem.' },
-  { title: 'Jak otworzyć kartę firmy', body: 'Kliknij w wiersz firmy na liście — otworzy się karta ze wszystkimi danymi, historią statusów i wynikiem AI.' },
-  { title: 'Jak ocenić, czy warto dzwonić', body: 'Sprawdź status strony, AI score i category match. Priorytet: brak strony / słaba strona + wysoki score + pasująca kategoria.' },
-  { title: 'Jak ustawić status', body: 'Po rozmowie zawsze ustaw status leada (np. "Umówione spotkanie", "Nie zainteresowany") — to widzi też admin.' },
-  { title: 'Jak napisać notatkę', body: 'W karcie firmy dodaj krótką notatkę: co ustalono, kiedy oddzwonić, na co uważać przy kolejnym kontakcie.' },
-  { title: 'Co zrobić, gdy numer jest błędny', body: 'Ustaw status "Brak telefonu / błędny numer" i przejdź do kolejnego leada — nie trać czasu na próby.' },
-  { title: 'Co zrobić, gdy firma nie pasuje', body: 'Ustaw status "Nie pasuje" i krótko opisz dlaczego w notatce — to pomaga poprawiać jakość przyszłych wyszukiwań.' },
-  { title: 'Co zrobić, gdy AI ostrzega o złej kategorii', body: 'Zweryfikuj firmę ręcznie (strona, Google) zanim zadzwonisz — jeśli faktycznie nie pasuje, ustaw status "Nie pasuje" bez dzwonienia.' }
+  {
+    title: { pl: 'Jak wybrać kategorię', ru: 'Как выбрать категорию' },
+    body: {
+      pl: 'Wybierz branżę zgodną z tym, co realnie sprzedajemy (np. Klimatyzacja, Auto detailing). Zła kategoria = słabe leady.',
+      ru: 'Выбери отрасль, соответствующую тому, что мы реально продаём (например, Кондиционеры, Автодетейлинг). Неправильная категория = слабые лиды.'
+    }
+  },
+  {
+    title: { pl: 'Jak wybrać miasto', ru: 'Как выбрать город' },
+    body: {
+      pl: 'Wybierz miasto lub dzielnicę, w której szukasz firm. Im węższy obszar, tym trafniejsze wyniki.',
+      ru: 'Выбери город или район, в котором ищешь компании. Чем уже область, тем точнее результаты.'
+    }
+  },
+  {
+    title: { pl: 'Jak czytać listę leadów', ru: 'Как читать список лидов' },
+    body: {
+      pl: 'Każdy wiersz to firma z podstawowymi danymi: nazwa, telefon, status strony, AI score. Sortuj wg score, żeby dzwonić od najlepszych.',
+      ru: 'Каждая строка — это компания с основными данными: название, телефон, статус сайта, AI score. Сортируй по score, чтобы звонить сначала лучшим.'
+    }
+  },
+  {
+    title: { pl: 'Co znaczy AI score', ru: 'Что значит AI score' },
+    body: {
+      pl: 'Liczba 0–100 pokazująca, jak dobrym leadem jest firma (brak strony, aktywność, potencjał). Wyżej = warto zadzwonić w pierwszej kolejności.',
+      ru: 'Число от 0 до 100, показывающее, насколько хорошим лидом является компания (отсутствие сайта, активность, потенциал). Чем выше — тем в первую очередь стоит звонить.'
+    }
+  },
+  {
+    title: { pl: 'Co znaczy category match', ru: 'Что значит category match' },
+    body: {
+      pl: 'AI potwierdza, że firma faktycznie działa w wybranej branży. Zielony = pasuje, można dzwonić bez obaw.',
+      ru: 'AI подтверждает, что компания действительно работает в выбранной отрасли. Зелёный = подходит, можно звонить без опасений.'
+    }
+  },
+  {
+    title: { pl: 'Co znaczy wrong category', ru: 'Что значит wrong category' },
+    body: {
+      pl: 'AI podejrzewa, że firma NIE pasuje do wybranej kategorii (np. trafił się warsztat zamiast salonu kosmetycznego). Zweryfikuj przed telefonem.',
+      ru: 'AI подозревает, что компания НЕ подходит к выбранной категории (например, попалась мастерская вместо салона красоты). Проверь перед звонком.'
+    }
+  },
+  {
+    title: { pl: 'Jak otworzyć kartę firmy', ru: 'Как открыть карточку компании' },
+    body: {
+      pl: 'Kliknij w wiersz firmy na liście — otworzy się karta ze wszystkimi danymi, historią statusów i wynikiem AI.',
+      ru: 'Кликни по строке компании в списке — откроется карточка со всеми данными, историей статусов и результатом AI.'
+    }
+  },
+  {
+    title: { pl: 'Jak ocenić, czy warto dzwonić', ru: 'Как оценить, стоит ли звонить' },
+    body: {
+      pl: 'Sprawdź status strony, AI score i category match. Priorytet: brak strony / słaba strona + wysoki score + pasująca kategoria.',
+      ru: 'Проверь статус сайта, AI score и category match. Приоритет: нет сайта / слабый сайт + высокий score + подходящая категория.'
+    }
+  },
+  {
+    title: { pl: 'Jak ustawić status', ru: 'Как установить статус' },
+    body: {
+      pl: 'Po rozmowie zawsze ustaw status leada (np. "Umówione spotkanie", "Nie zainteresowany") — to widzi też admin.',
+      ru: 'После разговора всегда устанавливай статус лида (например, «Назначена встреча», «Не заинтересован») — это видит и админ.'
+    }
+  },
+  {
+    title: { pl: 'Jak napisać notatkę', ru: 'Как написать заметку' },
+    body: {
+      pl: 'W karcie firmy dodaj krótką notatkę: co ustalono, kiedy oddzwonić, na co uważać przy kolejnym kontakcie.',
+      ru: 'В карточке компании добавь короткую заметку: что договорились, когда перезвонить, на что обратить внимание при следующем контакте.'
+    }
+  },
+  {
+    title: { pl: 'Co zrobić, gdy numer jest błędny', ru: 'Что делать, если номер неверный' },
+    body: {
+      pl: 'Ustaw status "Brak telefonu / błędny numer" i przejdź do kolejnego leada — nie trać czasu na próby.',
+      ru: 'Установи статус «Нет телефона / неверный номер» и переходи к следующему лиду — не трать время на попытки.'
+    }
+  },
+  {
+    title: { pl: 'Co zrobić, gdy firma nie pasuje', ru: 'Что делать, если компания не подходит' },
+    body: {
+      pl: 'Ustaw status "Nie pasuje" i krótko opisz dlaczego w notatce — to pomaga poprawiać jakość przyszłych wyszukiwań.',
+      ru: 'Установи статус «Не подходит» и коротко опиши причину в заметке — это помогает улучшать качество будущих поисков.'
+    }
+  },
+  {
+    title: { pl: 'Co zrobić, gdy AI ostrzega o złej kategorii', ru: 'Что делать, если AI предупреждает о неправильной категории' },
+    body: {
+      pl: 'Zweryfikuj firmę ręcznie (strona, Google) zanim zadzwonisz — jeśli faktycznie nie pasuje, ustaw status "Nie pasuje" bez dzwonienia.',
+      ru: 'Проверь компанию вручную (сайт, Google), прежде чем звонить — если она действительно не подходит, установи статус «Не подходит» без звонка.'
+    }
+  }
 ];
 
 function renderParserGuideSection() {
@@ -1264,9 +1350,9 @@ function renderParserGuideSection() {
   return `
     <div class="lesson-top">
       <div>
-        <p class="eyebrow">Instrukcja</p>
-        <h2>Praca z parserem</h2>
-        <p>Krótki przewodnik, jak korzystać z parsera leadów: od wyboru kategorii do ustawienia statusu po rozmowie.</p>
+        <p class="eyebrow">${escapeHtml(tr('academy_parser_guide_eyebrow'))}</p>
+        <h2>${escapeHtml(tr('nav_parser_guide'))}</h2>
+        <p>${escapeHtml(tr('academy_parser_guide_intro'))}</p>
       </div>
       <a class="primary-link" href="../">${escapeHtml(tr('btn_go_to_parser'))}</a>
     </div>
@@ -1276,8 +1362,8 @@ function renderParserGuideSection() {
           <div class="content-card guide-item">
             <span class="guide-index">${index + 1}</span>
             <div>
-              <h3>${escapeHtml(point.title)}</h3>
-              <p>${escapeHtml(point.body)}</p>
+              <h3>${escapeHtml(bi(point.title))}</h3>
+              <p>${escapeHtml(bi(point.body))}</p>
             </div>
           </div>
         `
@@ -1287,21 +1373,21 @@ function renderParserGuideSection() {
 }
 
 const AI_TRAINING_FALLBACK_PERSONAS = [
-  { id: 'busy_owner', label: 'Zajęty właściciel' },
-  { id: 'angry_owner', label: 'Zły właściciel' },
-  { id: 'skeptic', label: 'Sceptyk' },
-  { id: 'no_website', label: 'Klient bez strony' },
-  { id: 'old_website', label: 'Klient ze starą stroną' },
-  { id: 'good_website', label: 'Klient z dobrą stroną' },
-  { id: 'send_offer', label: 'Klient mówi "wyślij ofertę"' },
-  { id: 'asks_price', label: 'Klient od razu pyta o cenę' },
-  { id: 'no_marketing', label: 'Klient nie rozumie marketingu' },
-  { id: 'has_agency', label: 'Klient ma już agencję' },
-  { id: 'interested_website', label: 'Klient zainteresowany stroną' },
-  { id: 'interested_ads', label: 'Klient zainteresowany reklamą' },
-  { id: 'wants_callback', label: 'Klient chce, żeby oddzwonić' },
-  { id: 'distrustful', label: 'Klient nie ufa' },
-  { id: 'ready_to_meet', label: 'Klient gotowy na spotkanie' }
+  { id: 'busy_owner', label: { pl: 'Zajęty właściciel', ru: 'Занятый владелец' } },
+  { id: 'angry_owner', label: { pl: 'Zły właściciel', ru: 'Злой владелец' } },
+  { id: 'skeptic', label: { pl: 'Sceptyk', ru: 'Скептик' } },
+  { id: 'no_website', label: { pl: 'Klient bez strony', ru: 'Клиент без сайта' } },
+  { id: 'old_website', label: { pl: 'Klient ze starą stroną', ru: 'Клиент со старым сайтом' } },
+  { id: 'good_website', label: { pl: 'Klient z dobrą stroną', ru: 'Клиент с хорошим сайтом' } },
+  { id: 'send_offer', label: { pl: 'Klient mówi "wyślij ofertę"', ru: 'Клиент говорит: "пришлите предложение"' } },
+  { id: 'asks_price', label: { pl: 'Klient od razu pyta o cenę', ru: 'Клиент сразу спрашивает цену' } },
+  { id: 'no_marketing', label: { pl: 'Klient nie rozumie marketingu', ru: 'Клиент не понимает маркетинг' } },
+  { id: 'has_agency', label: { pl: 'Klient ma już agencję', ru: 'У клиента уже есть агентство' } },
+  { id: 'interested_website', label: { pl: 'Klient zainteresowany stroną', ru: 'Клиент заинтересован в сайте' } },
+  { id: 'interested_ads', label: { pl: 'Klient zainteresowany reklamą', ru: 'Клиент заинтересован в рекламе' } },
+  { id: 'wants_callback', label: { pl: 'Klient chce, żeby oddzwonić', ru: 'Клиент просит перезвонить' } },
+  { id: 'distrustful', label: { pl: 'Klient nie ufa', ru: 'Клиент не доверяет' } },
+  { id: 'ready_to_meet', label: { pl: 'Klient gotowy na spotkanie', ru: 'Клиент готов на встречу' } }
 ];
 
 async function loadAiTrainingHistory() {
@@ -1338,7 +1424,13 @@ async function startAiTraining(clientType) {
     state.aiTraining.result = null;
     state.aiTraining.view = 'chat';
   } catch (error) {
-    state.aiTraining.error = error.message || 'Nie udało się rozpocząć treningu.';
+    // Never show the raw upstream error (e.g. a literal OpenAI API error
+    // string) to the trainee - always a translated, generic fallback. The
+    // real error still goes to the console for debugging. See round-5 QA
+    // finding 2.
+    console.error('startAiTraining failed:', error);
+    const tr = window.AuraI18n?.tr || ((key) => key);
+    state.aiTraining.error = tr('academy_ai_training_error_start');
   } finally {
     state.aiTraining.sending = false;
     render();
@@ -1357,7 +1449,9 @@ async function sendAiTrainingMessage(text) {
     });
     state.aiTraining.messages.push({ role: 'client', text: data.reply });
   } catch (error) {
-    state.aiTraining.error = error.message || 'Błąd rozmowy.';
+    console.error('sendAiTrainingMessage failed:', error);
+    const tr = window.AuraI18n?.tr || ((key) => key);
+    state.aiTraining.error = tr('academy_ai_training_error_message');
   } finally {
     state.aiTraining.sending = false;
     render();
@@ -1374,7 +1468,9 @@ async function finishAiTraining() {
     state.aiTraining.view = 'feedback';
     loadAiTrainingHistory();
   } catch (error) {
-    state.aiTraining.error = error.message || 'Nie udało się zakończyć treningu.';
+    console.error('finishAiTraining failed:', error);
+    const tr = window.AuraI18n?.tr || ((key) => key);
+    state.aiTraining.error = tr('academy_ai_training_error_finish');
   } finally {
     state.aiTraining.sending = false;
     render();
@@ -1387,43 +1483,80 @@ function renderAiTrainingChatBubble(message) {
 }
 
 function renderAiTrainingFeedback(session) {
+  const tr = window.AuraI18n?.tr || ((key) => key);
   const feedback = session.feedback || {};
   return `
     <div class="lesson-top">
       <div>
-        <p class="eyebrow">Wynik treningu</p>
+        <p class="eyebrow">${escapeHtml(tr('academy_ai_feedback_eyebrow'))}</p>
         <h2>${escapeHtml(session.score ?? 0)}/100</h2>
-        <p>${feedback.meetingBooked ? '✅ Spotkanie zostało umówione' : '❌ Spotkanie nie zostało umówione'}</p>
+        <p>${feedback.meetingBooked ? escapeHtml(tr('academy_ai_feedback_meeting_booked')) : escapeHtml(tr('academy_ai_feedback_meeting_not_booked'))}</p>
       </div>
       <div class="lesson-top-actions">
-        <button class="primary" data-ai-training-new>Nowy trening</button>
-        <button class="secondary" data-academy-view="aiTraining">Powrót do listy</button>
+        <button class="primary" data-ai-training-new>${escapeHtml(tr('academy_ai_feedback_new_training'))}</button>
+        <button class="secondary" data-academy-view="aiTraining">${escapeHtml(tr('academy_ai_feedback_back_to_list'))}</button>
       </div>
     </div>
     <div class="content-card">
-      <h3>Co poszło dobrze</h3>
+      <h3>${escapeHtml(tr('academy_ai_feedback_good_heading'))}</h3>
       <ul>${(feedback.good || []).map((item) => `<li>${escapeHtml(item)}</li>`).join('') || '<li>—</li>'}</ul>
     </div>
     <div class="content-card">
-      <h3>Co wymaga poprawy</h3>
+      <h3>${escapeHtml(tr('academy_ai_feedback_bad_heading'))}</h3>
       <ul>${(feedback.bad || []).map((item) => `<li>${escapeHtml(item)}</li>`).join('') || '<li>—</li>'}</ul>
     </div>
     <div class="content-card">
-      <h3>Jak poprawić następnym razem</h3>
+      <h3>${escapeHtml(tr('academy_ai_feedback_improve_heading'))}</h3>
       <ul>${(feedback.improvements || []).map((item) => `<li>${escapeHtml(item)}</li>`).join('') || '<li>—</li>'}</ul>
     </div>
   `;
 }
 
 function renderAiTrainingHistoryItem(session) {
+  const tr = window.AuraI18n?.tr || ((key) => key);
   const persona = state.aiTraining.personas.find((item) => item.id === session.clientType);
   const date = session.completedAt || session.createdAt || '';
+  const dateLocale = contentLang() === 'ru' ? 'ru-RU' : 'pl-PL';
+  const statusLabel =
+    session.status === 'completed'
+      ? tr('academy_ai_history_score_template').replace('{n}', session.score ?? 0)
+      : tr('status_in_progress');
   return `
     <a class="portal-card" href="#" data-view-training-session="${escapeHtml(session.sessionId)}">
       <span class="portal-icon"><i data-lucide="bot"></i></span>
-      <h3>${escapeHtml(persona?.label || session.clientType)}</h3>
-      <p>${date ? new Date(date).toLocaleString('pl-PL') : ''}</p>
-      <span class="portal-card-open">${session.status === 'completed' ? `Wynik: ${session.score ?? 0}/100` : 'W trakcie'}</span>
+      <h3>${escapeHtml(persona ? bi(persona.label) : session.clientType)}</h3>
+      <p>${date ? new Date(date).toLocaleString(dateLocale) : ''}</p>
+      <span class="portal-card-open">${escapeHtml(statusLabel)}</span>
+    </a>
+  `;
+}
+
+const DIFFICULTY_BADGE = {
+  easy: { pl: 'Łatwy', ru: 'Лёгкий' },
+  medium: { pl: 'Średni', ru: 'Средний' },
+  hard: { pl: 'Trudny', ru: 'Сложный' }
+};
+
+const READINESS_BADGE = {
+  cold: { pl: 'Zimny', ru: 'Холодный' },
+  warm: { pl: 'Ciepły', ru: 'Тёплый' },
+  hot: { pl: 'Gorący', ru: 'Горячий' }
+};
+
+function renderPersonaCard(persona, tr) {
+  const serviceName = persona.serviceId && SERVICE_LESSONS[persona.serviceId] ? bi(SERVICE_LESSONS[persona.serviceId].title) : '';
+  const difficulty = DIFFICULTY_BADGE[persona.difficulty];
+  const readiness = READINESS_BADGE[persona.readiness];
+  return `
+    <a class="portal-card persona-card difficulty-${escapeAttribute(persona.difficulty || '')}" href="#" data-start-training="${escapeHtml(persona.id)}">
+      <span class="portal-icon"><i data-lucide="user"></i></span>
+      <h3>${escapeHtml(bi(persona.label))}</h3>
+      <div class="persona-badges">
+        ${difficulty ? `<span class="pill difficulty-pill">${escapeHtml(bi(difficulty))}</span>` : ''}
+        ${readiness ? `<span class="pill readiness-pill">${escapeHtml(bi(readiness))}</span>` : ''}
+        ${serviceName ? `<span class="pill">${escapeHtml(serviceName)}</span>` : ''}
+      </div>
+      <span class="portal-card-open">${escapeHtml(tr('btn_start_training'))}</span>
     </a>
   `;
 }
@@ -1466,25 +1599,15 @@ function renderAiTrainingSection() {
     <div class="lesson-top">
       <div>
         <p class="eyebrow">${escapeHtml(tr('nav_ai_training'))}</p>
-        <h2>Trenuj rozmowy z AI</h2>
-        <p>Wybierz typ klienta — AI odegra jego rolę w symulowanej rozmowie telefonicznej. Po zakończeniu otrzymasz ocenę i feedback.</p>
+        <h2>${escapeHtml(tr('academy_ai_training_h2'))}</h2>
+        <p>${escapeHtml(tr('academy_ai_training_intro'))}</p>
       </div>
     </div>
     <div class="portal-grid">
-      ${personas
-        .map(
-          (persona) => `
-            <a class="portal-card" href="#" data-start-training="${escapeHtml(persona.id)}">
-              <span class="portal-icon"><i data-lucide="user"></i></span>
-              <h3>${escapeHtml(persona.label)}</h3>
-              <span class="portal-card-open">${escapeHtml(tr('btn_start_training'))}</span>
-            </a>
-          `
-        )
-        .join('')}
+      ${personas.map((persona) => renderPersonaCard(persona, tr)).join('')}
     </div>
     ${state.aiTraining.error ? `<p class="feedback bad">${escapeHtml(state.aiTraining.error)}</p>` : ''}
-    <h3 class="history-heading">Historia treningów</h3>
+    <h3 class="history-heading">${escapeHtml(tr('academy_ai_training_history_heading'))}</h3>
     <div class="portal-grid">
       ${
         state.aiTraining.history.length
@@ -1495,23 +1618,29 @@ function renderAiTrainingSection() {
   `;
 }
 
+const START_PRINCIPLES = {
+  pl: ['Patrz na fakty, nie zgaduj.', 'Mów krótko i spokojnie.', 'Pytaj o problem, nie recytuj oferty.', 'Każdy lead musi mieć status i notatkę.'],
+  ru: ['Смотри на факты, не гадай.', 'Говори коротко и спокойно.', 'Спрашивай о проблеме, а не зачитывай предложение.', 'У каждого лида должен быть статус и заметка.']
+};
+
 function renderStart(module) {
+  const tr = window.AuraI18n?.tr || ((key) => key);
   return `
     <div class="lesson-top">
       <div>
-        <p class="eyebrow">Moduł 1</p>
-        <h2>Jak myśleć o tej pracy</h2>
-        <p>Caller nie jest osobą od wciskania strony. Caller jest pierwszym filtrem: znajduje firmę, rozpoznaje realny problem i umawia rozmowę z managerem.</p>
+        <p class="eyebrow">${escapeHtml(tr('academy_start_eyebrow'))}</p>
+        <h2>${escapeHtml(tr('academy_start_h2'))}</h2>
+        <p>${escapeHtml(tr('academy_start_intro'))}</p>
       </div>
       ${completionButton(module.id)}
     </div>
     <div class="lesson-body">
       <div class="content-card">
-        <h3>Najważniejsza zasada</h3>
-        <p>Nie sprzedajesz przez telefon. Umawiasz rozmowę, kiedy widzisz konkretny powód: brak strony, słaby profil Google, brak widoczności, chaos w leadach albo niewykorzystane reklamy.</p>
+        <h3>${escapeHtml(tr('academy_start_rule_heading'))}</h3>
+        <p>${escapeHtml(tr('academy_start_rule_body'))}</p>
       </div>
       <div class="card-grid">
-        ${['Patrz na fakty, nie zgaduj.', 'Mów krótko i spokojnie.', 'Pytaj o problem, nie recytuj oferty.', 'Każdy lead musi mieć status i notatkę.']
+        ${biList(START_PRINCIPLES)
           .map((text) => `<div class="content-card">${escapeHtml(text)}</div>`)
           .join('')}
       </div>
@@ -1520,74 +1649,200 @@ function renderStart(module) {
 }
 
 function renderServices(module) {
-  const service = serviceLessons[state.activeService];
-  const step = service.steps[state.serviceStep];
+  const tr = window.AuraI18n?.tr || ((key) => key);
+  const serviceIds = Object.keys(SERVICE_LESSONS);
+  if (!serviceIds.length) {
+    return `
+      <div class="lesson-top">
+        <div>
+          <p class="eyebrow">${escapeHtml(tr('academy_services_eyebrow'))}</p>
+          <h2>${escapeHtml(tr('academy_services_h2'))}</h2>
+          <p class="muted">Ładowanie treści usług...</p>
+        </div>
+        ${completionButton(module.id)}
+      </div>
+    `;
+  }
+  const activeId = SERVICE_LESSONS[state.activeService] ? state.activeService : serviceIds[0];
+  const service = SERVICE_LESSONS[activeId];
+  const step = service.steps[state.serviceStep] || service.steps[0];
   const stepPercent = Math.round(((state.serviceStep + 1) / service.steps.length) * 100);
+  const isLastStep = state.serviceStep === service.steps.length - 1;
   return `
     <div class="lesson-top">
       <div>
-        <p class="eyebrow">Moduł 2</p>
-        <h2>Services Academy</h2>
+        <p class="eyebrow">${escapeHtml(tr('academy_services_eyebrow'))}</p>
+        <h2>${escapeHtml(tr('academy_services_h2'))}</h2>
         <div class="action-row">
-          <a class="secondary" href="${SITE_PAGE_URL}" target="_blank" rel="noopener"><i data-lucide="external-link"></i> Strona wizytowka</a>
+          <a class="secondary" href="${SITE_PAGE_URL}" target="_blank" rel="noopener"><i data-lucide="external-link"></i> ${escapeHtml(tr('academy_services_site_link'))}</a>
         </div>
-        <p>Wybierz usługę i przejdź ją krok po kroku. Caller musi rozumieć, po co dana usługa istnieje i kiedy naprawdę pasuje do klienta.</p>
+        <p>${escapeHtml(tr('academy_services_module_intro'))}</p>
       </div>
       ${completionButton(module.id)}
     </div>
     <div class="service-grid">
-      ${Object.entries(serviceLessons)
-        .map(([key, item]) => `
-          <button class="service-card" data-service="${key}">
-            <span class="pill">${escapeHtml(item.badge)}</span>
-            <h3>${escapeHtml(item.title)}</h3>
-          </button>
-        `)
+      ${serviceIds
+        .map((key) => {
+          const item = SERVICE_LESSONS[key];
+          return `
+            <button class="service-card ${key === activeId ? 'active' : ''}" data-service="${escapeAttribute(key)}">
+              <span class="pill">${escapeHtml(bi(item.badge))}</span>
+              <h3>${escapeHtml(bi(item.title))}</h3>
+            </button>
+          `;
+        })
         .join('')}
     </div>
     <div class="content-card">
       <div class="lesson-top">
         <div>
-          <p class="mini-label">${escapeHtml(service.title)} · krok ${state.serviceStep + 1}/${service.steps.length}</p>
-          <h3>${escapeHtml(step.title)}</h3>
+          <p class="mini-label">${escapeHtml(bi(service.title))} · ${escapeHtml(tr('academy_step_word'))} ${state.serviceStep + 1}/${service.steps.length}</p>
+          <h3>${escapeHtml(bi(step.title))}</h3>
         </div>
         <span class="pill">${stepPercent}%</span>
       </div>
       <div class="progress-line"><span style="width:${stepPercent}%"></span></div>
-      <p>${escapeHtml(step.body)}</p>
-      <ul>${step.bullets.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>
-      ${state.serviceStep === service.steps.length - 1 ? renderMiniQuiz(service) : ''}
+      <p>${escapeHtml(bi(step.body))}</p>
+      <ul>${biList(step.bullets).map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>
+      ${isLastStep ? renderServiceQuiz(service, activeId) : ''}
+      ${isLastStep ? renderServiceExtras(service) : ''}
       <div class="action-row">
-        <button class="secondary" data-service-prev ${state.serviceStep === 0 ? 'disabled' : ''}>Wstecz</button>
-        <button class="primary" data-service-next>${state.serviceStep === service.steps.length - 1 ? 'Zakończ usługę' : 'Następny krok'}</button>
+        <button class="secondary" data-service-prev ${state.serviceStep === 0 ? 'disabled' : ''}>${escapeHtml(tr('academy_btn_back'))}</button>
+        <button class="primary" data-service-next>${isLastStep ? escapeHtml(tr('academy_btn_finish_service')) : escapeHtml(tr('academy_btn_next_step'))}</button>
       </div>
     </div>
   `;
 }
 
-function renderMiniQuiz(service) {
+function renderServiceQuiz(service, serviceId) {
+  const tr = window.AuraI18n?.tr || ((key) => key);
+  const questions = Array.isArray(service.quiz) ? service.quiz : [];
+  if (!questions.length) return '';
   return `
     <div class="scenario-card">
-      <h3>Mini quiz</h3>
-      <p>${escapeHtml(service.quiz.question)}</p>
+      <h3>${escapeHtml(tr('academy_quiz_heading'))}</h3>
+      ${questions.map((question, qIndex) => renderServiceQuizQuestion(question, `service-${serviceId}-q${qIndex}`)).join('')}
+    </div>
+  `;
+}
+
+function renderServiceQuizQuestion(question, key) {
+  const tr = window.AuraI18n?.tr || ((key) => key);
+  if (question.type === 'open') return renderOpenQuestion(question, key);
+  const answered = state.serviceQuizAnswers[key];
+  const answers = biList(question.answers);
+  return `
+    <div class="quiz-question">
+      <p class="quiz-question-text">${question.type === 'case' ? `<span class="pill">${escapeHtml(tr('academy_pill_situation'))}</span> ` : ''}${escapeHtml(bi(question.question))}</p>
       <div class="choice-grid">
-        ${service.quiz.answers
-          .map((answer, index) => `<button class="choice" data-mini-quiz="${index}" data-correct="${index === service.quiz.correct}">${escapeHtml(answer)}</button>`)
+        ${answers
+          .map(
+            (answer, index) => `
+              <button
+                class="choice ${answered ? (index === question.correct ? 'correct' : answered.selected === index ? 'wrong' : '') : ''}"
+                data-quiz-choice="${escapeAttribute(key)}" data-quiz-index="${index}" ${answered ? 'disabled' : ''}
+              >${escapeHtml(answer)}</button>
+            `
+          )
           .join('')}
       </div>
-      ${state.feedback ? `<div class="feedback ${state.feedback.includes('Dobrze') ? 'ok' : 'bad'}">${escapeHtml(state.feedback)}</div>` : ''}
+      ${
+        answered
+          ? `<div class="feedback ${answered.selected === question.correct ? 'ok' : 'bad'}">${escapeHtml(
+              answered.selected === question.correct ? tr('academy_feedback_correct') : tr('academy_feedback_partial')
+            )} ${question.explain ? escapeHtml(bi(question.explain)) : ''}</div>`
+          : ''
+      }
     </div>
+  `;
+}
+
+function renderOpenQuestion(question, key) {
+  const tr = window.AuraI18n?.tr || ((key) => key);
+  const entry = state.openAnswers[key] || { draft: '', loading: false, result: null, error: '' };
+  return `
+    <div class="quiz-question open-question">
+      <p class="quiz-question-text"><span class="pill">${escapeHtml(tr('academy_open_question_pill'))}</span> ${escapeHtml(bi(question.question))}</p>
+      <textarea class="open-answer-input" data-open-answer="${escapeAttribute(key)}" rows="4" placeholder="${escapeAttribute(tr('academy_open_answer_placeholder'))}" ${
+        entry.loading ? 'disabled' : ''
+      }>${escapeHtml(entry.draft || '')}</textarea>
+      <div class="action-row">
+        <button class="secondary" data-grade-answer="${escapeAttribute(key)}" ${entry.loading || !(entry.draft || '').trim() ? 'disabled' : ''}>
+          ${escapeHtml(entry.loading ? tr('academy_open_checking') : tr('academy_open_check_ai'))}
+        </button>
+        ${entry.result ? `<span class="pill">${escapeHtml(entry.result.score)}/100</span>` : ''}
+      </div>
+      ${entry.error ? `<div class="feedback bad">${escapeHtml(entry.error)}</div>` : ''}
+      ${
+        entry.result
+          ? `
+            <div class="feedback ${entry.result.score >= 70 ? 'ok' : 'bad'}">${escapeHtml(entry.result.feedback || '')}</div>
+            ${
+              entry.result.strengths?.length
+                ? `<p><strong>${escapeHtml(tr('academy_open_strengths_label'))}</strong> ${entry.result.strengths.map((item) => escapeHtml(item)).join('; ')}</p>`
+                : ''
+            }
+            ${
+              entry.result.improvements?.length
+                ? `<p><strong>${escapeHtml(tr('academy_open_improvements_label'))}</strong> ${entry.result.improvements.map((item) => escapeHtml(item)).join('; ')}</p>`
+                : ''
+            }
+          `
+          : ''
+      }
+    </div>
+  `;
+}
+
+function renderPhraseCard(phrase) {
+  if (!phrase?.say) return '';
+  return `
+    <div class="phrase-card">
+      <p class="phrase-say">„${escapeHtml(phrase.say)}”</p>
+      ${phrase.ru ? `<p class="phrase-note muted">${escapeHtml(phrase.ru)}</p>` : ''}
+    </div>
+  `;
+}
+
+function renderObjectionCard(item) {
+  const tr = window.AuraI18n?.tr || ((key) => key);
+  return `
+    <div class="phrase-card">
+      <p class="phrase-client">${escapeHtml(tr('academy_label_client'))} „${escapeHtml(item.say)}”</p>
+      ${item.ru ? `<p class="phrase-note muted">${escapeHtml(item.ru)}</p>` : ''}
+      <p class="phrase-say">${escapeHtml(tr('academy_label_you'))} „${escapeHtml(item.response)}”</p>
+      ${item.responseRu ? `<p class="phrase-note muted">${escapeHtml(item.responseRu)}</p>` : ''}
+      ${item.why ? `<p class="phrase-why">${escapeHtml(bi(item.why))}</p>` : ''}
+    </div>
+  `;
+}
+
+function renderServiceExtras(service) {
+  const tr = window.AuraI18n?.tr || ((key) => key);
+  const objections = service.objections || [];
+  const hasOpener = !!service.opener?.say;
+  const hasCrossSell = !!service.crossSell;
+  if (!objections.length && !hasOpener && !hasCrossSell) return '';
+  return `
+    ${hasOpener ? `<div class="content-card"><h3>${escapeHtml(tr('academy_service_opener_heading'))}</h3>${renderPhraseCard(service.opener)}</div>` : ''}
+    ${
+      objections.length
+        ? `<div class="content-card"><h3>${escapeHtml(tr('academy_service_objections_heading'))}</h3>${objections.map(renderObjectionCard).join('')}</div>`
+        : ''
+    }
+    ${hasCrossSell ? `<div class="content-card"><h3>${escapeHtml(tr('academy_service_crosssell_heading'))}</h3><p>${escapeHtml(bi(service.crossSell))}</p></div>` : ''}
   `;
 }
 
 function renderArticle(module) {
+  const tr = window.AuraI18n?.tr || ((key) => key);
   const article = articles[module.id];
   return `
     <div class="lesson-top">
       <div>
-        <p class="eyebrow">Moduł 3</p>
-        <h2>${escapeHtml(article.title)}</h2>
-        <p>${escapeHtml(article.intro)}</p>
+        <p class="eyebrow">${escapeHtml(tr('academy_article_eyebrow'))}</p>
+        <h2>${escapeHtml(bi(article.title))}</h2>
+        <p>${escapeHtml(bi(article.intro))}</p>
       </div>
       ${completionButton(module.id)}
     </div>
@@ -1595,8 +1850,8 @@ function renderArticle(module) {
       ${article.sections
         .map(([title, body]) => `
           <div class="content-card">
-            <h3>${escapeHtml(title)}</h3>
-            <p>${escapeHtml(body)}</p>
+            <h3>${escapeHtml(bi(title))}</h3>
+            <p>${escapeHtml(bi(body))}</p>
           </div>
         `)
         .join('')}
@@ -1605,98 +1860,161 @@ function renderArticle(module) {
 }
 
 function renderScenario(module) {
-  const set = scenarios[module.scenarioSet];
+  const tr = window.AuraI18n?.tr || ((key) => key);
+  const set = SCENARIO_BANK[module.scenarioSet] || [];
+  if (!set.length) {
+    return `
+      <div class="lesson-top">
+        <div>
+          <p class="eyebrow">${escapeHtml(tr('academy_scenario_eyebrow'))}</p>
+          <h2>${escapeHtml(moduleTitle(module))}</h2>
+          <p class="muted">Ładowanie treści...</p>
+        </div>
+        ${completionButton(module.id)}
+      </div>
+    `;
+  }
   const scenario = set[state.scenarioIndex % set.length];
   return `
     <div class="lesson-top">
       <div>
-        <p class="eyebrow">Trening odpowiedzi</p>
-        <h2>${escapeHtml(module.title)}</h2>
-        <p>Wybierz najlepszą odpowiedź. Po każdej decyzji zobaczysz, dlaczego działa albo nie działa.</p>
+        <p class="eyebrow">${escapeHtml(tr('academy_scenario_eyebrow'))}</p>
+        <h2>${escapeHtml(moduleTitle(module))}</h2>
+        <p>${escapeHtml(tr('academy_scenario_instruction'))}</p>
       </div>
       ${completionButton(module.id)}
     </div>
     <div class="scenario-card">
-      <span class="pill">Klient mówi</span>
+      <span class="pill">${escapeHtml(tr('academy_scenario_client_pill'))}</span>
       <h3>${escapeHtml(scenario.client)}</h3>
       <div class="choice-grid">
         ${scenario.choices
           .map(([text, ok], index) => `<button class="choice" data-scenario-choice="${index}" data-correct="${ok}">${escapeHtml(text)}</button>`)
           .join('')}
       </div>
-      ${state.feedback ? `<div class="feedback ${state.feedback.includes('Dobrze') ? 'ok' : 'bad'}">${escapeHtml(state.feedback)}</div>` : ''}
+      ${state.feedback ? `<div class="feedback ${state.feedbackOk === false ? 'bad' : 'ok'}">${escapeHtml(state.feedback)}</div>` : ''}
       <div class="action-row">
-        <button class="secondary" data-next-scenario>Następny przykład</button>
+        <button class="secondary" data-next-scenario>${escapeHtml(tr('btn_next_example'))}</button>
       </div>
     </div>
   `;
 }
 
 function renderQualification(module) {
+  const tr = window.AuraI18n?.tr || ((key) => key);
+  const tab = state.qualificationTab === 'match' ? 'match' : 'leads';
   return `
     <div class="lesson-top">
       <div>
-        <p class="eyebrow">Kwalifikacja</p>
-        <h2>Dobry lead, słaby lead czy pomijamy?</h2>
-        <p>Nie każdy znaleziony rekord jest wart telefonu. Dobry caller umie odsiać chaos i skupić się na firmach z realnym potencjałem.</p>
+        <p class="eyebrow">${escapeHtml(tr('academy_qualification_eyebrow'))}</p>
+        <h2>${escapeHtml(tr('academy_qualification_h2'))}</h2>
+        <p>${escapeHtml(tr('academy_qualification_intro'))}</p>
       </div>
       ${completionButton(module.id)}
     </div>
-    <div class="card-grid">
-      ${qualificationLeads
-        .map((lead, leadIndex) => `
-          <div class="lead-card">
-            <h3>${escapeHtml(lead.name)}</h3>
-            <ul>${lead.facts.map((fact) => `<li>${escapeHtml(fact)}</li>`).join('')}</ul>
-            <div class="choice-grid">
-              <button class="choice" data-lead="${leadIndex}" data-answer="good">Dobry lead</button>
-              <button class="choice" data-lead="${leadIndex}" data-answer="weak">Słaby lead</button>
-              <button class="choice" data-lead="${leadIndex}" data-answer="skip">Nie dzwonić</button>
-            </div>
-          </div>
-        `)
-        .join('')}
+    <div class="lesson-top-actions">
+      <button class="${tab === 'leads' ? 'primary' : 'secondary'}" data-qualification-tab="leads">${escapeHtml(tr('academy_qualification_tab_leads'))}</button>
+      <button class="${tab === 'match' ? 'primary' : 'secondary'}" data-qualification-tab="match">${escapeHtml(tr('academy_qualification_tab_match'))}</button>
     </div>
+    ${tab === 'leads' ? renderQualificationLeads() : renderServiceMatchCases()}
     ${state.feedback ? `<div class="feedback ok">${escapeHtml(state.feedback)}</div>` : ''}
   `;
 }
 
+function renderQualificationLeads() {
+  const tr = window.AuraI18n?.tr || ((key) => key);
+  return `
+    <div class="card-grid">
+      ${QUALIFICATION_LEADS.map(
+        (lead, leadIndex) => `
+          <div class="lead-card">
+            <h3>${escapeHtml(lead.name)}</h3>
+            <ul>${biList(lead.facts).map((fact) => `<li>${escapeHtml(fact)}</li>`).join('')}</ul>
+            <div class="choice-grid">
+              <button class="choice" data-lead="${leadIndex}" data-answer="good">${escapeHtml(tr('academy_qualification_btn_good'))}</button>
+              <button class="choice" data-lead="${leadIndex}" data-answer="weak">${escapeHtml(tr('academy_qualification_btn_weak'))}</button>
+              <button class="choice" data-lead="${leadIndex}" data-answer="skip">${escapeHtml(tr('academy_qualification_btn_skip'))}</button>
+            </div>
+          </div>
+        `
+      ).join('')}
+    </div>
+  `;
+}
+
+function renderServiceMatchCases() {
+  if (!SERVICE_MATCH_CASES.length) return '<p class="muted">Ładowanie przypadków...</p>';
+  return `
+    <div class="card-grid">
+      ${SERVICE_MATCH_CASES.map((item, caseIndex) => {
+        const options = [...new Set([...(item.bestServices || []), ...(item.distractorServices || [])])];
+        const answered = state.matchAnswers[caseIndex];
+        const wasGood = answered && (item.bestServices || []).includes(answered.selected);
+        return `
+          <div class="lead-card">
+            <p>${escapeHtml(bi(item.situation))}</p>
+            <div class="choice-grid">
+              ${options
+                .map((serviceId) => {
+                  const label = SERVICE_LESSONS[serviceId] ? bi(SERVICE_LESSONS[serviceId].title) : serviceId;
+                  const isBest = (item.bestServices || []).includes(serviceId);
+                  const cls = answered ? (isBest ? 'correct' : answered.selected === serviceId ? 'wrong' : '') : '';
+                  return `<button class="choice ${cls}" data-match-case="${caseIndex}" data-match-service="${escapeAttribute(serviceId)}" ${
+                    answered ? 'disabled' : ''
+                  }>${escapeHtml(label)}</button>`;
+                })
+                .join('')}
+            </div>
+            ${
+              answered
+                ? `<div class="feedback ${wasGood ? 'ok' : 'bad'}">${escapeHtml(bi(wasGood ? item.why : item.distractorWhy) || '')}</div>`
+                : ''
+            }
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
+}
+
 function renderCalculator(module) {
+  const tr = window.AuraI18n?.tr || ((key) => key);
   return `
     <div class="lesson-top">
       <div>
-        <p class="eyebrow">Matematyka pracy</p>
-        <h2>Efekt dużych liczb</h2>
-        <p>Wynik callera nie bierze się z jednego idealnego telefonu. Bierze się z regularnej liczby prób, dobrej kwalifikacji i poprawnego statusowania.</p>
+        <p class="eyebrow">${escapeHtml(tr('academy_calculator_eyebrow'))}</p>
+        <h2>${escapeHtml(tr('academy_calculator_h2'))}</h2>
+        <p>${escapeHtml(tr('academy_calculator_intro'))}</p>
       </div>
       ${completionButton(module.id)}
     </div>
     <div class="calculator">
-      <label><span class="mini-label">Telefony dziennie</span><input id="callsPerDay" type="number" value="80" min="1" /></label>
-      <label><span class="mini-label">Odbieralność %</span><input id="answerRate" type="number" value="35" min="1" max="100" /></label>
-      <label><span class="mini-label">Zainteresowanie %</span><input id="interestRate" type="number" value="18" min="1" max="100" /></label>
-      <label><span class="mini-label">Spotkanie z zainteresowanych %</span><input id="meetingRate" type="number" value="35" min="1" max="100" /></label>
+      <label><span class="mini-label">${escapeHtml(tr('academy_calc_label_calls_per_day'))}</span><input id="callsPerDay" type="number" value="80" min="1" /></label>
+      <label><span class="mini-label">${escapeHtml(tr('academy_calc_label_answer_rate'))}</span><input id="answerRate" type="number" value="35" min="1" max="100" /></label>
+      <label><span class="mini-label">${escapeHtml(tr('academy_calc_label_interest_rate'))}</span><input id="interestRate" type="number" value="18" min="1" max="100" /></label>
+      <label><span class="mini-label">${escapeHtml(tr('academy_calc_label_meeting_rate'))}</span><input id="meetingRate" type="number" value="35" min="1" max="100" /></label>
     </div>
     <div id="calculatorResult" class="income-card"></div>
   `;
 }
 
 function renderWorkday(module) {
+  const tr = window.AuraI18n?.tr || ((key) => key);
   const routine = [
-    ['09:00', 'Start, sprawdzenie systemu i priorytetów'],
-    ['09:15', 'Wybór kategorii i miasta w parserze'],
-    ['09:30', 'Sprawdzenie pierwszych firm i rozpoczęcie telefonów'],
-    ['11:30', 'Krótki przegląd statusów i notatek'],
-    ['13:00', 'Druga seria telefonów, powroty do “oddzwonić później”'],
-    ['16:30', 'Porządkowanie statusów, przekazanie spotkań managerowi'],
-    ['17:00', 'Podsumowanie dnia: telefony, rozmowy, spotkania, blokery']
+    ['09:00', { pl: 'Start, sprawdzenie systemu i priorytetów', ru: 'Старт, проверка системы и приоритетов' }],
+    ['09:15', { pl: 'Wybór kategorii i miasta w parserze', ru: 'Выбор категории и города в парсере' }],
+    ['09:30', { pl: 'Sprawdzenie pierwszych firm i rozpoczęcie telefonów', ru: 'Проверка первых компаний и начало звонков' }],
+    ['11:30', { pl: 'Krótki przegląd statusów i notatek', ru: 'Короткий обзор статусов и заметок' }],
+    ['13:00', { pl: 'Druga seria telefonów, powroty do “oddzwonić później”', ru: 'Вторая серия звонков, возврат к «перезвонить позже»' }],
+    ['16:30', { pl: 'Porządkowanie statusów, przekazanie spotkań managerowi', ru: 'Наведение порядка в статусах, передача встреч менеджеру' }],
+    ['17:00', { pl: 'Podsumowanie dnia: telefony, rozmowy, spotkania, blokery', ru: 'Итоги дня: звонки, разговоры, встречи, блокеры' }]
   ];
   return `
     <div class="lesson-top">
       <div>
-        <p class="eyebrow">Rutyna</p>
-        <h2>Dzień pracy callera</h2>
-        <p>Dobry dzień pracy to rytm: lead, szybka ocena, telefon, status, notatka, następny lead.</p>
+        <p class="eyebrow">${escapeHtml(tr('academy_workday_eyebrow'))}</p>
+        <h2>${escapeHtml(tr('academy_workday_h2'))}</h2>
+        <p>${escapeHtml(tr('academy_workday_intro'))}</p>
       </div>
       ${completionButton(module.id)}
     </div>
@@ -1705,55 +2023,82 @@ function renderWorkday(module) {
         .map(([time, text]) => `
           <div class="routine-item">
             <span class="routine-time">${escapeHtml(time)}</span>
-            <strong>${escapeHtml(text)}</strong>
+            <strong>${escapeHtml(bi(text))}</strong>
           </div>
         `)
         .join('')}
+    </div>
+  `;
+}
+
+function renderFinalExamQuestion(question, qIndex) {
+  const tr = window.AuraI18n?.tr || ((key) => key);
+  const key = `final-q${qIndex}`;
+  if (question.type === 'open') return renderOpenQuestion(question, key);
+  const answers = biList(question.answers);
+  return `
+    <div class="content-card">
+      <h3>${qIndex + 1}. ${question.type === 'case' ? `<span class="pill">${escapeHtml(tr('academy_pill_situation'))}</span> ` : ''}${escapeHtml(bi(question.question))}</h3>
+      <div class="choice-grid">
+        ${answers
+          .map(
+            (answer, answerIndex) => `
+              <button class="choice ${state.finalAnswers[qIndex] === answerIndex ? 'correct' : ''}" data-final-q="${qIndex}" data-final-a="${answerIndex}">
+                ${escapeHtml(answer)}
+              </button>
+            `
+          )
+          .join('')}
+      </div>
     </div>
   `;
 }
 
 function renderFinal(module) {
-  const answered = Object.keys(state.finalAnswers).length;
+  const tr = window.AuraI18n?.tr || ((key) => key);
+  const total = FINAL_EXAM.length;
+  const singleCaseIndexes = FINAL_EXAM.map((q, i) => ({ q, i })).filter(({ q }) => q.type !== 'open');
+  const openIndexes = FINAL_EXAM.map((q, i) => ({ q, i })).filter(({ q }) => q.type === 'open');
+  const answeredSingleCase = singleCaseIndexes.filter(({ i }) => state.finalAnswers[i] !== undefined).length;
+  const gradedOpen = openIndexes.filter(({ i }) => state.openAnswers[`final-q${i}`]?.result).length;
+  const answered = answeredSingleCase + gradedOpen;
+  const allAnswered = total > 0 && answeredSingleCase >= singleCaseIndexes.length && gradedOpen >= openIndexes.length;
   return `
     <div class="lesson-top">
       <div>
-        <p class="eyebrow">Egzamin</p>
-        <h2>Final Test</h2>
-        <p>Wymagany wynik: 80%. Test sprawdza logikę pracy, usługi, obiekcje, kwalifikację i statusy.</p>
+        <p class="eyebrow">${escapeHtml(tr('academy_final_eyebrow'))}</p>
+        <h2>${escapeHtml(tr('academy_final_h2'))}</h2>
+        <p>${escapeHtml(tr('academy_final_intro'))}</p>
       </div>
       ${completionButton(module.id)}
     </div>
-    <div class="progress-line"><span style="width:${Math.round((answered / finalQuestions.length) * 100)}%"></span></div>
+    <div class="progress-line"><span style="width:${total ? Math.round((answered / total) * 100) : 0}%"></span></div>
     <div class="lesson-body">
-      ${finalQuestions
-        .map(([question, answers], qIndex) => `
-          <div class="content-card">
-            <h3>${qIndex + 1}. ${escapeHtml(question)}</h3>
-            <div class="choice-grid">
-              ${answers
-                .map((answer, answerIndex) => `
-                  <button class="choice ${state.finalAnswers[qIndex] === answerIndex ? 'correct' : ''}" data-final-q="${qIndex}" data-final-a="${answerIndex}">
-                    ${escapeHtml(answer)}
-                  </button>
-                `)
-                .join('')}
-            </div>
-          </div>
-        `)
-        .join('')}
+      ${total ? FINAL_EXAM.map((question, qIndex) => renderFinalExamQuestion(question, qIndex)).join('') : `<p class="muted">${escapeHtml(tr('academy_loading_questions'))}</p>`}
     </div>
     <div class="action-row">
-      <button class="primary" data-submit-final>Sprawdź wynik</button>
-      <span class="pill">${answered}/${finalQuestions.length} odpowiedzi</span>
+      <button class="primary" data-submit-final ${allAnswered && !state.finalSubmitting ? '' : 'disabled'}>
+        ${state.finalSubmitting ? escapeHtml(tr('academy_final_checking')) : escapeHtml(tr('academy_final_submit'))}
+      </button>
+      <span class="pill">${answered}/${total} ${escapeHtml(tr('academy_final_answers_count'))}</span>
     </div>
-    ${state.feedback ? `<div class="feedback ${state.feedback.includes('Zdane') ? 'ok' : 'bad'}">${escapeHtml(state.feedback)}</div>` : ''}
+    ${state.finalSubmitError ? `<div class="feedback bad">${escapeHtml(state.finalSubmitError)}</div>` : ''}
+    ${
+      state.finalResult
+        ? `<div class="feedback ${state.finalResult.passed ? 'ok' : 'bad'}">${
+            state.finalResult.passed
+              ? `${escapeHtml(tr('academy_final_passed_prefix'))} ${state.finalResult.score}%. ${escapeHtml(tr('academy_final_passed_suffix'))}`
+              : `${escapeHtml(tr('academy_final_failed_prefix'))} ${state.finalResult.score}%. ${escapeHtml(tr('academy_final_failed_suffix'))}`
+          }</div>`
+        : ''
+    }
   `;
 }
 
 function completionButton(moduleId) {
+  const tr = window.AuraI18n?.tr || ((key) => key);
   const done = completedSet().has(moduleId);
-  return `<button class="${done ? 'secondary' : 'primary'}" data-complete="${moduleId}">${done ? 'Ukończone' : 'Oznacz jako ukończone'}</button>`;
+  return `<button class="${done ? 'secondary' : 'primary'}" data-complete="${moduleId}">${done ? escapeHtml(tr('academy_btn_completed')) : escapeHtml(tr('academy_btn_mark_completed'))}</button>`;
 }
 
 function renderLesson() {
@@ -1791,6 +2136,7 @@ function renderLesson() {
 }
 
 function render() {
+  applyShellChrome();
   renderShellStats();
   renderToolbar();
   renderNav();
@@ -1803,6 +2149,7 @@ function switchAcademyView(view) {
   if (!ACADEMY_VIEWS.includes(view)) view = 'home';
   state.academyView = view;
   state.feedback = '';
+  state.feedbackOk = null;
   syncViewToUrl(view);
   render();
   markSectionVisited(view);
@@ -1817,6 +2164,7 @@ function markSectionVisited(view) {
 }
 
 function updateCalculator() {
+  const tr = window.AuraI18n?.tr || ((key) => key);
   const calls = Number(document.querySelector('#callsPerDay')?.value || 80);
   const answerRate = Number(document.querySelector('#answerRate')?.value || 35) / 100;
   const interestRate = Number(document.querySelector('#interestRate')?.value || 18) / 100;
@@ -1826,19 +2174,24 @@ function updateCalculator() {
   const income = 4500 + monthlyMeetings * 100;
   const result = document.querySelector('#calculatorResult');
   if (result) {
+    const numberLocale = contentLang() === 'ru' ? 'ru-RU' : 'pl-PL';
+    const resultSentence = tr('academy_calc_result_template').replace('{n}', monthlyMeetings);
     result.innerHTML = `
-      <span>Szacowany miesiąc</span>
-      <strong>${income.toLocaleString('pl-PL')} PLN</strong>
-      <p>${monthlyMeetings} spotkań × 100 PLN + 4500 PLN podstawy. To model orientacyjny, nie gwarancja.</p>
+      <span>${escapeHtml(tr('academy_calc_estimated_month'))}</span>
+      <strong>${income.toLocaleString(numberLocale)} PLN</strong>
+      <p>${escapeHtml(resultSentence)}</p>
     `;
   }
 }
 
 document.addEventListener('click', (event) => {
+  const tr = window.AuraI18n?.tr || ((key) => key);
   const langChip = event.target.closest('[data-set-lang]');
   if (langChip) {
     event.preventDefault();
-    window.AuraI18n?.setLanguage(langChip.dataset.setLang);
+    const nextLang = window.AuraI18n?.setLanguage(langChip.dataset.setLang) || langChip.dataset.setLang;
+    syncSessionLanguage(nextLang);
+    buildServicesCatalog();
     render();
     return;
   }
@@ -1848,6 +2201,7 @@ document.addEventListener('click', (event) => {
     state.academyView = 'training';
     state.activeModule = Number(moduleButton.dataset.module);
     state.feedback = '';
+  state.feedbackOk = null;
     render();
     return;
   }
@@ -1855,7 +2209,12 @@ document.addEventListener('click', (event) => {
   const academyViewButton = event.target.closest('[data-academy-view]');
   if (academyViewButton) {
     event.preventDefault();
-    switchAcademyView(academyViewButton.dataset.academyView || 'home');
+    const targetView = academyViewButton.dataset.academyView || 'home';
+    if (!isViewUnlocked(targetView)) {
+      showLockToast(viewUnlockHint(targetView));
+      return;
+    }
+    switchAcademyView(targetView);
     return;
   }
 
@@ -1865,6 +2224,7 @@ document.addEventListener('click', (event) => {
     state.academyView = 'training';
     state.activeModule = moduleIndexById(openModuleButton.dataset.openModule);
     state.feedback = '';
+  state.feedbackOk = null;
     render();
     return;
   }
@@ -1950,6 +2310,7 @@ document.addEventListener('click', (event) => {
     state.activeService = serviceButton.dataset.service;
     state.serviceStep = 0;
     state.feedback = '';
+  state.feedbackOk = null;
     render();
     return;
   }
@@ -1957,39 +2318,53 @@ document.addEventListener('click', (event) => {
   if (event.target.closest('[data-service-prev]')) {
     state.serviceStep = Math.max(0, state.serviceStep - 1);
     state.feedback = '';
+  state.feedbackOk = null;
     render();
     return;
   }
 
   if (event.target.closest('[data-service-next]')) {
-    const max = serviceLessons[state.activeService].steps.length - 1;
+    const max = (SERVICE_LESSONS[state.activeService]?.steps.length || 1) - 1;
     if (state.serviceStep < max) state.serviceStep += 1;
     else {
       state.progress.serviceProgress[state.activeService] = true;
-      state.feedback = 'Dobrze. Ta usługa jest przerobiona. Wybierz kolejną albo oznacz moduł jako ukończony.';
       saveProgress();
     }
     render();
     return;
   }
 
-  const miniQuiz = event.target.closest('[data-mini-quiz]');
-  if (miniQuiz) {
-    const ok = miniQuiz.dataset.correct === 'true';
-    state.feedback = ok ? 'Dobrze. To jest właściwa logika rozmowy.' : 'Nie. Wróć do celu: diagnoza i spotkanie, nie natychmiastowa sprzedaż.';
-    const key = `service-${state.activeService}`;
-    state.progress.quizScores[key] = ok ? 100 : 0;
-    saveProgress();
+  const quizChoice = event.target.closest('[data-quiz-choice]');
+  if (quizChoice) {
+    const key = quizChoice.dataset.quizChoice;
+    const selected = Number(quizChoice.dataset.quizIndex);
+    const resolved = resolveQuizQuestionByKey(key);
+    if (resolved?.question) {
+      state.serviceQuizAnswers[key] = { selected };
+      const correct = selected === resolved.question.correct;
+      state.progress.quizScores[key] = correct ? 100 : 0;
+      saveProgress();
+    }
     render();
+    return;
+  }
+
+  const gradeButton = event.target.closest('[data-grade-answer]');
+  if (gradeButton) {
+    const key = gradeButton.dataset.gradeAnswer;
+    const resolved = resolveQuizQuestionByKey(key);
+    if (resolved?.question) gradeOpenAnswer(key, resolved.question);
     return;
   }
 
   const scenarioChoice = event.target.closest('[data-scenario-choice]');
   if (scenarioChoice) {
     const module = modules[state.activeModule];
-    const scenario = scenarios[module.scenarioSet][state.scenarioIndex % scenarios[module.scenarioSet].length];
+    const set = SCENARIO_BANK[module.scenarioSet] || [];
+    const scenario = set[state.scenarioIndex % set.length];
     const choice = scenario.choices[Number(scenarioChoice.dataset.scenarioChoice)];
-    state.feedback = `${choice[1] ? 'Dobrze.' : 'Nie.'} ${choice[2]}`;
+    state.feedback = `${choice[1] ? tr('academy_feedback_correct') : tr('academy_feedback_incorrect')} ${bi(choice[2])}`;
+    state.feedbackOk = !!choice[1];
     state.progress.quizScores[module.id] = choice[1] ? 100 : 50;
     saveProgress();
     render();
@@ -1999,15 +2374,41 @@ document.addEventListener('click', (event) => {
   if (event.target.closest('[data-next-scenario]')) {
     state.scenarioIndex += 1;
     state.feedback = '';
+  state.feedbackOk = null;
+    render();
+    return;
+  }
+
+  const qualTabButton = event.target.closest('[data-qualification-tab]');
+  if (qualTabButton) {
+    state.qualificationTab = qualTabButton.dataset.qualificationTab === 'match' ? 'match' : 'leads';
+    state.feedback = '';
+  state.feedbackOk = null;
+    render();
+    return;
+  }
+
+  const matchButton = event.target.closest('[data-match-service]');
+  if (matchButton) {
+    const caseIndex = Number(matchButton.dataset.matchCase);
+    const serviceId = matchButton.dataset.matchService;
+    const item = SERVICE_MATCH_CASES[caseIndex];
+    if (item && !state.matchAnswers[caseIndex]) {
+      state.matchAnswers[caseIndex] = { selected: serviceId };
+      const ok = (item.bestServices || []).includes(serviceId);
+      state.progress.quizScores[`qualification-match-${caseIndex}`] = ok ? 100 : 0;
+      saveProgress();
+    }
     render();
     return;
   }
 
   const leadChoice = event.target.closest('[data-lead]');
   if (leadChoice) {
-    const lead = qualificationLeads[Number(leadChoice.dataset.lead)];
+    const lead = QUALIFICATION_LEADS[Number(leadChoice.dataset.lead)];
     const ok = leadChoice.dataset.answer === lead.answer;
-    state.feedback = `${ok ? 'Dobrze.' : 'Nie do końca.'} ${lead.why}`;
+    state.feedback = `${ok ? tr('academy_feedback_correct') : tr('academy_feedback_partial')} ${bi(lead.why)}`;
+    state.feedbackOk = ok;
     state.progress.quizScores.qualification = ok ? 100 : 50;
     saveProgress();
     render();
@@ -2022,16 +2423,7 @@ document.addEventListener('click', (event) => {
   }
 
   if (event.target.closest('[data-submit-final]')) {
-    let correct = 0;
-    finalQuestions.forEach(([, , answer], index) => {
-      if (state.finalAnswers[index] === answer) correct += 1;
-    });
-    const score = Math.round((correct / finalQuestions.length) * 100);
-    state.progress.quizScores.final = score;
-    state.feedback = score >= 80 ? `Zdane: ${score}%. Możesz pracować z parserem.` : `Jeszcze nie: ${score}%. Wróć do modułów i popraw wynik do 80%.`;
-    if (score >= 80) completeModule('final');
-    saveProgress();
-    render();
+    submitFinalExam();
     return;
   }
 
@@ -2041,8 +2433,100 @@ document.addEventListener('click', (event) => {
   }
 });
 
+function resolveQuizQuestionByKey(key) {
+  if (key.startsWith('service-')) {
+    const match = key.match(/^service-(.+)-q(\d+)$/);
+    if (!match) return null;
+    const [, serviceId, qIndexStr] = match;
+    const question = SERVICE_LESSONS[serviceId]?.quiz?.[Number(qIndexStr)];
+    return question ? { question, serviceId } : null;
+  }
+  if (key.startsWith('final-q')) {
+    const qIndex = Number(key.slice('final-q'.length));
+    const question = FINAL_EXAM[qIndex];
+    return question ? { question, qIndex } : null;
+  }
+  return null;
+}
+
+async function gradeOpenAnswer(key, question) {
+  const tr = window.AuraI18n?.tr || ((k) => k);
+  const entry = state.openAnswers[key] || (state.openAnswers[key] = { draft: '', loading: false, result: null, error: '' });
+  if (!entry.draft?.trim() || entry.loading) return;
+  entry.loading = true;
+  entry.error = '';
+  render();
+  try {
+    const data = await api('/api/academy/grade-answer', {
+      method: 'POST',
+      body: JSON.stringify({ question: bi(question.question), gradingNotes: bi(question.gradingNotes), answer: entry.draft })
+    });
+    entry.result = data.result;
+    entry.error = '';
+    state.progress.quizScores[key] = data.result.score;
+    saveProgress();
+  } catch (error) {
+    // See round-6 QA finding 4: renderFinal()/renderServices() (the only two
+    // templates that host renderOpenQuestion) never rendered state.feedback,
+    // so a grading failure used to revert the button to idle with zero
+    // feedback in either language. entry.error is rendered right in
+    // renderOpenQuestion instead, next to the question it actually belongs to.
+    entry.error = tr('academy_open_grade_error');
+  } finally {
+    entry.loading = false;
+    render();
+  }
+}
+
+async function submitFinalExam() {
+  const tr = window.AuraI18n?.tr || ((k) => k);
+  state.finalSubmitting = true;
+  state.finalSubmitError = '';
+  render();
+  const openScores = {};
+  FINAL_EXAM.forEach((question, index) => {
+    if (question.type === 'open') {
+      const result = state.openAnswers[`final-q${index}`]?.result;
+      if (result) openScores[index] = result.score;
+    }
+  });
+  try {
+    const data = await api('/api/academy/final-exam/submit', {
+      method: 'POST',
+      body: JSON.stringify({ answers: state.finalAnswers, openScores })
+    });
+    state.finalResult = { score: data.score, passed: data.passed };
+    state.finalSubmitError = '';
+    if (data.progress) {
+      state.progress = { ...state.progress, ...data.progress };
+      localStorage.setItem(ACADEMY_PROGRESS_KEY, JSON.stringify(state.progress));
+    }
+  } catch (error) {
+    // See round-6 QA finding 4: this used to fake a "0%, failed" result on a
+    // plain API/network failure, which reads as "you failed the exam" rather
+    // than "the check itself broke" - and the old state.feedback message was
+    // never rendered by renderFinal() anyway. state.finalSubmitError is
+    // rendered explicitly below instead of a fabricated finalResult.
+    state.finalResult = null;
+    state.finalSubmitError = tr('academy_final_submit_error');
+  } finally {
+    state.finalSubmitting = false;
+    render();
+  }
+}
+
 document.addEventListener('input', (event) => {
   if (event.target.closest('.calculator')) updateCalculator();
+
+  const openAnswerField = event.target.closest('[data-open-answer]');
+  if (openAnswerField) {
+    const key = openAnswerField.dataset.openAnswer;
+    if (!state.openAnswers[key]) state.openAnswers[key] = { draft: '', loading: false, result: null, error: '' };
+    state.openAnswers[key].draft = openAnswerField.value;
+    const container = openAnswerField.closest('.open-question');
+    const gradeButtonEl = container?.querySelector('[data-grade-answer]');
+    if (gradeButtonEl) gradeButtonEl.disabled = !openAnswerField.value.trim() || state.openAnswers[key].loading;
+  }
 });
 
 document.addEventListener('submit', (event) => {
@@ -2060,19 +2544,20 @@ let workerSaveTimer = null;
 function renderLoginScreen(message = '') {
   const overlay = document.querySelector('#authOverlay');
   if (!overlay) return;
+  const tr = window.AuraI18n?.tr || ((key) => key);
   overlay.classList.remove('hidden-field');
   document.querySelector('#appShell')?.classList.add('hidden-field');
   overlay.innerHTML = `
     <form class="auth-card" id="loginForm">
       <div>
         <p class="eyebrow">Aura Sales Academy</p>
-        <h2>Logowanie</h2>
-        <p class="muted">Wpisz login i haslo otrzymane od administratora.</p>
+        <h2>${escapeHtml(tr('auth_login_title'))}</h2>
+        <p class="muted">${escapeHtml(tr('auth_login_hint'))}</p>
       </div>
       ${message ? `<div class="feedback bad">${escapeHtml(message)}</div>` : ''}
       <label>Login<input name="login" autocomplete="username" required /></label>
       <label>Password<input name="password" type="password" autocomplete="current-password" required /></label>
-      <button class="auth-submit" type="submit">Zaloguj</button>
+      <button class="auth-submit" type="submit">${escapeHtml(tr('btn_login'))}</button>
     </form>
   `;
   document.querySelector('#loginForm')?.addEventListener('submit', handleLoginSubmit);
@@ -2085,12 +2570,13 @@ function hideLoginScreen() {
 
 async function handleLoginSubmit(event) {
   event.preventDefault();
+  const tr = window.AuraI18n?.tr || ((key) => key);
   const form = event.target;
   const submitButton = form.querySelector('button[type="submit"]');
   const login = form.login.value.trim();
   const password = form.password.value;
   submitButton.disabled = true;
-  submitButton.textContent = 'Loguje...';
+  submitButton.textContent = tr('auth_logging_in');
   try {
     const response = await fetch(apiUrl('/api/auth/login'), {
       method: 'POST',
@@ -2099,7 +2585,7 @@ async function handleLoginSubmit(event) {
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-      renderLoginScreen(data.error || 'Bledny login lub haslo.');
+      renderLoginScreen(data.error || tr('auth_invalid_credentials'));
       return;
     }
     setAuthToken(data.token);
@@ -2107,7 +2593,7 @@ async function handleLoginSubmit(event) {
     hideLoginScreen();
     await bootAcademy();
   } catch {
-    renderLoginScreen('Serwer nie odpowiada.');
+    renderLoginScreen(tr('auth_server_unavailable'));
   }
 }
 
@@ -2147,11 +2633,18 @@ async function bootAcademy() {
   wireCrossAppLinks();
   els.academyLogoutButton?.addEventListener('click', handleLogout);
   await loadProgress();
-  await loadServicesCatalog();
+  await Promise.all([loadServicesCatalog(), loadAcademyContentData()]);
   render();
   markSectionVisited(state.academyView);
   if (state.academyView === 'aiTraining') loadAiTrainingHistory();
 }
+
+// Nothing identifies the worker's language before login (no switcher is shown
+// on the auth screen — the worker record with their saved language only loads
+// after a successful login). Fall back to the same stored/browser-language
+// detection AuraI18n already uses elsewhere, so the login screen and the first
+// post-login render aren't hardcoded to Polish.
+window.AuraI18n?.applyInitialLanguage();
 
 bootstrapSession().then((ok) => {
   if (ok) bootAcademy();

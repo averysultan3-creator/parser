@@ -2,12 +2,17 @@ import { getServiceCategories } from './data/services.js';
 import { getSiteContent } from './data/content.js';
 import { getPortfolioProjects, getProjectById } from './data/portfolio.js';
 import { getSiteCopy, SUPPORTED_LANGUAGES } from './data/site-copy.js';
+import { createHeroSaturn } from './hero-saturn.js';
 
 const SITE_ORIGIN = 'https://parser.auraglobal-merchants.com';
 const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const isCoarsePointer = window.matchMedia('(pointer: coarse)').matches;
 let heroInteractionAbort = null;
 let portfolioInteractionAbort = null;
+let heroSaturn = null;
+const saturnPersist = { index: 0, angle: 0.6, hintSeen: false, entered: false };
+let stickyDismissed = (() => { try { return sessionStorage.getItem('auraStickyCtaDismissed') === '1'; } catch { return false; } })();
+let stickyFrame = 0;
 let lastRenderedRouteKey = '';
 const refs = {
   header: document.getElementById('siteHeader'),
@@ -22,6 +27,7 @@ const refs = {
   quickView: document.getElementById('quickView'),
   quickViewContent: document.getElementById('quickViewContent'),
   live: document.getElementById('liveRegion'),
+  stickyCta: document.getElementById('stickyCta'),
   metaDescription: document.getElementById('metaDescription'),
   canonical: document.getElementById('canonicalLink'),
   ogTitle: document.getElementById('ogTitle'),
@@ -41,7 +47,7 @@ const state = {
   menuTrigger: null,
   lead: {
     step: 0,
-    answers: { tasks: [], goal: '', context: '', budget: '', name: '', phone: '', email: '', website: '', message: '', companyFax: '' },
+    answers: { tasks: [], goal: '', context: '', budget: '', name: '', phone: '', email: '', message: '', companyFax: '' },
     context: { service: '', package: '', project: '' },
     error: '',
     loading: false,
@@ -56,9 +62,10 @@ function detectLanguage() {
     return ['uk', 'be', 'kk'].includes(base) ? 'ru' : '';
   };
   const fromUrl = normalize(new URLSearchParams(location.search).get('lang'));
-  const fromStorage = ['auraSiteLanguage', 'auraLanguage', 'parserLanguage']
-    .map((key) => { try { return normalize(localStorage.getItem(key)); } catch { return ''; } })
-    .find(Boolean);
+  // Only the language explicitly chosen on the public site may override the
+  // browser language — internal tool keys (auraLanguage/parserLanguage) share
+  // this domain and used to force Polish on first visits.
+  const fromStorage = (() => { try { return normalize(localStorage.getItem('auraSiteLanguage')); } catch { return ''; } })();
   const fromBrowser = [...(navigator.languages || []), navigator.language].map(normalize).find(Boolean);
   return fromUrl || fromStorage || fromBrowser || 'pl';
 }
@@ -139,6 +146,32 @@ function renderHeader(copy) {
   if (menuCta) menuCta.textContent = copy.nav.cta;
 }
 
+function renderStickyCta(copy) {
+  if (!refs.stickyCta) return;
+  refs.stickyCta.innerHTML = `<p>${escapeHtml(copy.sticky.text)}</p><a class="button button-green button-small" href="#brief" data-lead-open>${escapeHtml(copy.sticky.button)}</a><button class="icon-button" type="button" data-sticky-close aria-label="${escapeAttr(copy.sticky.close)}">×</button>`;
+}
+
+function updateStickyCta() {
+  stickyFrame = 0;
+  const bar = refs.stickyCta;
+  if (!bar) return;
+  let show = !stickyDismissed && window.scrollY > window.innerHeight * 1.1;
+  if (show) {
+    const brief = document.getElementById('brief');
+    if (brief) {
+      const rect = brief.getBoundingClientRect();
+      if (rect.top < window.innerHeight && rect.bottom > 0) show = false;
+    }
+  }
+  bar.classList.toggle('is-visible', show);
+  if (show) bar.removeAttribute('inert');
+  else bar.setAttribute('inert', '');
+}
+
+function scheduleStickyCta() {
+  if (!stickyFrame) stickyFrame = requestAnimationFrame(updateStickyCta);
+}
+
 function renderFooter(copy, contact) {
   refs.footer.innerHTML = `
     <div class="container footer-inner">
@@ -175,15 +208,13 @@ function renderHome(view) {
             <a class="button button-dark button-large" href="#brief" data-lead-open>${escapeHtml(copy.hero.primary)}</a>
             <a class="button button-ghost button-large" href="#portfolio">${escapeHtml(copy.hero.secondary)}</a>
           </div>
+          <p class="hero-assurance hero-intro hero-intro-assurance">${escapeHtml(copy.hero.assurance)}</p>
         </div>
-        <div class="hero-stage" id="heroStage" aria-label="${escapeAttr(copy.hero.object)}">
+        <div class="hero-stage hero-stage-saturn" id="heroStage">
           <div class="hero-geometry" aria-hidden="true"><span class="hero-geometry-circle"></span><span class="hero-geometry-diamond"></span><span class="hero-geometry-axis"></span></div>
-          <div class="hero-object-shell">
-            <img class="hero-object" src="/site/media/hero/aura-chameleon.webp" width="1619" height="971" alt="Aura chameleon" fetchpriority="high" decoding="async" />
-            <span class="hero-color-wash" aria-hidden="true"></span>
-          </div>
-          <span class="hero-geometry-front" aria-hidden="true"></span>
-          <span class="hero-stage-label">${escapeHtml(copy.hero.object)}</span>
+          <canvas class="hero-saturn-canvas" id="heroSaturnCanvas" role="button" tabindex="0" aria-label="${escapeAttr(copy.hero.orbit.aria)}"></canvas>
+          <div class="hero-orbit-hint${saturnPersist.hintSeen ? ' is-hidden' : ''}" id="heroOrbitHint" aria-hidden="true"><span class="hero-orbit-hint-dot"></span>${escapeHtml(copy.hero.orbit.hint)}</div>
+          <aside class="hero-orbit-card" id="heroOrbitCard" aria-live="polite"></aside>
         </div>
       </div>
       <div class="container hero-facts">
@@ -224,10 +255,8 @@ function renderPortfolioShowcase(view) {
         <p class="reveal">${escapeHtml(copy.portfolio.intro)}</p>
       </div>
       <div class="container portfolio-toolbar">
-        <p class="portfolio-hint" id="portfolioHint"><span aria-hidden="true">↔</span>${escapeHtml(copy.portfolio.hint)}</p>
         <div class="portfolio-head-actions">
           <button type="button" data-portfolio-prev aria-label="${escapeAttr(copy.portfolio.previous)}">←</button>
-          <p class="portfolio-counter" id="portfolioCounter"><span data-portfolio-current>01</span> / ${String(projects.length).padStart(2, '0')}</p>
           <button type="button" data-portfolio-next aria-label="${escapeAttr(copy.portfolio.next)}">→</button>
         </div>
       </div>
@@ -245,7 +274,7 @@ function renderPortfolioShowcase(view) {
 function renderProjectCard(project, index, copy) {
   const imageAttributes = index === 0
     ? `src="${escapeAttr(project.cover)}" loading="eager" fetchpriority="high"`
-    : `data-src="${escapeAttr(project.cover)}" loading="lazy"`;
+    : `data-src="${escapeAttr(project.cover)}"`;
   return `<article class="project-card" data-project-card data-project-id="${escapeAttr(project.id)}">
     <button class="project-card-open project-media" type="button" data-quick-view="${escapeAttr(project.id)}" aria-label="${escapeAttr(`${copy.portfolio.quick}: ${project.title}`)}"><img data-project-image ${imageAttributes} alt="${escapeAttr(`${project.title} — ${project.category}`)}" width="1600" height="1000" decoding="async" sizes="(max-width: 640px) calc(100vw - 40px), (max-width: 1180px) 78vw, 760px" /><span class="project-media-action">${escapeHtml(copy.portfolio.projectLink)} →</span></button>
     <div class="project-card-body"><div><p class="project-kicker">${escapeHtml(project.category)}</p><h3>${escapeHtml(project.title)}</h3><p class="project-card-summary"><span>${escapeHtml(copy.portfolio.created)}:</span> ${escapeHtml(project.services.slice(0, 3).join(' · '))}</p></div>
@@ -326,14 +355,14 @@ function renderLeadForm(copy) {
   const { lead } = state;
   const step = lead.step;
   const progress = `${((step + 1) / 5) * 100}%`;
-  return `<form id="leadForm" novalidate><div class="lead-progress-row"><p>${escapeHtml(copy.lead.progress)} ${step + 1}/5</p><div class="lead-progress" style="--progress:${progress}"><span></span></div></div>${renderLeadStep(copy, step)}${lead.error ? `<p class="lead-error" role="alert">${escapeHtml(lead.error)}</p>` : ''}<div class="lead-nav">${step > 0 ? `<button class="button button-ghost" type="button" data-lead-back>${escapeHtml(copy.lead.back)}</button>` : '<span></span>'}<button class="button button-dark" type="button" data-lead-next ${lead.loading ? 'disabled' : ''}>${escapeHtml(lead.loading ? copy.lead.loading : step === 4 ? copy.lead.send : copy.lead.next)}</button></div></form>`;
+  return `<form id="leadForm" novalidate><div class="lead-progress-row"><p>${escapeHtml(copy.lead.progress)} ${step + 1}/5</p><div class="lead-progress" style="--progress:${progress}"><span></span></div></div>${renderLeadStep(copy, step)}${lead.error ? `<p class="lead-error" role="alert">${escapeHtml(lead.error)}</p>` : ''}<div class="lead-nav">${step > 0 ? `<button class="button button-ghost" type="button" data-lead-back>${escapeHtml(copy.lead.back)}</button>` : '<span></span>'}<button class="button button-dark" type="button" data-lead-next ${lead.loading ? 'disabled' : ''}>${escapeHtml(lead.loading ? copy.lead.loading : step === 4 ? copy.lead.send : copy.lead.next)}</button></div><p class="lead-reassure">${escapeHtml(copy.lead.reassure)}</p></form>`;
 }
 
 function renderLeadStep(copy, step) {
   const answers = state.lead.answers;
   if (step === 0) return optionStep(copy.lead.task, answers.tasks, true, 'task');
   if (step === 1) return optionStep(copy.lead.goal, answers.goal, false, 'goal');
-  if (step === 2) return `<div class="lead-step"><h3>${escapeHtml(copy.lead.context[0])}</h3><p class="lead-step-intro">${escapeHtml(copy.lead.context[1])}</p><div class="field-grid"><label class="field field-full"><span>${escapeHtml(copy.lead.context[0])}</span><textarea id="leadContext" data-lead-field="context" required>${escapeHtml(answers.context)}</textarea></label><label class="field field-full"><span>${escapeHtml(copy.lead.labels.website)}</span><input data-lead-field="website" type="url" inputmode="url" value="${escapeAttr(answers.website)}" /></label></div></div>`;
+  if (step === 2) return `<div class="lead-step"><h3>${escapeHtml(copy.lead.context[0])}</h3><p class="lead-step-intro">${escapeHtml(copy.lead.context[1])}</p><div class="field-grid"><label class="field field-full"><span>${escapeHtml(copy.lead.context[0])}</span><textarea id="leadContext" data-lead-field="context" required>${escapeHtml(answers.context)}</textarea></label></div></div>`;
   if (step === 3) return optionStep(copy.lead.budget, answers.budget, false, 'budget');
   return `<div class="lead-step"><h3>${escapeHtml(copy.lead.contact[0])}</h3><p class="lead-step-intro">${escapeHtml(copy.lead.contact[1])}</p><div class="field-grid"><label class="field"><span>${escapeHtml(copy.lead.labels.name)}</span><input data-lead-field="name" autocomplete="name" value="${escapeAttr(answers.name)}" required /></label><label class="field"><span>${escapeHtml(copy.lead.labels.phone)}</span><input data-lead-field="phone" autocomplete="tel" inputmode="tel" value="${escapeAttr(answers.phone)}" /></label><label class="field"><span>${escapeHtml(copy.lead.labels.email)}</span><input data-lead-field="email" autocomplete="email" inputmode="email" value="${escapeAttr(answers.email)}" /></label><label class="field"><span>${escapeHtml(copy.lead.labels.message)}</span><input data-lead-field="message" value="${escapeAttr(answers.message)}" /></label><label class="honeypot"><span>Fax</span><input data-lead-field="companyFax" tabindex="-1" autocomplete="off" /></label></div></div>`;
 }
@@ -506,7 +535,7 @@ async function submitLead() {
   const selectedPackage = state.lead.context.package;
   const selectedProject = state.lead.context.project;
   const payload = {
-    name: answers.name.trim(), phone: answers.phone.trim(), email: answers.email.trim(), website: answers.website.trim(),
+    name: answers.name.trim(), phone: answers.phone.trim(), email: answers.email.trim(),
     businessType: answers.context.trim(), context: answers.context.trim(), goal: answers.goal, budget: answers.budget,
     format: selectedPackage || answers.budget, selectedServices: [...new Set([...answers.tasks, selectedService].filter(Boolean))],
     selectedService, selectedPackage, selectedProject, message: answers.message.trim(), companyFax: answers.companyFax,
@@ -678,61 +707,96 @@ function scrollPortfolio(track, direction) {
   track.scrollBy({ left: direction * ((card?.getBoundingClientRect().width || 400) + 24), behavior: prefersReducedMotion ? 'auto' : 'smooth' });
 }
 
-function setupHeroInteraction() {
-  const stage = document.getElementById('heroStage');
+function orbitSlideHtml(copy, index) {
+  const slides = copy.hero.orbit.slides;
+  const slide = slides[index % slides.length];
+  const targetHash = slide.id === 'visibility' ? '#visibility' : '#services';
+  return `<div class="hero-orbit-top"><p class="hero-orbit-kicker">${String(index + 1).padStart(2, '0')} / ${String(slides.length).padStart(2, '0')} · ${escapeHtml(copy.hero.orbit.kicker)}</p><div class="hero-orbit-dots" aria-hidden="true">${slides.map((_, i) => `<span class="${i === index % slides.length ? 'is-active' : ''}"></span>`).join('')}</div></div>
+    <h3>${escapeHtml(slide.title)}</h3>
+    <p>${escapeHtml(slide.text)}</p>
+    <a class="hero-orbit-link" href="${targetHash}" data-orbit-open="${escapeAttr(slide.id)}">${escapeHtml(copy.hero.orbit.open)} →</a>`;
+}
+
+function setupHeroInteraction(copy) {
   heroInteractionAbort?.abort();
   heroInteractionAbort = null;
-  if (!stage || prefersReducedMotion) return;
+  heroSaturn?.destroy();
+  heroSaturn = null;
+  const stage = document.getElementById('heroStage');
+  const canvas = document.getElementById('heroSaturnCanvas');
+  const card = document.getElementById('heroOrbitCard');
+  const hint = document.getElementById('heroOrbitHint');
+  if (!stage || !canvas || !card) return;
   const controller = new AbortController();
   heroInteractionAbort = controller;
   const options = { signal: controller.signal };
-  let frame = 0;
-  let pointer = { x: 0, y: 0 };
-  let inView = true;
-  const paint = () => {
-    const rect = stage.getBoundingClientRect();
-    const viewportProgress = isCoarsePointer ? 0 : Math.max(-1, Math.min(1, (rect.top + rect.height / 2 - innerHeight / 2) / innerHeight));
-    stage.style.setProperty('--object-scroll-y', `${(-viewportProgress * 8).toFixed(1)}px`);
-    stage.style.setProperty('--object-rx', `${(-pointer.y * 4).toFixed(2)}deg`);
-    stage.style.setProperty('--object-ry', `${(pointer.x * 5).toFixed(2)}deg`);
-    stage.style.setProperty('--object-x', `${(pointer.x * 12).toFixed(1)}px`);
-    stage.style.setProperty('--object-y', `${(pointer.y * 10).toFixed(1)}px`);
-    stage.style.setProperty('--geometry-x', `${(pointer.x * 6).toFixed(1)}px`);
-    stage.style.setProperty('--geometry-y', `${(pointer.y * 5).toFixed(1)}px`);
-    stage.style.setProperty('--hero-hue', `${(-28 + (pointer.x + 0.5) * 250).toFixed(0)}deg`);
-    stage.style.setProperty('--glow-x', `${((pointer.x + 0.5) * 100).toFixed(1)}%`);
-    stage.style.setProperty('--glow-y', `${((pointer.y + 0.5) * 100).toFixed(1)}%`);
-    frame = 0;
+  const slides = copy.hero.orbit.slides;
+
+  heroSaturn = createHeroSaturn({
+    canvas,
+    slideCount: slides.length,
+    initialAngle: saturnPersist.angle,
+    reducedMotion: prefersReducedMotion,
+    coarsePointer: isCoarsePointer
+  });
+  if (saturnPersist.hintSeen) heroSaturn?.hintSeen();
+  controller.signal.addEventListener('abort', () => {
+    saturnPersist.angle = heroSaturn?.getAngle() ?? saturnPersist.angle;
+    heroSaturn?.destroy();
+    heroSaturn = null;
+  }, { once: true });
+
+  const firstMount = !saturnPersist.entered;
+  saturnPersist.entered = true;
+  const showSlide = (index, animate) => {
+    saturnPersist.index = index % slides.length;
+    card.innerHTML = orbitSlideHtml(copy, saturnPersist.index);
+    card.classList.add('is-ready');
+    if (animate) {
+      card.classList.remove('is-swap');
+      void card.offsetWidth;
+      card.classList.add('is-swap');
+    }
   };
-  const schedulePaint = () => { if (inView && !frame) frame = requestAnimationFrame(paint); };
-  if (!isCoarsePointer) {
+  showSlide(saturnPersist.index, firstMount && !prefersReducedMotion);
+
+  let swapTimer = 0;
+  const advance = () => {
+    if (!saturnPersist.hintSeen) {
+      saturnPersist.hintSeen = true;
+      hint?.classList.add('is-hidden');
+    }
+    heroSaturn?.spin();
+    const next = (saturnPersist.index + 1) % slides.length;
+    clearTimeout(swapTimer);
+    swapTimer = setTimeout(() => showSlide(next, true), prefersReducedMotion ? 0 : 260);
+  };
+  controller.signal.addEventListener('abort', () => clearTimeout(swapTimer), { once: true });
+
+  canvas.addEventListener('click', advance, options);
+  canvas.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); advance(); }
+  }, options);
+
+  if (!isCoarsePointer && !prefersReducedMotion) {
     stage.addEventListener('pointermove', (event) => {
       const rect = stage.getBoundingClientRect();
-      pointer = {
-        x: Math.max(-0.5, Math.min(0.5, (event.clientX - rect.left) / rect.width - 0.5)),
-        y: Math.max(-0.5, Math.min(0.5, (event.clientY - rect.top) / rect.height - 0.5))
-      };
+      const x = Math.max(-0.5, Math.min(0.5, (event.clientX - rect.left) / rect.width - 0.5));
+      const y = Math.max(-0.5, Math.min(0.5, (event.clientY - rect.top) / rect.height - 0.5));
+      heroSaturn?.setPointer(x, y);
+      stage.style.setProperty('--glow-x', `${((x + 0.5) * 100).toFixed(1)}%`);
+      stage.style.setProperty('--glow-y', `${((y + 0.5) * 100).toFixed(1)}%`);
       stage.classList.add('is-active');
-      schedulePaint();
     }, options);
     stage.addEventListener('pointerleave', () => {
-      pointer = { x: 0, y: 0 };
+      heroSaturn?.setPointer(0, 0);
+      heroSaturn?.setHover(false);
       stage.classList.remove('is-active');
-      schedulePaint();
     }, options);
+    canvas.addEventListener('pointerenter', () => heroSaturn?.setHover(true), options);
+    canvas.addEventListener('pointerleave', () => heroSaturn?.setHover(false), options);
   }
-  if (!isCoarsePointer) window.addEventListener('scroll', schedulePaint, { ...options, passive: true });
-  window.addEventListener('resize', schedulePaint, options);
-  if ('IntersectionObserver' in window) {
-    const observer = new IntersectionObserver(([entry]) => {
-      inView = Boolean(entry?.isIntersecting);
-      stage.classList.toggle('is-in-view', inView);
-      if (inView) schedulePaint();
-    }, { rootMargin: '15% 0px', threshold: 0.01 });
-    observer.observe(stage);
-    controller.signal.addEventListener('abort', () => observer.disconnect(), { once: true });
-  } else stage.classList.add('is-in-view');
-  paint();
+  stage.classList.add('is-in-view');
 }
 
 function observeReveals() {
@@ -765,8 +829,10 @@ function render() {
   renderHeader(view.copy);
   refs.app.innerHTML = currentRoute.type === 'home' ? renderHome(view) : currentRoute.type === 'portfolio' ? renderPortfolioIndex(view) : currentRoute.type === 'project' ? renderProjectRoute(view, currentRoute.slug) : currentRoute.type === 'services' ? renderServicesIndex(view) : currentRoute.type === 'service' ? renderServiceRoute(view, currentRoute.slug) : renderNotFound(view.copy);
   renderFooter(view.copy, view.content.contactInfo);
+  renderStickyCta(view.copy);
+  scheduleStickyCta();
   updateMeta(view, currentRoute);
-  setupPortfolioInteractions(); setupHeroInteraction(); observeReveals();
+  setupPortfolioInteractions(); setupHeroInteraction(view.copy); observeReveals();
   if (routeChanged) requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: 'auto' }));
 }
 
@@ -792,10 +858,26 @@ document.addEventListener('click', (event) => {
   if (target.matches('#menuToggle')) { event.preventDefault(); setMenu(!state.menuOpen); return; }
   if (target.matches('[data-service-category]')) { event.preventDefault(); state.activeServiceCategory = target.dataset.serviceCategory; render(); return; }
   if (target.matches('[data-quick-view]')) { event.preventDefault(); openQuickView(target.dataset.quickView, target); return; }
+  if (target.matches('[data-orbit-open]')) {
+    event.preventDefault();
+    const id = target.dataset.orbitOpen;
+    const behavior = prefersReducedMotion ? 'auto' : 'smooth';
+    if (id === 'visibility') { document.getElementById('visibility')?.scrollIntoView({ behavior, block: 'start' }); return; }
+    if (state.activeServiceCategory !== id) { state.activeServiceCategory = id; render(); }
+    document.getElementById('services')?.scrollIntoView({ behavior, block: 'start' });
+    return;
+  }
   if (target.matches('[data-lead-context-clear]')) { event.preventDefault(); state.lead.context[target.dataset.leadContextClear] = ''; render(); return; }
   if (target.matches('[data-lead-open]')) { event.preventDefault(); openLead({ service: target.dataset.leadService || '', package: target.dataset.leadPackage || '', project: target.dataset.leadProject || '' }); return; }
   if (target.matches('[data-quick-close]')) { event.preventDefault(); closeQuickView(); return; }
   if (target.matches('[data-menu-close]')) { setMenu(false); return; }
+  if (target.matches('[data-sticky-close]')) {
+    event.preventDefault();
+    stickyDismissed = true;
+    try { sessionStorage.setItem('auraStickyCtaDismissed', '1'); } catch {}
+    updateStickyCta();
+    return;
+  }
   if (target.matches('[data-lead-option]')) { const [kind, value] = target.dataset.leadOption.split(':'); if (kind === 'task') { state.lead.answers.tasks = state.lead.answers.tasks.includes(value) ? state.lead.answers.tasks.filter((item) => item !== value) : [...state.lead.answers.tasks, value]; } else state.lead.answers[`${kind === 'budget' ? 'budget' : kind}`] = value; state.lead.error = ''; render(); return; }
   if (target.matches('[data-lead-back]')) { state.lead.step = Math.max(0, state.lead.step - 1); state.lead.error = ''; render(); return; }
   if (target.matches('[data-lead-next]')) { const validation = validateLead(data().copy); if (validation) { state.lead.error = validation; render(); return; } if (state.lead.step === 4) submitLead(); else { state.lead.step += 1; state.lead.error = ''; render(); } }
@@ -803,7 +885,10 @@ document.addEventListener('click', (event) => {
 
 document.addEventListener('input', (event) => { if (event.target.matches?.('[data-lead-field]')) updateLeadField(event.target); });
 document.addEventListener('keydown', (event) => { if (event.key === 'Escape') { if (state.quickProject) closeQuickView(); else if (state.menuOpen) setMenu(false); } if (state.quickProject) trapFocus(event, refs.quickView); else if (state.menuOpen) trapFocus(event, refs.mobileMenu); });
-window.addEventListener('scroll', () => refs.header.classList.toggle('is-scrolled', window.scrollY > 12), { passive: true });
+window.addEventListener('scroll', () => {
+  refs.header.classList.toggle('is-scrolled', window.scrollY > 12);
+  scheduleStickyCta();
+}, { passive: true });
 window.addEventListener('popstate', render);
 
 render();

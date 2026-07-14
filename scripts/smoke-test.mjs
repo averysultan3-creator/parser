@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { spawn } from 'node:child_process';
 
 const cliBaseArgIndex = process.argv.indexOf('--base');
@@ -217,9 +218,14 @@ async function deleteJson(path, body) {
 }
 
 function adminHeaders(path) {
+  // /api/discover (and the AI analysis endpoint) now require an authenticated
+  // caller - anonymous requests used to be able to trigger paid API calls and
+  // assign the results to an arbitrary worker id. The smoke test authenticates
+  // as admin for these too.
   return path.startsWith('/api/admin') || path.startsWith('/api/companies')
     || path.startsWith('/api/history')
-    || path.startsWith('/api/discover/jobs')
+    || path.startsWith('/api/discover')
+    || path.startsWith('/api/ai/site-analysis')
     ? { authorization: ADMIN_AUTH }
     : {};
 }

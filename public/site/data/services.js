@@ -137,7 +137,7 @@ const baseServiceCategories = [
         id: 'googleads',
         icon: 'mouse-pointer-click',
         name: 'Google Ads',
-        short: 'Reklama pod zapytania, nie tylko kliki.',
+        short: 'Reklama, która przynosi realne zapytania.',
         price: 'od 250 EUR / mies.',
         details: {
           what: 'Kampanie w wyszukiwarce Google nastawione na telefon, formularz i rezerwacje.',
@@ -360,7 +360,7 @@ const baseServiceCategories = [
           what: 'Automatyczne raporty: leady, kampanie i sprzedaż — prostym językiem.',
           forWho: 'Właściciele firm, którzy nie mają czasu na dashboardy.',
           problem: 'Dane są, ale nikt ich nie czyta.',
-          gives: 'Jedno podsumowanie zamiast pięciu paneli.',
+          gives: 'Jedno przejrzyste podsumowanie wszystkich kluczowych danych.',
           priceFactors: 'Źródła danych, częstotliwość i format.',
           process: 'Źródła → szablon → automatyzacja → wysyłka.'
         }
@@ -640,7 +640,7 @@ const serviceTranslations = {
       }
     },
     googleads: {
-      short: 'Search campaigns built for enquiries, not vanity clicks.',
+      short: 'Search campaigns built to bring real enquiries.',
       details: {
         what: 'Google Search campaigns focused on calls, forms and bookings.',
         forWho: 'Local services, B2B companies and e-commerce.',
@@ -810,7 +810,7 @@ const serviceTranslations = {
         what: 'Automatic reports for leads, campaigns and sales in plain language.',
         forWho: 'Business owners who do not want to live in dashboards.',
         problem: 'The data exists, but nobody reads it.',
-        gives: 'One readable summary instead of five panels.',
+        gives: 'One clear, readable summary of everything that matters.',
         priceFactors: 'Data sources, reporting frequency and format.',
         process: 'Sources → template → automation → delivery.'
       }
@@ -925,7 +925,7 @@ const serviceTranslations = {
     },
     customtools: {
       name: 'Custom business tools',
-      short: 'Tools shaped around your process, not someone else’s.',
+      short: 'Tools shaped entirely around your own process.',
       details: {
         what: 'Dedicated applications and internal tools — from quote generators to custom systems.',
         forWho: 'Companies with a unique workflow that off-the-shelf software cannot handle.',
@@ -1034,7 +1034,7 @@ const serviceTranslations = {
       }
     },
     googleads: {
-      short: 'Поисковые кампании, настроенные под заявки, а не vanity-clicks.',
+      short: 'Поисковые кампании, нацеленные на реальные заявки.',
       details: {
         what: 'Поисковые кампании Google, заточенные под звонки, формы и бронирования.',
         forWho: 'Локальные услуги, B2B и e-commerce.',
@@ -1206,7 +1206,7 @@ const serviceTranslations = {
         what: 'Автоматические отчёты по лидам, кампаниям и продажам простым языком.',
         forWho: 'Собственники бизнеса, которые не хотят жить в дашбордах.',
         problem: 'Данные есть, но их никто не читает.',
-        gives: 'Один понятный summary вместо пяти панелей.',
+        gives: 'Один понятный summary по всем ключевым данным.',
         priceFactors: 'Источники данных, частота отчётности и формат.',
         process: 'Источники → шаблон → автоматизация → доставка.'
       }
@@ -1321,7 +1321,7 @@ const serviceTranslations = {
     },
     customtools: {
       name: 'Custom business tools',
-      short: 'Инструменты, собранные под ваш процесс, а не под чужой.',
+      short: 'Инструменты, собранные под ваш собственный процесс.',
       details: {
         what: 'Кастомные приложения и внутренние инструменты — от генераторов КП до рабочих систем.',
         forWho: 'Компании с уникальным процессом, который не покрывает готовый софт.',

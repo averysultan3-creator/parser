@@ -4,200 +4,148 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Aura Admin</title>
-    <link rel="stylesheet" href="./styles.css?v=20260711-1" />
+    <link rel="stylesheet" href="./styles.css?v=20260713-1" />
+    <script src="../shared/i18n.js?v=20260713-1"></script>
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js" defer></script>
-    <script src="./app.js?v=20260711-1" defer></script>
+    <script src="./app.js?v=20260713-1" defer></script>
   </head>
   <body>
     <main class="admin-shell">
       <header class="admin-header">
         <div>
           <p class="eyebrow">Aura Sales OS</p>
-          <h1>Panel administratora</h1>
-          <p>Pracownicy, ich historia parsera, statusy leadow i progres akademii w jednym miejscu.</p>
+          <h1 data-i18n="admin_panel_title">Panel administratora</h1>
+          <p data-i18n="admin_panel_subtitle">Pracownicy, ich historia parsera, statusy leadow i progres akademii w jednym miejscu.</p>
         </div>
         <nav class="header-actions">
-          <a id="adminParserLink" href="../" class="button secondary"><i data-lucide="radar"></i> Parser</a>
-          <a id="adminAcademyLink" href="../academy/" class="button secondary"><i data-lucide="graduation-cap"></i> Akademia</a>
-          <button id="refreshButton" class="button primary"><i data-lucide="refresh-cw"></i> Odswiez</button>
+          <div id="adminLangSwitch" class="chips lang-switch" role="group" aria-label="Language"></div>
+          <a id="adminParserLink" href="../" class="button secondary"><i data-lucide="radar"></i> <span data-i18n="nav_parser">Parser</span></a>
+          <a id="adminAcademyLink" href="../academy/" class="button secondary"><i data-lucide="graduation-cap"></i> <span data-i18n="nav_academy">Akademia</span></a>
+          <button id="refreshButton" class="button primary"><i data-lucide="refresh-cw"></i> <span data-i18n="btn_refresh">Odswiez</span></button>
         </nav>
       </header>
 
       <section id="statsGrid" class="stats-grid"></section>
 
-      <section class="panel">
-        <div class="panel-top">
-          <div>
-            <p class="eyebrow">Workers</p>
-            <h2>Pracownicy</h2>
-            <p>Wybierz konkretnego pracownika, zeby zobaczyc jego leady, zapytania parsera i akademie.</p>
-          </div>
-          <div class="filters">
-            <input id="workerSearchInput" placeholder="Szukaj worker ID..." />
-          </div>
-        </div>
-        <div id="workersBulkBar" class="bulk-actions">
-          <span id="workersSelectedCount" class="muted">0 selected</span>
-          <button id="workersBulkActivate" class="button secondary" type="button">Aktywuj</button>
-          <button id="workersBulkDeactivate" class="button secondary" type="button">Dezaktywuj</button>
-          <button id="workersBulkResetLeads" class="button secondary" type="button">Leady do puli</button>
-          <button id="workersBulkDelete" class="button danger" type="button">Usuń zaznaczone</button>
-        </div>
-        <div class="table-wrap compact-table">
-          <table>
-            <thead>
-              <tr>
-                <th><input type="checkbox" id="workersSelectAll" aria-label="Zaznacz wszystkich workerów" /></th>
-                <th>Worker</th>
-                <th>Leady</th>
-                <th>Zapytania</th>
-                <th>Akademia</th>
-                <th>Spotkania</th>
-                <th>Ostatnia aktywnosc</th>
-                <th>Akcje</th>
-              </tr>
-            </thead>
-            <tbody id="workersBody"></tbody>
-          </table>
-        </div>
-      </section>
+      <nav id="adminSectionTabs" class="admin-section-tabs">
+        <button class="admin-section-tab active" type="button" data-admin-tab="workers"><i data-lucide="users"></i> <span data-i18n="admin_tab_workers">Pracownicy</span></button>
+        <button class="admin-section-tab" type="button" data-admin-tab="leads"><i data-lucide="building-2"></i> <span data-i18n="admin_tab_leads">Leady</span></button>
+        <button class="admin-section-tab" type="button" data-admin-tab="inbox"><i data-lucide="mail"></i> <span data-i18n="admin_tab_inbox">Zgłoszenia ze strony</span> <span id="inboxBadge" class="tab-badge hidden-field">0</span></button>
+        <button class="admin-section-tab" type="button" data-admin-tab="history"><i data-lucide="history"></i> <span data-i18n="admin_tab_history">Historia zapytań</span></button>
+        <button class="admin-section-tab" type="button" data-admin-tab="audit"><i data-lucide="scroll-text"></i> <span data-i18n="nav_audit_log">Dziennik zdarzeń</span></button>
+        <button class="admin-section-tab" type="button" data-admin-tab="academy"><i data-lucide="graduation-cap"></i> <span data-i18n="nav_academy">Akademia</span></button>
+      </nav>
 
-      <section id="workerDetailPanel" class="panel detail-panel">
-        <div class="panel-top">
-          <div>
-            <p class="eyebrow">Profil pracownika</p>
-            <h2 id="selectedWorkerTitle">Wybierz pracownika</h2>
-            <p id="selectedWorkerMeta">Po wyborze zobaczysz jego wyniki, statusy i historie.</p>
+      <div id="adminTabWorkers" class="admin-tab">
+        <section class="panel">
+          <div class="panel-top">
+            <div>
+              <p class="eyebrow" data-i18n="admin_eyebrow_workers">Workers</p>
+              <h2 data-i18n="admin_tab_workers">Pracownicy</h2>
+              <p data-i18n="admin_workers_subtitle">Wybierz konkretnego pracownika, zeby zobaczyc jego zapytania, leady, foldery i notatki.</p>
+            </div>
+            <div class="filters">
+              <input id="workerSearchInput" data-i18n-placeholder="admin_workers_search_placeholder" placeholder="Szukaj worker ID..." />
+            </div>
           </div>
-          <div id="workerStatusChips" class="chips"></div>
-        </div>
+          <div id="workersBulkBar" class="bulk-actions">
+            <span id="workersSelectedCount" class="muted">Nic nie zaznaczono</span>
+            <button id="workersBulkActivate" class="button secondary" type="button" data-i18n="admin_btn_activate">Aktywuj</button>
+            <button id="workersBulkDeactivate" class="button secondary" type="button" data-i18n="admin_btn_deactivate">Dezaktywuj</button>
+            <button id="workersBulkResetLeads" class="button secondary" type="button" data-i18n="admin_btn_return_worker_leads">Wróć leady do puli</button>
+            <button id="workersBulkDelete" class="button danger" type="button" data-i18n="admin_btn_delete_selected_accounts">Usuń zaznaczone konta</button>
+          </div>
+          <div class="table-wrap compact-table">
+            <table>
+              <thead>
+                <tr>
+                  <th><input type="checkbox" id="workersSelectAll" data-i18n-aria-label="admin_aria_select_all_workers" aria-label="Zaznacz wszystkich workerów" /></th>
+                  <th data-i18n="admin_th_worker">Worker</th>
+                  <th data-i18n="admin_th_leads">Leady</th>
+                  <th data-i18n="admin_th_queries">Zapytania</th>
+                  <th data-i18n="nav_academy">Akademia</th>
+                  <th data-i18n="admin_th_meetings">Spotkania</th>
+                  <th data-i18n="admin_th_last_active">Ostatnia aktywnosc</th>
+                  <th data-i18n="admin_th_actions">Akcje</th>
+                </tr>
+              </thead>
+              <tbody id="workersBody"></tbody>
+            </table>
+          </div>
+        </section>
 
-        <div id="workerStatsGrid" class="stats-grid small-stats"></div>
+        <section id="workerDetailPanel" class="panel detail-panel">
+          <div class="panel-top">
+            <div>
+              <p class="eyebrow" data-i18n="admin_worker_profile_eyebrow">Profil pracownika</p>
+              <h2 id="selectedWorkerTitle">Wybierz pracownika</h2>
+              <p id="selectedWorkerMeta">Po wyborze zobaczysz jego zapytania, statusy i historie.</p>
+            </div>
+            <div id="workerStatusChips" class="chips"></div>
+          </div>
 
-        <div class="two-columns">
+          <div id="workerStatsGrid" class="stats-grid small-stats"></div>
+
           <div class="sub-panel">
             <div class="sub-panel-top">
-              <h3>Historia zapytan tego pracownika</h3>
+              <h3 data-i18n="admin_worker_runs_heading">Zapytania parsera tego pracownika</h3>
               <span id="workerRunsCount" class="muted"></span>
             </div>
+            <p class="muted small-hint" data-i18n="admin_worker_runs_hint">Kliknij "Otwórz", żeby zobaczyć konkretne firmy znalezione w tym zapytaniu - ich status, komentarze i folder.</p>
             <div id="workerRunsList" class="list"></div>
           </div>
+
+          <div class="sub-panel highlight-panel">
+            <div class="sub-panel-top">
+              <h3><i data-lucide="folder-heart"></i> <span data-i18n="admin_worker_folders_heading">Foldery i notatki pracownika</span></h3>
+              <span id="workerSavedCount" class="muted"></span>
+            </div>
+            <div id="workerFoldersList" class="chips"></div>
+            <div id="workerSavedList" class="list"></div>
+          </div>
+
           <div class="sub-panel">
             <div class="sub-panel-top">
-              <h3>Akademia</h3>
+              <h3 data-i18n="nav_academy">Akademia</h3>
               <span id="workerAcademyBadge" class="pill"></span>
             </div>
             <div id="workerAcademyBox" class="academy-box"></div>
           </div>
-        </div>
 
-        <div class="sub-panel">
-          <div class="sub-panel-top">
-            <h3>Foldery i zapisane firmy</h3>
-            <span id="workerSavedCount" class="muted"></span>
+          <div class="sub-panel">
+            <div class="sub-panel-top">
+              <h3><i data-lucide="target"></i> <span data-i18n="admin_worker_weak_spots_heading">Słabe strony (wyniki testów poniżej 70%)</span></h3>
+            </div>
+            <div id="workerWeakSpotsBox" class="list"></div>
           </div>
-          <div id="workerFoldersList" class="chips"></div>
-          <div id="workerSavedList" class="list"></div>
-        </div>
 
-        <div class="sub-panel">
-          <div class="sub-panel-top">
-            <h3>Leady pracownika</h3>
-            <span id="workerLeadsCount" class="muted"></span>
+          <div class="sub-panel">
+            <div class="sub-panel-top">
+              <h3><i data-lucide="bot"></i> <span data-i18n="admin_worker_ai_training_heading">Historia treningów AI</span></h3>
+              <span id="workerAiTrainingBadge" class="pill"></span>
+            </div>
+            <div id="workerAiTrainingBox" class="list"></div>
           </div>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Firma</th>
-                  <th>Status</th>
-                  <th>Kontakt</th>
-                  <th>Zrodlo</th>
-                  <th>Seen</th>
-                  <th>Akcje</th>
-                </tr>
-              </thead>
-              <tbody id="workerLeadsBody"></tbody>
-            </table>
-          </div>
-        </div>
-      </section>
+        </section>
 
-      <section class="two-columns">
-        <div class="panel">
+        <section class="panel">
+          <h2 data-i18n="admin_academy_progress_all_heading">Progres akademii - wszyscy</h2>
+          <div id="academyList" class="list"></div>
+        </section>
+      </div>
+
+      <div id="adminTabLeads" class="admin-tab hidden-panel">
+        <section class="panel">
           <div class="panel-top">
             <div>
-              <h2>Historia parsera</h2>
-              <p>Zadne leady, komentarze, statusy ani foldery nie sa tu nigdy usuwane. "Wroc do puli" oddaje zapytanie/leady do ponownego przetworzenia i archiwizuje wpis historii - nic nie znika na stale.</p>
+              <h2 data-i18n="admin_tab_leads">Leady</h2>
+              <p data-i18n="admin_leads_subtitle">"Wróć do puli" zwalnia przypisanie do workera. Firma, jej kontakty, komentarze, status CRM i foldery nigdy nie są usuwane.</p>
             </div>
           </div>
-
-          <div id="historyViewTabs" class="history-view-tabs">
-            <button class="button secondary history-view-tab active" type="button" data-history-view="active">Aktywne</button>
-            <button class="button secondary history-view-tab" type="button" data-history-view="completed_active">Zakończone</button>
-            <button class="button secondary history-view-tab" type="button" data-history-view="returned">Zwrócone do puli</button>
-            <button class="button secondary history-view-tab" type="button" data-history-view="archived">Archiwum</button>
-          </div>
-
-          <button id="historyFiltersToggle" class="button secondary mobile-filters-toggle" type="button">Filtry i akcje zbiorcze</button>
-
-          <div id="historyFiltersPanel" class="history-filters-panel">
-            <form id="historyFiltersForm" class="filters history-filters">
-              <input name="country" placeholder="Kraj" autocomplete="off" />
-              <input name="city" placeholder="Miasto" autocomplete="off" />
-              <input name="category" placeholder="Kategoria / nisza" autocomplete="off" />
-              <input name="workerId" placeholder="Worker ID" autocomplete="off" />
-              <select name="status">
-                <option value="">Status: wszystkie</option>
-                <option value="completed">completed</option>
-                <option value="exhausted">exhausted</option>
-                <option value="duplicates_only">duplicates_only</option>
-                <option value="cancelled">cancelled</option>
-                <option value="failed">failed</option>
-                <option value="running">running</option>
-              </select>
-              <input name="dateFrom" type="date" title="Data od" />
-              <input name="dateTo" type="date" title="Data do" />
-              <button class="button secondary" type="submit">Filtruj</button>
-              <button id="historyFiltersClear" class="button secondary" type="button">Wyczyść filtry</button>
-              <button id="historyPreviewByFilter" class="button secondary" type="button">Pokaż pasujące zapytania</button>
-            </form>
-
-            <div id="historyBulkBar" class="bulk-actions">
-              <label class="toggle-row">
-                <input type="checkbox" id="runsSelectAll" />
-                zaznacz wszystko na tej stronie
-              </label>
-              <span id="runsSelectedCount" class="muted">Nic nie zaznaczono</span>
-              <button id="historyBulkReset" class="button secondary" type="button">Wróć leady zaznaczonych do puli</button>
-              <button id="historyBulkDelete" class="button danger" type="button">Wróć zaznaczone zapytania do puli</button>
-            </div>
-          </div>
-
-          <div id="historyPreviewPanel" class="history-preview-panel hidden-panel"></div>
-
-          <div id="historyStateMessage" class="history-state-message hidden-panel"></div>
-          <div id="runsList" class="list"></div>
-          <div id="archiveList" class="list hidden-panel"></div>
-          <div id="runDetail" class="run-detail"></div>
-        </div>
-
-        <div class="panel">
-          <h2>Progres akademii</h2>
-          <div id="academyList" class="list"></div>
-        </div>
-      </section>
-
-      <section class="panel">
-        <div class="panel-top">
-          <div>
-            <h2>Globalny lead pool</h2>
-            <p>"Wróć do puli" zwalnia przypisanie do workera. Firma, jej kontakty, komentarze, status CRM i foldery nigdy nie są usuwane.</p>
-          </div>
-          <div class="filters">
-            <input id="searchInput" placeholder="Szukaj firmy, telefonu, miasta, worker..." />
-            <select id="statusFilter">
-              <option value="">Wszystkie statusy</option>
+          <form id="leadsFiltersForm" class="filters">
+            <input id="searchInput" name="q" data-i18n-placeholder="admin_leads_search_placeholder" placeholder="Szukaj firmy, telefonu, miasta..." autocomplete="off" />
+            <select id="statusFilter" name="status">
+              <option value="" data-i18n="admin_status_all">Wszystkie statusy</option>
               <option value="new">new</option>
               <option value="reserved">reserved</option>
               <option value="analyzed">analyzed</option>
@@ -209,30 +157,223 @@
               <option value="duplicate">duplicate</option>
               <option value="completed">completed</option>
             </select>
+            <select id="leadsPoolFilter" name="poolState">
+              <option value="" data-i18n="admin_pool_all">Pool: wszystkie</option>
+              <option value="available">available</option>
+              <option value="reserved">reserved</option>
+              <option value="processed">processed</option>
+              <option value="reset">reset</option>
+            </select>
+            <input id="leadsWorkerFilter" name="workerId" list="leadsWorkerSuggestions" data-i18n-placeholder="admin_placeholder_worker_id" placeholder="Worker ID" autocomplete="off" />
+            <input id="leadsCityFilter" name="city" list="leadsCitySuggestions" data-i18n-placeholder="admin_placeholder_city" placeholder="Miasto" autocomplete="off" />
+            <input id="leadsCategoryFilter" name="category" list="leadsCategorySuggestions" data-i18n-placeholder="admin_placeholder_category" placeholder="Kategoria / nisza" autocomplete="off" />
+            <datalist id="leadsWorkerSuggestions"></datalist>
+            <datalist id="leadsCitySuggestions"></datalist>
+            <datalist id="leadsCategorySuggestions"></datalist>
+            <button id="leadsFiltersClear" class="button secondary" type="button" data-i18n="admin_btn_clear_filters">Wyczyść filtry</button>
+          </form>
+          <div class="bulk-actions">
+            <label class="toggle-row">
+              <input type="checkbox" id="leadsSelectAll" />
+              <span data-i18n="admin_select_all_on_page">zaznacz wszystko na tej stronie</span>
+            </label>
+            <button id="leadsSelectAllMatching" class="button secondary" type="button">Zaznacz wszystkie pasujące</button>
+            <button id="resetSelected" class="button secondary" data-i18n="admin_btn_return_selected_to_pool">Wróć zaznaczone do puli</button>
+            <span id="selectedCount" class="muted">Nic nie zaznaczono</span>
           </div>
-        </div>
-        <div class="bulk-actions">
-          <button id="resetSelected" class="button secondary">Wróć zaznaczone do puli</button>
-          <span id="selectedCount" class="muted">Nic nie zaznaczono</span>
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th></th>
-                <th>Firma</th>
-                <th>Status</th>
-                <th>Worker</th>
-                <th>Kontakt</th>
-                <th>Zrodlo</th>
-                <th>Seen</th>
-                <th>Akcje</th>
-              </tr>
-            </thead>
-            <tbody id="leadsBody"></tbody>
-          </table>
-        </div>
-      </section>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th></th>
+                  <th data-i18n="admin_th_company">Firma</th>
+                  <th data-i18n="admin_th_status">Status</th>
+                  <th data-i18n="admin_th_worker">Worker</th>
+                  <th data-i18n="admin_th_contact">Kontakt</th>
+                  <th data-i18n="admin_th_source">Zrodlo</th>
+                  <th data-i18n="admin_th_notes">Notatki</th>
+                  <th data-i18n="admin_th_actions">Akcje</th>
+                </tr>
+              </thead>
+              <tbody id="leadsBody"></tbody>
+            </table>
+          </div>
+          <div id="leadsPagination" class="pagination-row"></div>
+        </section>
+      </div>
+
+      <div id="adminTabInbox" class="admin-tab hidden-panel">
+        <section class="panel">
+          <div class="panel-top">
+            <div>
+              <p class="eyebrow" data-i18n="admin_inbox_eyebrow">Poczta</p>
+              <h2 data-i18n="admin_tab_inbox">Zgłoszenia ze strony</h2>
+              <p data-i18n="admin_inbox_subtitle">Wszystkie wypełnione formularze "Bezpłatny rozbiór" z auraglobal. Najnowsze na górze. "Otwórz kartę" pokazuje pełne dane leada i pozwala zmienić status.</p>
+            </div>
+            <div class="filters">
+              <button id="inboxMarkAllRead" class="button secondary" type="button" data-i18n="admin_btn_mark_all_read">Oznacz wszystkie jako przeczytane</button>
+            </div>
+          </div>
+          <div id="inboxList" class="list inbox-list"></div>
+        </section>
+      </div>
+
+      <div id="adminTabHistory" class="admin-tab hidden-panel">
+        <section class="panel">
+          <div class="panel-top">
+            <div>
+              <h2 data-i18n="admin_history_title">Historia parsera</h2>
+              <p data-i18n="admin_history_subtitle">Zadne leady, komentarze, statusy ani foldery nie sa tu nigdy usuwane. "Wroc do puli" oddaje zapytanie do ponownego przetworzenia i archiwizuje wpis historii - nic nie znika na stale.</p>
+            </div>
+          </div>
+
+          <div id="historyViewTabs" class="history-view-tabs">
+            <button class="button secondary history-view-tab active" type="button" data-history-view="active" data-i18n="admin_history_tab_active">Aktywne</button>
+            <button class="button secondary history-view-tab" type="button" data-history-view="completed_active" data-i18n="admin_history_tab_completed">Zakończone</button>
+            <button class="button secondary history-view-tab" type="button" data-history-view="returned" data-i18n="admin_history_tab_returned">Zwrócone do puli</button>
+            <button class="button secondary history-view-tab" type="button" data-history-view="archived" data-i18n="admin_history_tab_archived">Archiwum</button>
+          </div>
+
+          <button id="historyFiltersToggle" class="button secondary mobile-filters-toggle" type="button" data-i18n="admin_history_filters_toggle">Filtry i akcje zbiorcze</button>
+
+          <div id="historyFiltersPanel" class="history-filters-panel">
+            <form id="historyFiltersForm" class="filters history-filters">
+              <input name="country" list="historyCountrySuggestions" data-i18n-placeholder="admin_placeholder_country" placeholder="Kraj" autocomplete="off" />
+              <input name="city" list="historyCitySuggestions" data-i18n-placeholder="admin_placeholder_city" placeholder="Miasto" autocomplete="off" />
+              <input name="category" list="historyCategorySuggestions" data-i18n-placeholder="admin_placeholder_category" placeholder="Kategoria / nisza" autocomplete="off" />
+              <input name="workerId" list="historyWorkerSuggestions" data-i18n-placeholder="admin_placeholder_worker_id" placeholder="Worker ID" autocomplete="off" />
+              <datalist id="historyCountrySuggestions"></datalist>
+              <datalist id="historyCitySuggestions"></datalist>
+              <datalist id="historyCategorySuggestions"></datalist>
+              <datalist id="historyWorkerSuggestions"></datalist>
+              <select name="status">
+                <option value="" data-i18n="admin_history_status_all">Status: wszystkie</option>
+                <option value="completed" data-i18n="admin_run_status_completed">completed</option>
+                <option value="exhausted" data-i18n="admin_run_status_exhausted">exhausted</option>
+                <option value="duplicates_only" data-i18n="admin_run_status_duplicates_only">duplicates_only</option>
+                <option value="cancelled" data-i18n="admin_run_status_cancelled">cancelled</option>
+                <option value="failed" data-i18n="admin_run_status_failed">failed</option>
+                <option value="running" data-i18n="admin_run_status_running">running</option>
+              </select>
+              <input name="dateFrom" type="date" data-i18n-title="admin_date_from" title="Data od" />
+              <input name="dateTo" type="date" data-i18n-title="admin_date_to" title="Data do" />
+              <button class="button secondary" type="submit" data-i18n="admin_btn_filter">Filtruj</button>
+              <button id="historyFiltersClear" class="button secondary" type="button" data-i18n="admin_btn_clear_filters">Wyczyść filtry</button>
+              <button id="historyPreviewByFilter" class="button secondary" type="button" data-i18n="admin_btn_show_matching_queries">Pokaż pasujące zapytania</button>
+            </form>
+
+            <div id="historyBulkBar" class="bulk-actions">
+              <label class="toggle-row">
+                <input type="checkbox" id="runsSelectAll" />
+                <span data-i18n="admin_select_all_on_page">zaznacz wszystko na tej stronie</span>
+              </label>
+              <span id="runsSelectedCount" class="muted">Nic nie zaznaczono</span>
+              <button id="historyBulkDelete" class="button danger" type="button" data-i18n="admin_btn_return_selected_queries">Wróć zaznaczone zapytania do puli</button>
+            </div>
+          </div>
+
+          <div id="historyPreviewPanel" class="history-preview-panel hidden-panel"></div>
+
+          <div id="historyStateMessage" class="history-state-message hidden-panel"></div>
+          <div id="runsList" class="list"></div>
+          <div id="archiveList" class="list hidden-panel"></div>
+          <div id="runDetail" class="run-detail"></div>
+        </section>
+      </div>
+
+      <div id="adminTabAudit" class="admin-tab hidden-panel">
+        <section id="auditPanel" class="panel">
+          <div class="panel-top">
+            <div>
+              <h2 data-i18n="nav_audit_log">Dziennik zdarzeń</h2>
+              <p data-i18n="admin_audit_subtitle">Akcje administratora: pracownicy, pula leadów, reset/usunięcie zapytań, aktualizacje statusów.</p>
+            </div>
+          </div>
+          <div id="auditList" class="list"></div>
+        </section>
+      </div>
+
+      <div id="adminTabAcademy" class="admin-tab hidden-panel">
+        <section class="panel">
+          <div class="panel-top">
+            <div>
+              <p class="eyebrow" data-i18n="admin_academy_eyebrow">Akademia sprzedaży</p>
+              <h2 data-i18n="admin_academy_progress_title">Postęp i słabe strony — wszyscy pracownicy</h2>
+              <p data-i18n="admin_academy_progress_subtitle">Pełny obraz tego, co każdy pracownik już umie, a gdzie ma realne braki: wyniki testów per moduł/usługa, wyniki treningów AI i skuteczność domykania spotkań w symulacjach.</p>
+            </div>
+          </div>
+          <div class="table-wrap compact-table">
+            <table>
+              <thead>
+                <tr>
+                  <th data-i18n="admin_th_employee">Pracownik</th>
+                  <th data-i18n="admin_th_stage">Etap ścieżki</th>
+                  <th data-i18n="admin_th_services">Usługi</th>
+                  <th data-i18n="admin_th_modules">Moduły</th>
+                  <th data-i18n="admin_th_scripts">Skrypty</th>
+                  <th data-i18n="admin_th_avg_test_score">Śr. wynik testów</th>
+                  <th data-i18n="admin_th_weak_spots">Słabe strony</th>
+                  <th data-i18n="admin_th_ai_trainings">Treningi AI</th>
+                  <th data-i18n="admin_th_avg_ai_score">Śr. wynik AI</th>
+                  <th data-i18n="admin_th_sim_meeting">Spotkanie w symulacji</th>
+                  <th data-i18n="admin_th_last_activity">Ostatnia aktywność</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="academyOverviewBody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-top">
+            <div>
+              <p class="eyebrow" data-i18n="admin_ai_costs_eyebrow">Koszty AI</p>
+              <h2 data-i18n="admin_ai_costs_title">Zużycie i koszty AI-treningu</h2>
+              <p data-i18n="admin_ai_costs_subtitle">Szacunkowe koszty (nie rozliczeniowe) wywołań AI: trening rozmów, ocena treningu i ocena otwartych odpowiedzi w testach.</p>
+            </div>
+            <div class="filters">
+              <select id="aiUsagePeriodSelect">
+                <option value="today" data-i18n="admin_period_today">Dziś</option>
+                <option value="7d" data-i18n="admin_period_7d">7 dni</option>
+                <option value="30d" data-i18n="admin_period_30d">30 dni</option>
+                <option value="all" selected data-i18n="admin_period_all">Cały okres</option>
+              </select>
+            </div>
+          </div>
+          <div id="aiUsageTotals" class="stats-grid small-stats"></div>
+          <div class="academy-columns">
+            <div>
+              <h3 data-i18n="admin_by_worker_heading">Wg pracownika</h3>
+              <div class="table-wrap compact-table">
+                <table>
+                  <thead><tr><th data-i18n="admin_th_worker">Worker</th><th data-i18n="admin_th_queries">Zapytania</th><th data-i18n="admin_th_tokens">Tokeny</th><th data-i18n="admin_th_cost_est">Koszt (szac.)</th></tr></thead>
+                  <tbody id="aiUsageByWorkerBody"></tbody>
+                </table>
+              </div>
+            </div>
+            <div>
+              <h3 data-i18n="admin_by_feature_heading">Wg funkcji</h3>
+              <div class="table-wrap compact-table">
+                <table>
+                  <thead><tr><th data-i18n="admin_th_feature">Funkcja</th><th data-i18n="admin_th_queries">Zapytania</th><th data-i18n="admin_th_tokens">Tokeny</th><th data-i18n="admin_th_cost_est">Koszt (szac.)</th></tr></thead>
+                  <tbody id="aiUsageByFeatureBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
     </main>
+
+    <div id="aiTrainingDetailModal" class="modal-backdrop hidden-panel">
+      <div class="modal-card">
+        <div class="modal-head">
+          <h3 data-i18n="admin_ai_training_transcript_heading">Trening AI — transkrypt</h3>
+          <button id="aiTrainingDetailClose" class="button secondary small-button" type="button" data-i18n="btn_close">Zamknij</button>
+        </div>
+        <div id="aiTrainingDetailBody" class="modal-body"></div>
+      </div>
+    </div>
   </body>
 </html>

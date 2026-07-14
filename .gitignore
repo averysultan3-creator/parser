@@ -11,3 +11,9 @@ tunnel.log
 ngrok.log
 ngrok.err.log
 .runtime/
+qa-screenshots/
+tmp/
+.qa-tmp/
+backups/
+*.bak.js
+scripts/_tmp-*.png
