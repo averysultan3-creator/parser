@@ -117,6 +117,59 @@ async function fetchSessionProfile() {
   }
 }
 
+// Lazily creates (once) the small "Leady dzisiaj / Лиды сегодня" quota line
+// right after the discover-status hint. Created from JS rather than added to
+// index.html so this feature stays fully contained in app.js.
+function getWorkerQuotaEl() {
+  let el = document.querySelector('#workerQuotaStatus');
+  if (!el && els.discoverStatus?.parentNode) {
+    el = document.createElement('div');
+    el.id = 'workerQuotaStatus';
+    // Reuse the existing small/muted hint style instead of inventing new CSS.
+    el.className = 'discover-status';
+    els.discoverStatus.insertAdjacentElement('afterend', el);
+  }
+  return el;
+}
+
+// Renders the worker's daily lead quota from whatever is currently in
+// `session` (dailyLeadLimit/usedToday come from /api/auth/me). Defensive
+// against undefined/missing fields - old cached sessions from before this
+// feature existed, or admin sessions where quota doesn't apply, simply show
+// nothing rather than a broken "undefined/undefined" line.
+function renderWorkerQuotaStatus() {
+  const el = getWorkerQuotaEl();
+  if (!el) return;
+  if (!session || session.role !== 'worker') {
+    el.textContent = '';
+    el.classList.add('hidden-field');
+    return;
+  }
+  const usedRaw = Number(session.usedToday);
+  const used = Number.isFinite(usedRaw) ? usedRaw : 0;
+  const limitRaw = Number(session.dailyLeadLimit);
+  const limit = Number.isFinite(limitRaw) ? limitRaw : 0;
+  el.classList.remove('hidden-field');
+  el.textContent = limit > 0
+    ? t2(`Leady dzisiaj: ${used} / ${limit}`, `Лиды сегодня: ${used} / ${limit}`)
+    : t2(`Leady dzisiaj: ${used}, bez limitu`, `Лиды сегодня: ${used}, без лимита`);
+}
+
+// Re-fetches /api/auth/me to pick up a fresh usedToday count (the discover
+// response itself doesn't include quota data - see server.js /api/discover -
+// so a lightweight re-fetch after a search is simpler than plumbing the
+// count through the discovery job payload). Safe to call for non-workers;
+// it no-ops.
+async function refreshWorkerQuota() {
+  if (!session || session.role !== 'worker') return;
+  const profile = await fetchSessionProfile();
+  if (profile && profile.role === 'worker') {
+    session.dailyLeadLimit = profile.dailyLeadLimit;
+    session.usedToday = profile.usedToday;
+  }
+  renderWorkerQuotaStatus();
+}
+
 function renderLoginScreen(message = '') {
   const overlay = document.querySelector('#authOverlay');
   if (!overlay) return;
@@ -197,6 +250,7 @@ async function bootstrapSession() {
   }
   session = profile;
   hideLoginScreen();
+  renderWorkerQuotaStatus();
   return true;
 }
 
@@ -1140,6 +1194,7 @@ function applyLanguage(lang = currentLanguage, { persist = true } = {}) {
   renderResultsContext();
   renderIcons();
   updateCrossAppLinks();
+  renderWorkerQuotaStatus();
 }
 
 function applyStaticCopy() {
@@ -2335,6 +2390,9 @@ async function runDiscovery() {
     els.discoverButton.disabled = false;
     els.analyzeButton.disabled = false;
     renderIcons();
+    // Refresh the "leads today" quota line so a worker sees newly-claimed
+    // leads reflected immediately, without needing a page reload.
+    refreshWorkerQuota().catch(() => {});
   }
 }
 

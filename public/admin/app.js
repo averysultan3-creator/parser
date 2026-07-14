@@ -836,6 +836,7 @@ function renderWorkerDetail() {
     <button class="button secondary small-button" data-worker-password="${escapeAttribute(worker.workerId)}">${escapeHtml(tr('admin_btn_change_password'))}</button>
     <button class="button secondary small-button" data-worker-toggle="${escapeAttribute(worker.workerId)}">${worker.active === false ? escapeHtml(tr('admin_btn_activate')) : escapeHtml(tr('admin_btn_deactivate'))}</button>
     <button class="button secondary small-button" data-worker-reset="${escapeAttribute(worker.workerId)}">${escapeHtml(tr('admin_btn_return_worker_leads'))}</button>
+    <button class="button secondary small-button" data-worker-daily-limit="${escapeAttribute(worker.workerId)}">${escapeHtml(tr('admin_btn_daily_lead_limit'))}: ${worker.dailyLeadLimit ? escapeHtml(worker.dailyLeadLimit) : '&#8734;'}</button>
     <button class="button danger small-button" data-worker-clear="${escapeAttribute(worker.workerId)}">${escapeHtml(tr('admin_btn_clear_history'))}</button>
     <button class="button danger small-button" data-worker-delete="${escapeAttribute(worker.workerId)}">${escapeHtml(tr('admin_btn_delete_worker'))}</button>
   `;
@@ -1905,6 +1906,7 @@ function openWorkerDialog() {
           <option value="en">EN</option>
         </select>
       </label>
+      <label>${escapeHtml(tr('admin_field_daily_lead_limit'))}<input type="number" name="dailyLeadLimit" min="0" placeholder="0 = без лимита" /></label>
       <label class="toggle-row"><input name="active" type="checkbox" checked /> ${escapeHtml(tr('admin_field_active'))}</label>
       <button class="button primary" type="submit">${escapeHtml(tr('admin_btn_create_account'))}</button>
     </form>
@@ -1928,6 +1930,7 @@ async function createWorkerFromForm(form) {
     password: stripInvisibleFormatting(formData.get('password')),
     language: formData.get('language'),
     active: formData.get('active') === 'on',
+    dailyLeadLimit: Number(formData.get('dailyLeadLimit')) || 0,
     adminId: 'admin'
   };
   await api('/api/admin/workers', {
@@ -1947,6 +1950,20 @@ async function changeWorkerPassword(workerId) {
     body: JSON.stringify({ password, adminId: 'admin' })
   });
   showToast(tr('admin_toast_password_changed'));
+  await loadAll();
+}
+
+async function changeWorkerDailyLimit(workerId) {
+  const worker = state.workers.find((item) => item.workerId === workerId);
+  const current = worker?.dailyLeadLimit || 0;
+  const input = window.prompt(tr('admin_prompt_daily_lead_limit_template', { workerId }), String(current));
+  if (input === null) return;
+  const dailyLeadLimit = Number(input) > 0 ? Math.floor(Number(input)) : 0;
+  await api(`/api/admin/workers/${encodeURIComponent(workerId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ dailyLeadLimit, adminId: 'admin' })
+  });
+  showToast(tr('admin_toast_daily_lead_limit_updated'));
   await loadAll();
 }
 
@@ -2372,6 +2389,9 @@ document.addEventListener('click', async (event) => {
 
   const reset = event.target.closest('[data-worker-reset]');
   if (reset) await resetWorkerLeads(reset.dataset.workerReset);
+
+  const dailyLimit = event.target.closest('[data-worker-daily-limit]');
+  if (dailyLimit) await changeWorkerDailyLimit(dailyLimit.dataset.workerDailyLimit);
 
   const clear = event.target.closest('[data-worker-clear]');
   if (clear) await clearWorkerHistory(clear.dataset.workerClear);

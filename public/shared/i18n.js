@@ -341,6 +341,7 @@
     },
     admin_worker_account_link: { pl: 'Konto workera', ru: 'Аккаунт сотрудника', en: 'Worker account' },
     admin_btn_change_password: { pl: 'Zmień hasło', ru: 'Изменить пароль', en: 'Change password' },
+    admin_btn_daily_lead_limit: { pl: 'Limit leadów', ru: 'Лимит лидов', en: 'Lead limit' },
     admin_btn_clear_history: { pl: 'Wyczyść historię', ru: 'Очистить историю', en: 'Clear history' },
     admin_btn_delete_worker: { pl: 'Usuń workera', ru: 'Удалить сотрудника', en: 'Delete worker' },
     admin_stat_open: { pl: 'Otwarte', ru: 'Открытые', en: 'Opened' },
@@ -664,6 +665,7 @@
     admin_field_display_name: { pl: 'Nazwa wyświetlana', ru: 'Отображаемое имя', en: 'Display name' },
     admin_field_language: { pl: 'Język', ru: 'Язык', en: 'Language' },
     admin_field_active: { pl: 'aktywny', ru: 'активен', en: 'active' },
+    admin_field_daily_lead_limit: { pl: 'Dzienny limit leadów', ru: 'Дневной лимит лидов', en: 'Daily lead limit' },
     admin_btn_create_account: { pl: 'Stwórz konto', ru: 'Создать аккаунт', en: 'Create account' },
 
     // CRM status labels (crmStatusAdminLabel)
@@ -724,6 +726,7 @@
     admin_toast_worker_history_cleared: { pl: 'Historia workera wyczyszczona', ru: 'История сотрудника очищена', en: 'Worker history cleared' },
     admin_toast_worker_deleted: { pl: 'Worker usunięty', ru: 'Сотрудник удалён', en: 'Worker deleted' },
     admin_toast_password_changed: { pl: 'Hasło zmienione', ru: 'Пароль изменён', en: 'Password changed' },
+    admin_toast_daily_lead_limit_updated: { pl: 'Limit leadów zaktualizowany', ru: 'Лимит лидов обновлён', en: 'Daily lead limit updated' },
     admin_toast_already_returned: { pl: 'To zapytanie już było w puli.', ru: 'Этот запрос уже был в пуле.', en: 'This query was already in the pool.' },
     admin_toast_query_returned_template: {
       pl: 'Zapytanie wróciło do puli i zostało zarchiwizowane. Firm zwróconych: {n}, już w puli: {m}.',
@@ -752,6 +755,11 @@
     },
     admin_confirm_reset_workers_leads_template: { pl: 'Wrócić leady {n} workerów do puli?', ru: 'Вернуть лиды {n} сотрудников в пул?', en: 'Return the leads of {n} workers to the pool?' },
     admin_prompt_new_password_template: { pl: 'Nowe hasło dla {workerId}', ru: 'Новый пароль для {workerId}', en: 'New password for {workerId}' },
+    admin_prompt_daily_lead_limit_template: {
+      pl: 'Dzienny limit leadów dla {workerId} (0 = bez limitu)',
+      ru: 'Дневной лимит лидов для {workerId} (0 = без лимита)',
+      en: 'Daily lead limit for {workerId} (0 = unlimited)'
+    },
     admin_confirm_reset_worker_leads_template: {
       pl: 'Wrócić wszystkie leady workera {workerId} do puli?',
       ru: 'Вернуть все лиды сотрудника {workerId} в пул?',
