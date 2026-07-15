@@ -1690,7 +1690,6 @@ function applyAiSearchStaticCopy() {
   setOptionText(els.discoverMode, 'standard', trs('discover_mode_standard'));
   setOptionText(els.discoverMode, 'ai_search', trs('discover_mode_ai_search'));
   setOptionText(els.discoverMode, 'combined', trs('discover_mode_combined'));
-  setOptionText(els.discoverMode, 'ai_enrich', trs('discover_mode_ai_enrich'));
 
   setText('#aiSearchSectionTitle', trs('ai_search_section_title'));
   setText('#aiFieldClientTypeLabel', trs('ai_field_client_type'));
@@ -3743,6 +3742,17 @@ function resetResultFilters() {
   els.resultFilterText.value = '';
   els.resultFilterSize.value = 'all';
   els.resultFilterPriority.value = 'all';
+  // This button is the one the "По фильтрам ничего не найдено" message
+  // points at - it must actually clear every filter getFilteredResults()
+  // checks, not just the three search-box fields above. Leaving the sidebar
+  // checkboxes (especially "Есть телефон", checked by default) untouched
+  // made this button look broken: a search that found real companies would
+  // still show 0 rows after "resetting filters".
+  els.sidebarSiteFilter.value = 'all';
+  els.sidebarMinScore.value = '0';
+  els.sidebarHasSocial.checked = false;
+  els.sidebarHasPhone.checked = false;
+  els.sidebarHasEmail.checked = false;
   updateResultFilters();
 }
 
@@ -4052,7 +4062,19 @@ function renderResults() {
   els.filterSummary.textContent = `${tr('shown')} ${results.length} ${tr('from')} ${state.results.length}`;
 
   if (!results.length) {
-    els.resultsBody.innerHTML = `<tr class="empty-row"><td colspan="8">${escapeHtml(tr('noFilterResults'))}</td></tr>`;
+    // state.results.length is always > 0 here (the truly-empty case returns
+    // above) - so every row in this branch was actually found and is only
+    // hidden by an active sidebar filter. Made loud and specific (not the
+    // old plain-gray one-liner) after repeated reports of workers reading a
+    // real "found N" search as broken because every row was silently
+    // filtered out, most often by the "Есть телефон" checkbox staying
+    // checked from a previous search.
+    els.resultsBody.innerHTML = `<tr class="empty-row"><td colspan="8"><div class="filtered-out-warning"><strong>${escapeHtml(
+      t2(
+        `Znaleziono ${state.results.length}, ale 0 pokazano - filtry (np. "Jest telefon") ukrywają wszystko.`,
+        `Найдено ${state.results.length}, но показано 0 - фильтры (например "Есть телефон") скрывают всё.`
+      )
+    )}</strong><br/>${escapeHtml(tr('noFilterResults'))}</div></td></tr>`;
     return;
   }
 
