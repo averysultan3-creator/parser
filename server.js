@@ -2934,6 +2934,52 @@ const freeSubdomainDomains = [
   'blogspot.com'
 ];
 
+// Global platforms that are never themselves a B2B company page - crowdfunding,
+// wikis, forums, code/design hosting, content aggregators, etc. Unlike
+// social/directory/marketplace above, classifyUrlType used to default any
+// domain not on one of those specific lists to 'official_candidate' (a real
+// company website), which let unrelated pages like patreon.com or a random
+// Chinese content-aggregator through as if they were discovered businesses.
+const nonBusinessPlatformDomains = [
+  'patreon.com',
+  'kickstarter.com',
+  'gofundme.com',
+  'indiegogo.com',
+  'wikipedia.org',
+  'wikimedia.org',
+  'reddit.com',
+  'quora.com',
+  'pinterest.com',
+  'twitter.com',
+  'x.com',
+  't.me',
+  'telegram.me',
+  'medium.com',
+  'substack.com',
+  'tumblr.com',
+  'github.com',
+  'github.io',
+  'gitlab.com',
+  'tinkercad.com',
+  'thingiverse.com',
+  'sketchfab.com',
+  'behance.net',
+  'dribbble.com',
+  'notion.site',
+  'canva.com',
+  'figma.com',
+  'airtable.com',
+  'trello.com',
+  'slideshare.net',
+  'scribd.com',
+  'academia.edu',
+  'researchgate.net',
+  'archive.org',
+  'baidu.com',
+  'zhihu.com',
+  'douban.com'
+];
+
 app.use((req, res, next) => {
   const origin = req.headers.origin;
   const allowedOrigins = new Set([
@@ -7645,7 +7691,7 @@ function decodeBingRedirectUrl(value) {
 function isAllowedPublicSearchResult(url, title, sourceFocus, type) {
   const host = safeHostname(url);
   if (!host || host.includes('bing.com') || host.includes('google.com/search')) return false;
-  if (type === 'marketplace') return false;
+  if (type === 'marketplace' || type === 'non_business_platform') return false;
   if (host.endsWith('.edu.pl') || host.includes('.uw.edu.pl')) return false;
   if (
     [
@@ -8964,7 +9010,7 @@ async function discoverWebsiteFromPublicSearch(item) {
 
         const type = classifyUrlType(href);
         if (!isAllowedPublicSearchResult(href, title, 'internet', type)) continue;
-        if (['social', 'directory', 'marketplace'].includes(type)) continue;
+        if (['social', 'directory', 'marketplace', 'non_business_platform'].includes(type)) continue;
 
         const snippet = cleanText($(element).find('.b_caption p, .b_snippet').first().text());
         const evidence = cleanText(`${title} ${snippet} ${href}`);
@@ -10739,9 +10785,29 @@ async function runAiSearchJob(jobId) {
       // ---- ENRICHING -----------------------------------------------------
       store.updateAiSearchJob(jobId, { stage: 'ENRICHING', stage_detail: 'Enriching confirmed candidates...' });
 
+      // A lightweight, informational company-by-company view so the worker
+      // sees candidates appear as they're checked, instead of only the final
+      // saved list once SAVING completes at the very end of the job. These
+      // entries are NOT yet saved/claimed - that only happens in SAVING below -
+      // so this array is for progress display only.
+      const previewCompanies = finalCandidates.map((entry) => ({
+        company: entry.candidate.company || entry.candidate.legal_name || '',
+        niche: entry.candidate.niche || niche,
+        city: entry.candidate.city || city,
+        verification_status: entry.candidate.verification_status || 'UNVERIFIED',
+        review_status: 'pending'
+      }));
+      store.updateAiSearchJob(jobId, { preview_companies: previewCompanies });
+
       const enrichState = { stopped: false, reason: '' };
 
-      async function enrichWorker(entry) {
+      function markPreview(index, review_status) {
+        if (!previewCompanies[index]) return;
+        previewCompanies[index] = { ...previewCompanies[index], review_status };
+        store.updateAiSearchJob(jobId, { preview_companies: previewCompanies });
+      }
+
+      async function enrichWorker(entry, index) {
         if (enrichState.stopped) return { ...entry, outcome: 'skipped' };
         const freshJob = store.getAiSearchJob(jobId);
         if (freshJob?.cancel_requested) {
@@ -10761,6 +10827,7 @@ async function runAiSearchJob(jobId) {
           return { ...entry, outcome: 'skipped' };
         }
 
+        markPreview(index, 'checking');
         const existingCompanyRecord = entry.existingId ? store.getCompany(entry.existingId) : null;
         const existingProfile = existingCompanyRecord?.aiCompanyProfile || null;
         let result;
@@ -10783,6 +10850,7 @@ async function runAiSearchJob(jobId) {
         if (result.status === 'COMPLETED') {
           const latestJob = store.getAiSearchJob(jobId);
           syncJobUsageFromLedger({ enriched: (latestJob?.progress?.enriched || 0) + 1 });
+          markPreview(index, 'enriched');
           return { ...entry, outcome: 'enriched', profile: result };
         }
 
@@ -10796,6 +10864,7 @@ async function runAiSearchJob(jobId) {
             }
           ]
         });
+        markPreview(index, 'failed');
         return { ...entry, outcome: 'enrich_failed', profile: result };
       }
 
@@ -10853,7 +10922,7 @@ async function runAiSearchJob(jobId) {
       let duplicateCount = 0;
       let rejectedAtSave = 0;
       let attemptedCount = 0;
-      for (const outcome of enrichOutcomes) {
+      for (const [index, outcome] of enrichOutcomes.entries()) {
         // 'skipped' means cancel/pause/budget stopped the pipeline before
         // this candidate was even attempted - it was never processed, so it
         // is left out of this run entirely (a future job can rediscover it).
@@ -10862,6 +10931,7 @@ async function runAiSearchJob(jobId) {
         const row = mapAiCandidateToCompanyRow(outcome.candidate);
         if (!row) {
           rejectedAtSave += 1;
+          markPreview(index, 'rejected');
           continue;
         }
         const claim = store.claimCompanyForRun(row, { runId: run.id, workerId, stage: 'analyzed' });
@@ -10873,6 +10943,7 @@ async function runAiSearchJob(jobId) {
         // counted as saved.
         if (!claim.isClaimed) {
           rejectedAtSave += 1;
+          markPreview(index, 'rejected');
           continue;
         }
         if (claim.isNew || claim.isNewForRun) newCount += 1;
@@ -10880,6 +10951,7 @@ async function runAiSearchJob(jobId) {
         savedCompanyIds.push(claim.id);
         savedCount += 1;
         if (outcome.profile) store.updateAiCompanyProfile(claim.id, outcome.profile);
+        markPreview(index, 'saved');
       }
       store.addCompanyIdsToRun(run.id, savedCompanyIds);
 
@@ -11697,6 +11769,7 @@ function classifyUrlType(rawUrl) {
   if (socialDomains.some((domain) => host.includes(domain))) return 'social';
   if (marketplaceDomains.some((domain) => host.includes(domain))) return 'marketplace';
   if (directoryDomains.some((domain) => host.includes(domain))) return 'directory';
+  if (nonBusinessPlatformDomains.some((domain) => host.includes(domain))) return 'non_business_platform';
   if (freeSubdomainDomains.some((domain) => host.includes(domain))) return 'free_subdomain';
   return 'official_candidate';
 }
@@ -11705,7 +11778,7 @@ function addCandidate(candidates, rawUrl, source, confidence, reason = '') {
   const url = safeUrl(rawUrl) || safeUrl(`https://${rawUrl}`);
   if (!url) return;
   const type = classifyUrlType(url);
-  if (['social', 'directory', 'marketplace'].includes(type)) return;
+  if (['social', 'directory', 'marketplace', 'non_business_platform'].includes(type)) return;
   candidates.push({ url, source, confidence, reason, type });
 }
 

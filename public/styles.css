@@ -1166,6 +1166,60 @@ tbody tr.selected {
   line-height: 1.45;
 }
 
+.ai-preview-list {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  max-height: 220px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ai-preview-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+  padding: 3px 6px;
+  border-radius: 6px;
+  background: var(--panel-2, rgba(0, 0, 0, 0.03));
+}
+
+.ai-preview-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-preview-badge {
+  flex: none;
+  font-size: 11px;
+  padding: 1px 8px;
+  border-radius: 10px;
+  color: #64717a;
+  background: rgba(100, 113, 122, 0.12);
+}
+
+.ai-preview-badge--checking {
+  color: #b45309;
+  background: rgba(180, 83, 9, 0.12);
+}
+
+.ai-preview-badge--enriched,
+.ai-preview-badge--saved {
+  color: #15803d;
+  background: rgba(21, 128, 61, 0.12);
+}
+
+.ai-preview-badge--failed,
+.ai-preview-badge--rejected {
+  color: #b91c1c;
+  background: rgba(185, 28, 28, 0.12);
+}
+
 @media (max-width: 1500px) {
   .workspace {
     grid-template-columns: 300px minmax(0, 1fr) 380px;

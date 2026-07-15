@@ -3039,10 +3039,25 @@ function renderAiSearchStatus(job) {
     ? `<div class="error-text">${escapeHtml(trs('ai_search_errors_label'))} ${escapeHtml(errors.slice(0, 2).join(' | '))}</div>`
     : '';
 
+  // Company-by-company preview: appears as soon as VALIDATING confirms
+  // candidates, then each row's status updates in place as ENRICHING/SAVING
+  // process it - so the worker sees progress on individual companies instead
+  // of only aggregate counters until the whole job finishes.
+  const preview = Array.isArray(job.preview_companies) ? job.preview_companies : [];
+  const previewList = preview.length
+    ? `<ul class="ai-preview-list">${preview
+        .map(
+          (row) =>
+            `<li><span class="ai-preview-name">${escapeHtml(row.company || row.city || '?')}</span> <span class="ai-preview-badge ai-preview-badge--${escapeHtml(row.review_status || 'pending')}">${escapeHtml(trs(`ai_preview_status_${row.review_status || 'pending'}`))}</span></li>`
+        )
+        .join('')}</ul>`
+    : '';
+
   els.discoverStatus.innerHTML = `
     <div><strong>${escapeHtml(aiStageLabel(stage))}</strong>${detail ? ` — ${detail}` : ''}</div>
     ${counters ? `<div class="muted-text">${counters}</div>` : ''}
     ${errorLine}
+    ${previewList}
   `;
   const warnStages = new Set(['FAILED', 'CANCELLED', 'PARTIAL']);
   els.discoverStatus.style.color = warnStages.has(stage) ? '#b91c1c' : stage === 'COMPLETED' ? '#15803d' : '#64717a';

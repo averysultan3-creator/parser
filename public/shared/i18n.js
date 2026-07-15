@@ -1124,6 +1124,13 @@
     ai_progress_enriched: { pl: 'Wzbogacone', ru: 'Обогащено', en: 'Enriched' },
     ai_progress_saved: { pl: 'Zapisane', ru: 'Сохранено', en: 'Saved' },
 
+    ai_preview_status_pending: { pl: 'W kolejce', ru: 'В очереди', en: 'Pending' },
+    ai_preview_status_checking: { pl: 'Sprawdzanie...', ru: 'Проверяется...', en: 'Checking...' },
+    ai_preview_status_enriched: { pl: 'Sprawdzone', ru: 'Проверено', en: 'Checked' },
+    ai_preview_status_failed: { pl: 'Błąd sprawdzenia', ru: 'Ошибка проверки', en: 'Check failed' },
+    ai_preview_status_saved: { pl: 'Zapisane w puli', ru: 'Сохранено в пуле', en: 'Saved to pool' },
+    ai_preview_status_rejected: { pl: 'Odrzucone', ru: 'Отклонено', en: 'Rejected' },
+
     ai_search_cancel: { pl: 'Anuluj wyszukiwanie', ru: 'Отменить поиск', en: 'Cancel search' },
     ai_search_cancelling: { pl: 'Anulowanie...', ru: 'Отмена...', en: 'Cancelling...' },
     ai_search_errors_label: { pl: 'Błędy:', ru: 'Ошибки:', en: 'Errors:' },
