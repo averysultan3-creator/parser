@@ -276,6 +276,1707 @@ const CATEGORY_CATALOG = [
       'pompy ciepła klimatyzacja',
       'instalacje klimatyzacyjne'
     ]
+  },
+  {
+    categoryId: 'residential_developer',
+    labels: { pl: 'Deweloperzy mieszkaniowi', ru: 'Девелоперы жилых комплексов', en: 'Residential developers' },
+    aliases: ['deweloper mieszkaniowy', 'deweloperzy mieszkaniowi', 'девелоперы жилых комплексов', 'residential developer'],
+    positiveKeywords: { pl: ['deweloper mieszkaniowy', 'budowa osiedla mieszkaniowego', 'inwestycja mieszkaniowa', 'mieszkania na sprzedaż od dewelopera', 'nowa inwestycja mieszkaniowa', 'apartamentowiec deweloperski', 'osiedle deweloperskie', 'sprzedaż mieszkań deweloperskich'], ru: ['девелопер жилой недвижимости', 'жилой комплекс застройка', 'застройка жилого района'], en: ['residential developer', 'housing development', 'apartment complex developer'] },
+    negativeKeywords: { pl: ['biuro nieruchomości', 'pośrednictwo w obrocie nieruchomościami', 'wynajem mieszkań', 'zarządzanie nieruchomościami'], ru: ['агентство недвижимости', 'аренда квартир'], en: ['real estate agency', 'property management'] },
+    excludedBusinessTypes: ['real_estate_agency', 'property_management'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz ofertowy'],
+    searchTemplates: ['deweloper mieszkaniowy inwestycje', 'budowa osiedla mieszkaniowego', 'nowa inwestycja mieszkaniowa deweloper', 'mieszkania od dewelopera sprzedaż', 'firma deweloperska mieszkania']
+  },
+  {
+    categoryId: 'commercial_developer',
+    labels: { pl: 'Deweloperzy nieruchomości komercyjnych', ru: 'Девелоперы коммерческой недвижимости', en: 'Commercial real estate developers' },
+    aliases: ['deweloper komercyjny', 'deweloperzy komercyjni', 'nieruchomości komercyjne deweloper'],
+    positiveKeywords: { pl: ['deweloper komercyjny', 'inwestycje komercyjne', 'budowa biurowców', 'deweloper powierzchni biurowych', 'nieruchomości komercyjne inwestycja', 'park biznesowy budowa', 'centrum biurowe inwestycja', 'deweloper powierzchni magazynowych'], ru: ['девелопер коммерческой недвижимости', 'бизнес-парк застройщик', 'офисная недвижимость девелопер'], en: ['commercial real estate developer', 'office development', 'business park developer'] },
+    negativeKeywords: { pl: ['pośrednictwo nieruchomości komercyjnych', 'wynajem powierzchni biurowych'], ru: ['аренда офисов', 'посредничество в недвижимости'], en: ['office leasing agency', 'real estate brokerage'] },
+    excludedBusinessTypes: ['real_estate_agency'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz ofertowy'],
+    searchTemplates: ['deweloper nieruchomości komercyjnych', 'inwestor biurowiec budowa', 'deweloper powierzchni biurowych', 'inwestycja komercyjna deweloper', 'budowa parku biznesowego']
+  },
+  {
+    categoryId: 'building_investor',
+    labels: { pl: 'Inwestorzy budowlani', ru: 'Застройщики', en: 'Building developers / investors' },
+    aliases: ['inwestor budowlany', 'firma deweloperska', 'zabudowa deweloperska', 'застройщики'],
+    positiveKeywords: { pl: ['inwestor budowlany', 'firma deweloperska', 'proces inwestycyjny budowlany', 'pozwolenie na budowę inwestor', 'realizacja inwestycji budowlanej', 'generalny inwestor', 'zabudowa terenu inwestycyjnego'], ru: ['застройщик', 'генеральный застройщик', 'инвестиционно-строительная компания'], en: ['property developer', 'construction investor'] },
+    negativeKeywords: { pl: ['pośrednictwo w obrocie nieruchomościami'], ru: ['агентство недвижимости'], en: ['real estate agency'] },
+    excludedBusinessTypes: ['real_estate_agency'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz ofertowy'],
+    searchTemplates: ['inwestor budowlany firma', 'firma deweloperska realizacja inwestycji', 'generalny inwestor budowlany', 'proces inwestycyjny budowa', 'zabudowa terenu inwestycyjnego firma']
+  },
+  {
+    categoryId: 'general_contractor',
+    labels: { pl: 'Generalni wykonawcy', ru: 'Генеральные подрядчики', en: 'General contractors' },
+    aliases: ['generalny wykonawca', 'generalni wykonawcy budowy', 'generalne wykonawstwo'],
+    positiveKeywords: { pl: ['generalny wykonawca', 'generalne wykonawstwo', 'kompleksowa realizacja budowy', 'budowa pod klucz', 'generalny wykonawca robót budowlanych', 'zarządzanie budową', 'generalny wykonawca inwestycji'], ru: ['генеральный подрядчик', 'строительство под ключ'], en: ['general contractor', 'turnkey construction'] },
+    negativeKeywords: { pl: ['podwykonawca drobnych prac wykończeniowych'], ru: [], en: [] },
+    excludedBusinessTypes: [],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz ofertowy'],
+    searchTemplates: ['generalny wykonawca budowa', 'firma budowlana generalny wykonawca', 'generalne wykonawstwo inwestycji', 'budowa pod klucz generalny wykonawca', 'generalny wykonawca robót budowlanych']
+  },
+  {
+    categoryId: 'construction_company',
+    labels: { pl: 'Firmy budowlane', ru: 'Строительные компании', en: 'Construction companies' },
+    aliases: ['firma budowlana', 'przedsiębiorstwo budowlane', 'firmy budowlane'],
+    positiveKeywords: { pl: ['firma budowlana', 'usługi budowlane', 'roboty budowlane', 'budowa domów i budynków', 'firma budowlano-remontowa', 'kompleksowe usługi budowlane', 'wykonawstwo budowlane'], ru: ['строительная компания', 'строительные услуги'], en: ['construction company', 'building contractor'] },
+    negativeKeywords: { pl: [], ru: [], en: [] },
+    excludedBusinessTypes: [],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz ofertowy'],
+    searchTemplates: ['firma budowlana usługi', 'firma budowlana budowa domów', 'przedsiębiorstwo budowlane oferta', 'usługi budowlane firma budowlana']
+  },
+  {
+    categoryId: 'industrial_construction',
+    labels: { pl: 'Budownictwo przemysłowe', ru: 'Промышленное строительство', en: 'Industrial construction' },
+    aliases: ['budowa obiektów przemysłowych', 'budownictwo przemysłowe', 'hale przemysłowe budowa'],
+    positiveKeywords: { pl: ['budownictwo przemysłowe', 'budowa hal przemysłowych', 'budowa zakładów przemysłowych', 'obiekty przemysłowe realizacja', 'inwestycje przemysłowe budowa', 'hale przemysłowe generalny wykonawca'], ru: ['промышленное строительство', 'строительство промышленных объектов'], en: ['industrial construction', 'industrial facility builder'] },
+    negativeKeywords: { pl: [], ru: [], en: [] },
+    excludedBusinessTypes: [],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz ofertowy'],
+    searchTemplates: ['budownictwo przemysłowe firma', 'budowa hal przemysłowych wykonawca', 'budowa zakładu przemysłowego wykonawca', 'firma budowlana obiekty przemysłowe']
+  },
+  {
+    categoryId: 'road_construction',
+    labels: { pl: 'Budowa dróg', ru: 'Дорожное строительство', en: 'Road construction' },
+    aliases: ['budownictwo drogowe', 'firma drogowa', 'roboty drogowe'],
+    positiveKeywords: { pl: ['budowa dróg', 'roboty drogowe', 'budownictwo drogowe', 'nawierzchnie asfaltowe', 'budowa dróg i autostrad', 'infrastruktura drogowa', 'przebudowa dróg'], ru: ['дорожное строительство', 'строительство автодорог'], en: ['road construction', 'highway construction'] },
+    negativeKeywords: { pl: ['drobne naprawy nawierzchni parkingowych'], ru: [], en: [] },
+    excludedBusinessTypes: [],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz ofertowy'],
+    searchTemplates: ['budowa dróg firma', 'roboty drogowe wykonawca', 'firma drogowa budowa autostrad', 'budownictwo drogowe przetargi']
+  },
+  {
+    categoryId: 'bridge_construction',
+    labels: { pl: 'Budownictwo mostowe', ru: 'Мостостроительные компании', en: 'Bridge construction companies' },
+    aliases: ['budowa mostów', 'firma mostowa', 'mostostroje'],
+    positiveKeywords: { pl: ['budowa mostów', 'budownictwo mostowe', 'konstrukcje mostowe', 'budowa wiaduktów', 'przebudowa mostów', 'inżynieria mostowa'], ru: ['мостостроение', 'строительство мостов'], en: ['bridge construction', 'bridge engineering'] },
+    negativeKeywords: { pl: [], ru: [], en: [] },
+    excludedBusinessTypes: [],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz ofertowy'],
+    searchTemplates: ['budowa mostów firma', 'budownictwo mostowe wykonawca', 'firma mostowa konstrukcje', 'budowa wiaduktów przetarg']
+  },
+  {
+    categoryId: 'warehouse_construction',
+    labels: { pl: 'Budowa magazynów', ru: 'Строительство складов', en: 'Warehouse construction' },
+    aliases: ['budowa hal magazynowych', 'firma budująca magazyny'],
+    positiveKeywords: { pl: ['budowa magazynów', 'hale magazynowe', 'budowa hal magazynowych', 'centra magazynowe realizacja', 'generalny wykonawca hal magazynowych', 'magazyny wysokiego składowania'], ru: ['строительство складов', 'складские комплексы'], en: ['warehouse construction', 'warehouse builder'] },
+    negativeKeywords: { pl: [], ru: [], en: [] },
+    excludedBusinessTypes: [],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz ofertowy'],
+    searchTemplates: ['budowa magazynów firma', 'budowa hal magazynowych wykonawca', 'generalny wykonawca hal magazynowych', 'budowa centrum magazynowego']
+  },
+  {
+    categoryId: 'production_facility_construction',
+    labels: { pl: 'Budowa obiektów produkcyjnych', ru: 'Строительство производственных объектов', en: 'Production facility construction' },
+    aliases: ['budowa hal produkcyjnych', 'obiekty produkcyjne budowa'],
+    positiveKeywords: { pl: ['budowa hal produkcyjnych', 'obiekty produkcyjne realizacja', 'budowa zakładów produkcyjnych', 'hale produkcyjne pod klucz', 'generalny wykonawca hal produkcyjnych'], ru: ['строительство производственных зданий', 'производственные комплексы'], en: ['production facility construction', 'manufacturing plant construction'] },
+    negativeKeywords: { pl: [], ru: [], en: [] },
+    excludedBusinessTypes: [],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz ofertowy'],
+    searchTemplates: ['budowa hal produkcyjnych firma', 'budowa zakładu produkcyjnego wykonawca', 'hale produkcyjne pod klucz', 'generalny wykonawca hal produkcyjnych']
+  },
+  {
+    categoryId: 'logistics_center_construction',
+    labels: { pl: 'Budowa centrów logistycznych', ru: 'Строительство логистических центров', en: 'Logistics center construction' },
+    aliases: ['budowa centrum logistycznego', 'obiekty logistyczne budowa'],
+    positiveKeywords: { pl: ['budowa centrów logistycznych', 'centrum logistyczne realizacja', 'park logistyczny budowa', 'obiekty logistyczne generalny wykonawca', 'hala logistyczna budowa'], ru: ['строительство логистических центров', 'логистический комплекс'], en: ['logistics center construction', 'logistics park developer'] },
+    negativeKeywords: { pl: [], ru: [], en: [] },
+    excludedBusinessTypes: [],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz ofertowy'],
+    searchTemplates: ['budowa centrum logistycznego firma', 'park logistyczny budowa wykonawca', 'generalny wykonawca centrum logistycznego', 'budowa hali logistycznej']
+  },
+  {
+    categoryId: 'hotel_construction',
+    labels: { pl: 'Budowa hoteli', ru: 'Строительство гостиниц', en: 'Hotel construction' },
+    aliases: ['budowa obiektów hotelowych', 'generalny wykonawca hoteli'],
+    positiveKeywords: { pl: ['budowa hoteli', 'realizacja obiektów hotelowych', 'generalny wykonawca hoteli', 'budowa hotelu pod klucz', 'inwestycja hotelowa budowa'], ru: ['строительство гостиниц', 'строительство отелей'], en: ['hotel construction', 'hospitality construction'] },
+    negativeKeywords: { pl: [], ru: [], en: [] },
+    excludedBusinessTypes: [],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz ofertowy'],
+    searchTemplates: ['budowa hotelu firma', 'generalny wykonawca hoteli', 'budowa obiektu hotelowego wykonawca', 'realizacja inwestycji hotelowej']
+  },
+  {
+    categoryId: 'shopping_mall_construction',
+    labels: { pl: 'Budowa centrów handlowych', ru: 'Строительство торговых центров', en: 'Shopping mall construction' },
+    aliases: ['budowa galerii handlowych', 'generalny wykonawca centrów handlowych'],
+    positiveKeywords: { pl: ['budowa centrów handlowych', 'galeria handlowa budowa', 'generalny wykonawca centrum handlowego', 'realizacja obiektów handlowych', 'budowa parku handlowego'], ru: ['строительство торговых центров', 'строительство торговых комплексов'], en: ['shopping mall construction', 'retail center construction'] },
+    negativeKeywords: { pl: [], ru: [], en: [] },
+    excludedBusinessTypes: [],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz ofertowy'],
+    searchTemplates: ['budowa centrum handlowego firma', 'generalny wykonawca galerii handlowej', 'budowa parku handlowego wykonawca', 'realizacja inwestycji handlowej']
+  },
+  {
+    categoryId: 'building_reconstruction',
+    labels: { pl: 'Przebudowa i modernizacja budynków', ru: 'Реконструкция зданий', en: 'Building reconstruction and modernization' },
+    aliases: ['przebudowa budynków', 'modernizacja budynków', 'rekonstrukcja budynków'],
+    positiveKeywords: { pl: ['przebudowa budynków', 'modernizacja budynków', 'generalny remont budynku', 'termomodernizacja budynków', 'przebudowa obiektów budowlanych', 'rewitalizacja budynków', 'adaptacja budynków'], ru: ['реконструкция зданий', 'модернизация зданий', 'капитальный ремонт зданий'], en: ['building reconstruction', 'building renovation', 'building modernization'] },
+    negativeKeywords: { pl: ['remont mieszkania', 'remont łazienki', 'malowanie mieszkań'], ru: ['ремонт квартиры'], en: ['apartment renovation'] },
+    excludedBusinessTypes: ['apartment_renovation', 'interior_finishing'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz ofertowy'],
+    searchTemplates: ['przebudowa budynku firma', 'modernizacja budynków wykonawca', 'generalny remont budynku firma budowlana', 'termomodernizacja budynków wykonawca', 'rewitalizacja obiektów budowlanych']
+  },
+  {
+    categoryId: 'heritage_restoration',
+    labels: { pl: 'Konserwacja i restauracja zabytków', ru: 'Реставрация', en: 'Heritage restoration' },
+    aliases: ['restauracja zabytków', 'konserwacja zabytków', 'renowacja zabytków'],
+    positiveKeywords: { pl: ['restauracja zabytków', 'konserwacja zabytków', 'renowacja obiektów zabytkowych', 'prace konserwatorskie', 'rewaloryzacja zabytków', 'dokumentacja konserwatorska', 'renowacja elewacji zabytkowych'], ru: ['реставрация памятников', 'реставрационные работы'], en: ['heritage restoration', 'monument conservation'] },
+    negativeKeywords: { pl: ['renowacja mebli', 'czyszczenie dywanów'], ru: ['реставрация мебели'], en: ['furniture restoration'] },
+    excludedBusinessTypes: ['furniture_restoration'],
+    relatedServices: ['strona portfolio', 'Google Business Profile', 'Google Ads B2B', 'formularz zapytania o projekt'],
+    searchTemplates: ['restauracja zabytków firma', 'konserwacja zabytków wykonawca', 'renowacja obiektów zabytkowych firma', 'prace konserwatorskie zabytki']
+  },
+  {
+    categoryId: 'monolithic_works',
+    labels: { pl: 'Roboty monolityczne', ru: 'Монолитные работы', en: 'Monolithic (cast-in-place) works' },
+    aliases: ['roboty monolityczne', 'beton monolityczny', 'konstrukcje monolityczne'],
+    positiveKeywords: { pl: ['roboty monolityczne', 'beton monolityczny', 'wykonawstwo konstrukcji monolitycznych', 'szalunki i zbrojenie', 'stan zerowy budynku', 'konstrukcje żelbetowe monolityczne', 'betonowanie konstrukcji'], ru: ['монолитные работы', 'монолитное строительство', 'заливка бетона'], en: ['monolithic concrete works', 'cast-in-place concrete'] },
+    negativeKeywords: { pl: [], ru: [], en: [] },
+    excludedBusinessTypes: [],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz ofertowy'],
+    searchTemplates: ['roboty monolityczne firma', 'wykonawca konstrukcji monolitycznych', 'firma betoniarska stan zerowy', 'podwykonawca roboty żelbetowe monolityczne']
+  },
+  {
+    categoryId: 'rc_structures',
+    labels: { pl: 'Konstrukcje żelbetowe', ru: 'Железобетонные конструкции', en: 'Reinforced concrete structures' },
+    aliases: ['konstrukcje żelbetowe', 'prefabrykaty żelbetowe', 'elementy żelbetowe'],
+    positiveKeywords: { pl: ['konstrukcje żelbetowe', 'prefabrykaty betonowe', 'elementy żelbetowe prefabrykowane', 'produkcja prefabrykatów żelbetowych', 'stropy żelbetowe', 'słupy i belki żelbetowe', 'wytwórnia prefabrykatów'], ru: ['железобетонные конструкции', 'производство жби', 'сборный железобетон'], en: ['reinforced concrete structures', 'precast concrete elements'] },
+    negativeKeywords: { pl: [], ru: [], en: [] },
+    excludedBusinessTypes: [],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz ofertowy'],
+    searchTemplates: ['konstrukcje żelbetowe producent', 'prefabrykaty żelbetowe firma', 'wytwórnia prefabrykatów betonowych', 'producent elementów żelbetowych']
+  },
+  {
+    categoryId: 'steel_structures',
+    labels: { pl: 'Konstrukcje stalowe', ru: 'Металлоконструкции', en: 'Steel structures' },
+    aliases: ['konstrukcje stalowe', 'hale stalowe', 'producent konstrukcji stalowych'],
+    positiveKeywords: { pl: ['konstrukcje stalowe', 'produkcja konstrukcji stalowych', 'hale stalowe', 'montaż konstrukcji stalowych', 'wytwórnia konstrukcji stalowych', 'stalowe hale przemysłowe', 'spawanie konstrukcji stalowych'], ru: ['металлоконструкции', 'производство металлоконструкций', 'стальные конструкции'], en: ['steel structures', 'structural steel fabrication'] },
+    negativeKeywords: { pl: ['kowalstwo artystyczne', 'ogrodzenia metalowe'], ru: ['художественная ковка'], en: ['decorative metalwork'] },
+    excludedBusinessTypes: ['ornamental_metalwork'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz ofertowy'],
+    searchTemplates: ['konstrukcje stalowe producent', 'firma montaż konstrukcji stalowych', 'wytwórnia konstrukcji stalowych', 'hale stalowe producent']
+  },
+  {
+    categoryId: 'roofing',
+    labels: { pl: 'Firmy dekarskie', ru: 'Кровельные компании', en: 'Roofing companies' },
+    aliases: ['dekarstwo', 'pokrycia dachowe', 'firma dekarska'],
+    positiveKeywords: { pl: ['firma dekarska', 'pokrycia dachowe', 'krycie dachów', 'naprawa dachów', 'montaż dachów', 'dachy płaskie i skośne', 'membrany dachowe', 'blachodachówka montaż'], ru: ['кровельные работы', 'кровельная компания', 'монтаж кровли'], en: ['roofing company', 'roof installation'] },
+    negativeKeywords: { pl: [], ru: [], en: [] },
+    excludedBusinessTypes: [],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz ofertowy'],
+    searchTemplates: ['firma dekarska usługi', 'pokrycia dachowe firma', 'montaż dachów wykonawca', 'krycie dachów firma dekarska']
+  },
+  {
+    categoryId: 'facade',
+    labels: { pl: 'Firmy elewacyjne', ru: 'Фасадные компании', en: 'Facade companies' },
+    aliases: ['elewacje budynków', 'firma elewacyjna', 'ocieplenia elewacji'],
+    positiveKeywords: { pl: ['firma elewacyjna', 'wykonawstwo elewacji', 'elewacje wentylowane', 'ocieplenie budynków elewacja', 'montaż elewacji', 'elewacje aluminiowo-szklane', 'fasady budynków'], ru: ['фасадные работы', 'фасадная компания', 'вентилируемые фасады'], en: ['facade company', 'building facade contractor'] },
+    negativeKeywords: { pl: [], ru: [], en: [] },
+    excludedBusinessTypes: [],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz ofertowy'],
+    searchTemplates: ['firma elewacyjna wykonawca', 'montaż elewacji budynków', 'elewacje wentylowane firma', 'ocieplenie elewacji firma budowlana']
+  },
+  {
+    categoryId: 'earthworks',
+    labels: { pl: 'Roboty ziemne', ru: 'Земляные работы', en: 'Earthworks' },
+    aliases: ['roboty ziemne', 'prace ziemne', 'wykopy budowlane'],
+    positiveKeywords: { pl: ['roboty ziemne', 'wykopy fundamentowe', 'niwelacja terenu', 'prace ziemne koparką', 'usługi koparko-ładowarką', 'transport ziemi', 'roboty ziemne budowlane'], ru: ['земляные работы', 'выемка грунта', 'планировка территории'], en: ['earthworks', 'excavation services'] },
+    negativeKeywords: { pl: ['prace ziemne przydomowe ogrodnicze'], ru: [], en: [] },
+    excludedBusinessTypes: [],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz ofertowy'],
+    searchTemplates: ['roboty ziemne firma', 'usługi koparką wykopy', 'prace ziemne budowlane wykonawca', 'niwelacja terenu firma']
+  },
+  {
+    categoryId: 'demolition',
+    labels: { pl: 'Rozbiórki budynków', ru: 'Снос зданий', en: 'Building demolition' },
+    aliases: ['rozbiórka budynków', 'wyburzenia', 'firma rozbiórkowa'],
+    positiveKeywords: { pl: ['rozbiórki budynków', 'wyburzenia obiektów', 'firma rozbiórkowa', 'rozbiórka konstrukcji budowlanych', 'wyburzanie budynków', 'demontaż obiektów budowlanych'], ru: ['снос зданий', 'демонтаж зданий', 'снос конструкций'], en: ['building demolition', 'structure demolition'] },
+    negativeKeywords: { pl: ['wywóz gruzu drobny', 'demontaż mebli'], ru: ['вывоз мусора'], en: ['waste removal'] },
+    excludedBusinessTypes: ['waste_removal'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz ofertowy'],
+    searchTemplates: ['rozbiórki budynków firma', 'firma rozbiórkowa wyburzenia', 'wyburzanie obiektów budowlanych', 'rozbiórka konstrukcji firma']
+  },
+  {
+    categoryId: 'drilling',
+    labels: { pl: 'Usługi wiertnicze', ru: 'Бурение', en: 'Drilling services' },
+    aliases: ['wiercenia', 'firma wiertnicza', 'usługi wiertnicze'],
+    positiveKeywords: { pl: ['usługi wiertnicze', 'wiercenia geotechniczne', 'wiercenia pod fundamenty', 'palowanie fundamentów', 'wiercenia otworów badawczych', 'przewierty horyzontalne', 'wiercenia studni głębinowych przemysłowych'], ru: ['буровые работы', 'бурение скважин промышленное', 'геотехническое бурение'], en: ['drilling services', 'geotechnical drilling', 'foundation piling'] },
+    negativeKeywords: { pl: ['wiercenie studni przydomowej', 'studnia dla domu', 'ujęcie wody dla ogrodu'], ru: ['бурение скважины для дома'], en: ['residential well drilling'] },
+    excludedBusinessTypes: ['residential_well_drilling'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz ofertowy'],
+    searchTemplates: ['usługi wiertnicze firma', 'wiercenia geotechniczne wykonawca', 'firma wiertnicza fundamenty', 'palowanie fundamentów wiercenia', 'przewierty horyzontalne firma']
+  },
+  {
+    categoryId: 'geodesy',
+    labels: { pl: 'Usługi geodezyjne', ru: 'Геодезия', en: 'Geodesic surveying services' },
+    aliases: ['geodeta', 'biuro geodezyjne', 'pomiary geodezyjne'],
+    positiveKeywords: { pl: ['usługi geodezyjne', 'biuro geodezyjne', 'pomiary geodezyjne', 'geodeta uprawniony', 'mapy do celów projektowych', 'tyczenie budynków', 'inwentaryzacja geodezyjna powykonawcza', 'podziały nieruchomości geodezja'], ru: ['геодезические услуги', 'геодезия'], en: ['geodetic surveying', 'land surveying'] },
+    negativeKeywords: { pl: [], ru: [], en: [] },
+    excludedBusinessTypes: [],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz ofertowy'],
+    searchTemplates: ['usługi geodezyjne firma', 'biuro geodezyjne pomiary', 'geodeta mapy do celów projektowych', 'tyczenie budynku geodeta']
+  },
+  {
+    categoryId: 'geology',
+    labels: { pl: 'Badania geologiczne', ru: 'Геология', en: 'Geological survey services' },
+    aliases: ['geologia inżynierska', 'badania geotechniczne', 'firma geologiczna'],
+    positiveKeywords: { pl: ['badania geologiczne', 'geologia inżynierska', 'badania geotechniczne gruntu', 'dokumentacja geologiczno-inżynierska', 'opinie geotechniczne', 'wiercenia badawcze geologiczne', 'analiza gruntu pod fundamenty'], ru: ['инженерная геология', 'геологические изыскания'], en: ['geological survey', 'geotechnical investigation'] },
+    negativeKeywords: { pl: [], ru: [], en: [] },
+    excludedBusinessTypes: [],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz ofertowy'],
+    searchTemplates: ['badania geologiczne firma', 'geologia inżynierska usługi', 'dokumentacja geologiczno-inżynierska firma', 'badania geotechniczne gruntu wykonawca']
+  },
+  {
+    categoryId: 'bim_design',
+    labels: { pl: 'Projektowanie BIM', ru: 'BIM-проектирование', en: 'BIM design' },
+    aliases: ['bim', 'modelowanie bim', 'projektowanie bim'],
+    positiveKeywords: { pl: ['projektowanie bim', 'modelowanie bim', 'koordynacja bim', 'model bim budynku', 'projektowanie w technologii bim', 'usługi bim dla budownictwa', 'bim manager'], ru: ['bim проектирование', 'bim моделирование'], en: ['bim design', 'building information modeling'] },
+    negativeKeywords: { pl: [], ru: [], en: [] },
+    excludedBusinessTypes: [],
+    relatedServices: ['strona portfolio', 'Google Business Profile', 'Google Ads B2B', 'formularz zapytania o projekt'],
+    searchTemplates: ['projektowanie bim firma', 'modelowanie bim budownictwo', 'koordynacja bim usługi', 'firma bim projektowanie budynków']
+  },
+  {
+    categoryId: 'architecture_firm',
+    labels: { pl: 'Biura architektoniczne', ru: 'Архитектурные бюро', en: 'Architecture firms' },
+    aliases: ['biuro architektoniczne', 'pracownia architektoniczna', 'architekt'],
+    positiveKeywords: { pl: ['biuro architektoniczne', 'pracownia architektoniczna', 'projekty architektoniczne', 'architekt budynków', 'projekt domu architekt', 'koncepcja architektoniczna', 'projekty budowlane i architektoniczne'], ru: ['архитектурное бюро', 'архитектурная студия'], en: ['architecture firm', 'architectural design studio'] },
+    negativeKeywords: { pl: [], ru: [], en: [] },
+    excludedBusinessTypes: [],
+    relatedServices: ['strona portfolio', 'Google Business Profile', 'Google Ads B2B', 'formularz zapytania o projekt'],
+    searchTemplates: ['biuro architektoniczne projekty', 'pracownia architektoniczna usługi', 'architekt projekt budynku', 'biuro architektoniczne budownictwo']
+  },
+  {
+    categoryId: 'design_bureau',
+    labels: { pl: 'Biura projektowe', ru: 'Проектные бюро', en: 'Design / engineering bureaus' },
+    aliases: ['biuro projektowe', 'pracownia projektowa', 'projektowanie budowlane'],
+    positiveKeywords: { pl: ['biuro projektowe', 'projekty budowlane', 'projektowanie konstrukcyjne', 'projekt instalacji sanitarnych', 'projektowanie branżowe budownictwo', 'kompleksowa dokumentacja projektowa', 'projekty wykonawcze budowlane'], ru: ['проектное бюро', 'проектная организация'], en: ['design bureau', 'engineering design firm'] },
+    negativeKeywords: { pl: [], ru: [], en: [] },
+    excludedBusinessTypes: [],
+    relatedServices: ['strona portfolio', 'Google Business Profile', 'Google Ads B2B', 'formularz zapytania o projekt'],
+    searchTemplates: ['biuro projektowe budownictwo', 'projekty budowlane firma', 'biuro projektowe konstrukcyjne', 'dokumentacja projektowa budowlana firma']
+  },
+  {
+    categoryId: 'public_space_design',
+    labels: { pl: 'Projektowanie przestrzeni publicznych', ru: 'Дизайн общественных пространств', en: 'Public space design' },
+    aliases: ['przestrzenie publiczne projekt', 'projektowanie urbanistyczne', 'urban design'],
+    positiveKeywords: { pl: ['projektowanie przestrzeni publicznych', 'zagospodarowanie przestrzeni miejskiej', 'projekt placu miejskiego', 'urbanistyka i architektura', 'rewitalizacja przestrzeni publicznej', 'projektowanie małej architektury', 'koncepcja zagospodarowania terenu'], ru: ['дизайн общественных пространств', 'урбанистика'], en: ['public space design', 'urban design'] },
+    negativeKeywords: { pl: [], ru: [], en: [] },
+    excludedBusinessTypes: [],
+    relatedServices: ['strona portfolio', 'Google Business Profile', 'Google Ads B2B', 'formularz zapytania o projekt'],
+    searchTemplates: ['projektowanie przestrzeni publicznych pracownia', 'zagospodarowanie przestrzeni miejskiej projekt', 'rewitalizacja przestrzeni publicznej firma', 'pracownia urbanistyczna projekt']
+  },
+  {
+    categoryId: 'landscape_architecture',
+    labels: { pl: 'Architektura krajobrazu', ru: 'Ландшафтная архитектура', en: 'Landscape architecture' },
+    aliases: ['architekt krajobrazu', 'projektowanie ogrodów', 'architektura krajobrazu'],
+    positiveKeywords: { pl: ['architektura krajobrazu', 'projektowanie ogrodów', 'architekt krajobrazu', 'projekt zieleni miejskiej', 'aranżacja terenów zielonych', 'projektowanie parków i skwerów', 'pracownia architektury krajobrazu'], ru: ['ландшафтная архитектура', 'ландшафтный дизайн'], en: ['landscape architecture', 'landscape design'] },
+    negativeKeywords: { pl: ['ogrodnik przydomowy koszenie trawy', 'pielęgnacja ogrodów usługi'], ru: ['уход за садом'], en: ['garden maintenance service'] },
+    excludedBusinessTypes: ['gardening_service'],
+    relatedServices: ['strona portfolio', 'Google Business Profile', 'Google Ads B2B', 'formularz zapytania o projekt'],
+    searchTemplates: ['architektura krajobrazu pracownia', 'projektowanie ogrodów architekt', 'architekt krajobrazu projekt zieleni', 'projekt terenów zielonych firma']
+  },
+  {
+    categoryId: 'budowa-domow',
+    labels: { pl: 'Budowa domów', ru: 'Строительство домов', en: 'House construction' },
+    aliases: ['budowa domów', 'firma budowlana', 'budownictwo jednorodzinne', 'generalny wykonawca'],
+    positiveKeywords: { pl: ['budowa domów jednorodzinnych', 'generalne wykonawstwo', 'budowa domu pod klucz', 'stan surowy zamknięty', 'stan surowy otwarty', 'projekty domów', 'budowa domu na zamówienie', 'wykończenie domów pod klucz', 'firma budowlana', 'budownictwo indywidualne'], ru: ['строительство домов', 'строительство под ключ', 'индивидуальное строительство', 'генеральный подрядчик'], en: ['house construction', 'turnkey home building', 'general contractor', 'custom home builder'] },
+    negativeKeywords: { pl: ['remonty mieszkań', 'wykończenia wnętrz', 'firma sprzątająca', 'ogrodzenia', 'brukarstwo'], ru: ['ремонт квартир', 'клининговая компания'], en: ['apartment renovation', 'cleaning company'] },
+    excludedBusinessTypes: ['real_estate_agency', 'interior_designer', 'cleaning_service'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz ofertowy'],
+    searchTemplates: ['budowa domów pod klucz', 'firma budowlana domy jednorodzinne', 'generalny wykonawca budowa domu', 'budowa domu na zamówienie', 'stan surowy zamknięty budowa domu']
+  },
+  {
+    categoryId: 'domy-szkieletowe',
+    labels: { pl: 'Domy szkieletowe', ru: 'Каркасные дома', en: 'Timber frame houses' },
+    aliases: ['domy szkieletowe', 'technologia szkieletowa', 'dom kanadyjski', 'domy prefabrykowane szkieletowe'],
+    positiveKeywords: { pl: ['domy szkieletowe', 'technologia szkieletowa drewniana', 'dom kanadyjski', 'dom w technologii szkieletowej', 'domy szkieletowe całoroczne', 'prefabrykacja domów szkieletowych', 'domy szkieletowe pod klucz', 'panele szkieletowe'], ru: ['каркасные дома', 'каркасное домостроение', 'канадская технология', 'дома по каркасной технологии'], en: ['timber frame house', 'wood frame construction', 'prefab frame house'] },
+    negativeKeywords: { pl: ['domy murowane', 'domy z bali', 'wiaty drewniane', 'stolarnia meblowa'], ru: ['мебельная мастерская'], en: ['furniture workshop'] },
+    excludedBusinessTypes: ['furniture_manufacturer', 'carpentry_workshop'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz ofertowy'],
+    searchTemplates: ['domy szkieletowe pod klucz', 'budowa domów szkieletowych', 'domy w technologii kanadyjskiej', 'producent domów szkieletowych', 'domy szkieletowe całoroczne cena']
+  },
+  {
+    categoryId: 'domy-drewniane',
+    labels: { pl: 'Domy drewniane', ru: 'Деревянные дома', en: 'Wooden houses' },
+    aliases: ['domy drewniane', 'domy z bali', 'domy zrębowe', 'domy z bali drewnianych'],
+    positiveKeywords: { pl: ['domy drewniane', 'domy z bali', 'domy zrębowe', 'domy z bali okrągłych', 'domy z drewna klejonego', 'całoroczne domy drewniane', 'domki drewniane pod klucz', 'budowa domów z drewna'], ru: ['деревянные дома', 'дома из бруса', 'дома из бревна', 'срубы'], en: ['wooden houses', 'log houses', 'timber houses'] },
+    negativeKeywords: { pl: ['altany ogrodowe', 'wiaty drewniane', 'domki letniskowe rekreacyjne małe', 'tartak', 'sklep z drewnem'], ru: ['лесопилка', 'магазин пиломатериалов'], en: ['sawmill', 'timber shop'] },
+    excludedBusinessTypes: ['sawmill', 'garden_shed_seller'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz ofertowy'],
+    searchTemplates: ['domy drewniane pod klucz', 'producent domów z bali', 'domy zrębowe całoroczne', 'budowa domu drewnianego cena', 'domy z drewna klejonego']
+  },
+  {
+    categoryId: 'domy-modulowe',
+    labels: { pl: 'Domy modułowe', ru: 'Модульные дома', en: 'Modular houses' },
+    aliases: ['domy modułowe', 'domy kontenerowe', 'moduły mieszkalne', 'domy prefabrykowane modułowe'],
+    positiveKeywords: { pl: ['domy modułowe', 'domy modułowe całoroczne', 'domy z kontenerów', 'moduły mieszkalne', 'domy modułowe pod klucz', 'domy modułowe szkieletowe', 'szybki montaż domu modułowego', 'domy modułowe piętrowe'], ru: ['модульные дома', 'дома из модулей', 'контейнерные дома', 'быстровозводимые дома'], en: ['modular houses', 'prefab modular homes', 'container homes'] },
+    negativeKeywords: { pl: ['kontenery biurowe', 'kontenery magazynowe', 'toalety przenośne', 'kontenery budowlane socjalne'], ru: ['офисные контейнеры', 'биотуалеты'], en: ['office containers', 'portable toilets'] },
+    excludedBusinessTypes: ['office_container_rental', 'portable_toilet_rental'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz ofertowy'],
+    searchTemplates: ['domy modułowe cena', 'producent domów modułowych', 'domy modułowe całoroczne pod klucz', 'szybki montaż domu modułowego', 'domy modułowe na działkę']
+  },
+  {
+    categoryId: 'domy-pasywne',
+    labels: { pl: 'Domy pasywne', ru: 'Пассивные дома', en: 'Passive houses' },
+    aliases: ['domy pasywne', 'domy energooszczędne', 'budownictwo pasywne', 'dom zeroenergetyczny'],
+    positiveKeywords: { pl: ['domy pasywne', 'budowa domów pasywnych', 'domy energooszczędne', 'certyfikat domu pasywnego', 'dom niskoenergetyczny', 'wentylacja mechaniczna z rekuperacją', 'izolacja termiczna domu pasywnego', 'dom zeroenergetyczny'], ru: ['пассивные дома', 'энергоэффективные дома', 'дом с нулевым потреблением энергии'], en: ['passive house', 'energy efficient home', 'net zero house'] },
+    negativeKeywords: { pl: ['fotowoltaika sprzedaż', 'pompy ciepła sklep', 'termomodernizacja bloków'], ru: ['продажа фотовольтаики', 'магазин тепловых насосов'], en: ['solar panel retailer'] },
+    excludedBusinessTypes: ['solar_panel_retailer'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz ofertowy'],
+    searchTemplates: ['budowa domów pasywnych', 'projekt domu pasywnego', 'dom energooszczędny pod klucz', 'certyfikowany dom pasywny cena', 'domy pasywne z rekuperacją']
+  },
+  {
+    categoryId: 'producenci-domow',
+    labels: { pl: 'Producenci domów', ru: 'Производители домов', en: 'House manufacturers' },
+    aliases: ['producent domów', 'domy katalogowe', 'domy gotowe', 'fabryka domów'],
+    positiveKeywords: { pl: ['producent domów', 'domy katalogowe', 'gotowe projekty domów', 'fabryka domów', 'domy jednorodzinne pod klucz', 'systemy budowy domów', 'elementy prefabrykowane domów', 'domy z prefabrykatów'], ru: ['производитель домов', 'дома по каталогу', 'готовые проекты домов', 'фабрика домов'], en: ['house manufacturer', 'catalog homes', 'prefab home producer'] },
+    negativeKeywords: { pl: ['biuro architektoniczne projekty indywidualne', 'sklep meblowy', 'producent okien'], ru: ['архитектурное бюро', 'мебельный магазин'], en: ['architecture office', 'furniture store'] },
+    excludedBusinessTypes: ['architecture_office', 'window_manufacturer'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz ofertowy'],
+    searchTemplates: ['producent domów jednorodzinnych', 'domy katalogowe pod klucz', 'fabryka domów cena', 'gotowe projekty domów jednorodzinnych', 'domy z prefabrykatów producent']
+  },
+  {
+    categoryId: 'sauny-ogrodowe',
+    labels: { pl: 'Sauny ogrodowe', ru: 'Производители бань', en: 'Garden saunas' },
+    aliases: ['sauny ogrodowe', 'banie', 'sauna zewnętrzna', 'bania rosyjska'],
+    positiveKeywords: { pl: ['sauny ogrodowe', 'producent saun ogrodowych', 'banie fińskie', 'sauna zewnętrzna drewniana', 'sauna beczka', 'domki saunowe', 'sauna na taras ogrodowy', 'banie drewniane producent'], ru: ['производство бань', 'бани под ключ', 'бани из бревна', 'финские сауны для дачи'], en: ['garden sauna manufacturer', 'outdoor sauna', 'barrel sauna'] },
+    negativeKeywords: { pl: ['salon spa', 'siłownia z sauną', 'basen kryty publiczny', 'centrum wellness'], ru: ['спа-салон', 'фитнес-клуб'], en: ['spa center', 'gym'] },
+    excludedBusinessTypes: ['spa_center', 'gym', 'public_pool'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz ofertowy'],
+    searchTemplates: ['producent saun ogrodowych', 'sauna beczka na zamówienie', 'banie fińskie producent', 'sauna ogrodowa drewniana cena', 'domek saunowy pod klucz']
+  },
+  {
+    categoryId: 'producenci-garazy',
+    labels: { pl: 'Producenci garaży', ru: 'Производители гаражей', en: 'Garage manufacturers' },
+    aliases: ['producent garaży', 'garaże blaszane', 'garaże murowane', 'garaże drewniane'],
+    positiveKeywords: { pl: ['producent garaży', 'garaże blaszane', 'garaże murowane', 'garaże drewniane', 'garaże wolnostojące', 'garaże na wymiar', 'garaże z podjazdem', 'garaże blaszane producent'], ru: ['производство гаражей', 'гаражи металлические', 'гаражи кирпичные', 'гаражи на заказ'], en: ['garage manufacturer', 'steel garages', 'prefab garages'] },
+    negativeKeywords: { pl: ['warsztat samochodowy', 'myjnia samochodowa', 'parking podziemny', 'wynajem garaży'], ru: ['автосервис', 'подземная парковка'], en: ['car repair shop', 'parking garage rental'] },
+    excludedBusinessTypes: ['car_repair', 'parking_facility'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz ofertowy'],
+    searchTemplates: ['producent garaży blaszanych', 'garaże murowane na wymiar', 'garaże wolnostojące cena', 'garaże drewniane producent', 'garaż na zamówienie']
+  },
+  {
+    categoryId: 'producenci-wiat',
+    labels: { pl: 'Producenci wiat', ru: 'Производители навесов', en: 'Canopy manufacturers' },
+    aliases: ['producent wiat', 'wiaty garażowe', 'wiaty carportowe', 'zadaszenia'],
+    positiveKeywords: { pl: ['producent wiat', 'wiaty garażowe', 'wiaty carportowe', 'wiaty na samochód', 'wiaty drewniane', 'wiaty stalowe', 'zadaszenia tarasów', 'wiaty na wymiar'], ru: ['производство навесов', 'навесы для авто', 'карпорты', 'навесы на заказ'], en: ['carport manufacturer', 'canopy manufacturer', 'garage canopy'] },
+    negativeKeywords: { pl: ['parasole ogrodowe', 'markizy okienne', 'namioty eventowe'], ru: ['садовые зонты', 'шатры для мероприятий'], en: ['event tent rental'] },
+    excludedBusinessTypes: ['event_tent_rental', 'awning_retailer'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz ofertowy'],
+    searchTemplates: ['producent wiat garażowych', 'wiaty carportowe na wymiar', 'wiaty drewniane cena', 'zadaszenia tarasów producent', 'wiaty stalowe na samochody']
+  },
+  {
+    categoryId: 'sprzedaz-koparek',
+    labels: { pl: 'Sprzedaż koparek', ru: 'Продажа экскаваторов', en: 'Excavator sales' },
+    aliases: ['sprzedaż koparek', 'koparki używane', 'koparki gąsienicowe', 'koparko-ładowarki sprzedaż'],
+    positiveKeywords: { pl: ['sprzedaż koparek', 'koparki gąsienicowe', 'koparki kołowe', 'koparko-ładowarki', 'koparki używane', 'koparki nowe i używane', 'minikoparki sprzedaż', 'dealer koparek'], ru: ['продажа экскаваторов', 'экскаваторы гусеничные', 'экскаваторы б/у', 'мини-экскаваторы'], en: ['excavator sales', 'used excavators', 'mini excavators for sale'] },
+    negativeKeywords: { pl: ['sklep z narzędziami ogrodowymi', 'wypożyczalnia sprzętu ogrodowego', 'sklep hydrauliczny'], ru: ['магазин садового инструмента'], en: ['garden tool shop'] },
+    excludedBusinessTypes: ['hardware_store', 'garden_tool_shop'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz ofertowy'],
+    searchTemplates: ['sprzedaż koparek używanych', 'koparki gąsienicowe na sprzedaż', 'dealer koparek Polska', 'minikoparki sprzedaż cena', 'koparko-ładowarki używane sprzedaż']
+  },
+  {
+    categoryId: 'sprzedaz-ladowarek',
+    labels: { pl: 'Sprzedaż ładowarek', ru: 'Продажа погрузчиков', en: 'Loader sales' },
+    aliases: ['sprzedaż ładowarek', 'ładowarki teleskopowe', 'ładowarki kołowe', 'ładowarki czołowe'],
+    positiveKeywords: { pl: ['sprzedaż ładowarek', 'ładowarki teleskopowe', 'ładowarki kołowe', 'ładowarki czołowe', 'ładowarki używane', 'ładowarki kompaktowe', 'dealer ładowarek', 'ładowarki do gospodarstwa'], ru: ['продажа погрузчиков', 'телескопические погрузчики', 'фронтальные погрузчики', 'погрузчики б/у'], en: ['loader sales', 'telehandler for sale', 'wheel loader dealer'] },
+    negativeKeywords: { pl: ['wózki widłowe magazynowe', 'sklep z paletami', 'wynajem rusztowań'], ru: ['складские вилочные погрузчики'], en: ['warehouse forklift shop'] },
+    excludedBusinessTypes: ['warehouse_equipment_shop'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz ofertowy'],
+    searchTemplates: ['sprzedaż ładowarek teleskopowych', 'ładowarki kołowe używane sprzedaż', 'dealer ładowarek Polska', 'ładowarki czołowe na sprzedaż', 'ładowarki kompaktowe cena']
+  },
+  {
+    categoryId: 'sprzedaz-dzwigow',
+    labels: { pl: 'Sprzedaż dźwigów', ru: 'Продажа кранов', en: 'Crane sales' },
+    aliases: ['sprzedaż dźwigów', 'żurawie wieżowe', 'dźwigi budowlane', 'HDS sprzedaż'],
+    positiveKeywords: { pl: ['sprzedaż dźwigów', 'żurawie wieżowe', 'żurawie samojezdne', 'dźwigi budowlane', 'HDS hydrauliczny dźwig samochodowy', 'dźwigi używane', 'żurawie gąsienicowe', 'dealer żurawi'], ru: ['продажа кранов', 'башенные краны', 'автокраны', 'краны б/у'], en: ['crane sales', 'tower crane dealer', 'mobile crane for sale'] },
+    negativeKeywords: { pl: ['windy osobowe', 'platformy przeładunkowe magazynowe', 'wynajem żurawi'], ru: ['пассажирские лифты', 'аренда кранов'], en: ['passenger elevators', 'crane rental'] },
+    excludedBusinessTypes: ['elevator_installer'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz ofertowy'],
+    searchTemplates: ['sprzedaż żurawi wieżowych', 'dźwigi budowlane używane sprzedaż', 'HDS na sprzedaż', 'żurawie samojezdne dealer', 'sprzedaż dźwigów budowlanych']
+  },
+  {
+    categoryId: 'sprzedaz-maszyn-budowlanych',
+    labels: { pl: 'Sprzedaż maszyn budowlanych', ru: 'Продажа спецтехники', en: 'Construction equipment sales' },
+    aliases: ['sprzedaż maszyn budowlanych', 'sprzęt budowlany sprzedaż', 'maszyny drogowe sprzedaż', 'dealer maszyn budowlanych'],
+    positiveKeywords: { pl: ['sprzedaż maszyn budowlanych', 'maszyny budowlane używane', 'sprzęt budowlany na sprzedaż', 'maszyny drogowe', 'walce drogowe sprzedaż', 'równiarki sprzedaż', 'dealer maszyn budowlanych', 'ciężki sprzęt budowlany'], ru: ['продажа спецтехники', 'строительная техника б/у', 'дорожная техника', 'дилер спецтехники'], en: ['construction equipment sales', 'heavy machinery dealer', 'used heavy equipment'] },
+    negativeKeywords: { pl: ['narzędzia ręczne sklep', 'wynajem rusztowań', 'sklep budowlany materiały'], ru: ['магазин ручного инструмента'], en: ['hand tools store'] },
+    excludedBusinessTypes: ['hardware_store', 'building_materials_store'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz ofertowy'],
+    searchTemplates: ['sprzedaż maszyn budowlanych', 'dealer maszyn budowlanych Polska', 'sprzęt budowlany używany sprzedaż', 'maszyny drogowe na sprzedaż', 'ciężki sprzęt budowlany sprzedaż']
+  },
+  {
+    categoryId: 'wynajem-maszyn-budowlanych',
+    labels: { pl: 'Wynajem maszyn budowlanych', ru: 'Аренда спецтехники', en: 'Construction equipment rental' },
+    aliases: ['wynajem maszyn budowlanych', 'wypożyczalnia sprzętu budowlanego', 'wynajem koparek', 'wynajem sprzętu ciężkiego'],
+    positiveKeywords: { pl: ['wynajem maszyn budowlanych', 'wypożyczalnia sprzętu budowlanego', 'wynajem koparek', 'wynajem koparko-ładowarek', 'wynajem zagęszczarek', 'wynajem sprzętu budowlanego z operatorem', 'wynajem minikoparek', 'wynajem walców'], ru: ['аренда спецтехники', 'прокат строительной техники', 'аренда экскаватора', 'аренда техники с оператором'], en: ['construction equipment rental', 'excavator rental', 'heavy machinery rental'] },
+    negativeKeywords: { pl: ['wynajem samochodów osobowych', 'wypożyczalnia narzędzi ręcznych', 'wynajem rusztowań elewacyjnych'], ru: ['прокат легковых автомобилей'], en: ['car rental'] },
+    excludedBusinessTypes: ['car_rental', 'tool_rental_small'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz ofertowy'],
+    searchTemplates: ['wynajem koparek z operatorem', 'wypożyczalnia sprzętu budowlanego', 'wynajem maszyn budowlanych cennik', 'wynajem minikoparki', 'wynajem koparko-ładowarki']
+  },
+  {
+    categoryId: 'serwis-maszyn-budowlanych',
+    labels: { pl: 'Serwis maszyn budowlanych', ru: 'Сервис спецтехники', en: 'Construction equipment service' },
+    aliases: ['serwis maszyn budowlanych', 'serwis koparek', 'naprawa sprzętu budowlanego', 'serwis hydrauliki siłowej'],
+    positiveKeywords: { pl: ['serwis maszyn budowlanych', 'serwis koparek', 'naprawa sprzętu budowlanego', 'serwis hydrauliki siłowej', 'przeglądy maszyn budowlanych', 'serwis mobilny maszyn budowlanych', 'naprawa koparko-ładowarek', 'diagnostyka maszyn budowlanych'], ru: ['сервис спецтехники', 'ремонт экскаваторов', 'ремонт гидравлики', 'выездной сервис техники'], en: ['heavy equipment service', 'excavator repair', 'hydraulic repair service'] },
+    negativeKeywords: { pl: ['warsztat samochodowy osobowy', 'wulkanizacja', 'myjnia samochodowa'], ru: ['автосервис легковых авто', 'шиномонтаж'], en: ['car repair shop', 'tire shop'] },
+    excludedBusinessTypes: ['car_repair', 'tire_service'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz ofertowy'],
+    searchTemplates: ['serwis maszyn budowlanych', 'naprawa koparek serwis', 'serwis hydrauliki siłowej maszyny budowlane', 'przegląd techniczny maszyn budowlanych', 'serwis mobilny koparek']
+  },
+  {
+    categoryId: 'czesci-do-maszyn-budowlanych',
+    labels: { pl: 'Części do maszyn budowlanych', ru: 'Запчасти для спецтехники', en: 'Construction equipment parts' },
+    aliases: ['części do maszyn budowlanych', 'części zamienne koparki', 'części do koparek', 'zęby do koparek'],
+    positiveKeywords: { pl: ['części do maszyn budowlanych', 'części zamienne do koparek', 'zęby do łyżek koparkowych', 'łyżki koparkowe', 'filtry do maszyn budowlanych', 'gąsienice do koparek', 'części hydrauliczne do maszyn budowlanych', 'sklep z częściami do koparek'], ru: ['запчасти для спецтехники', 'запчасти для экскаваторов', 'зубья ковша', 'гусеницы для экскаваторов'], en: ['heavy equipment parts', 'excavator parts', 'undercarriage parts'] },
+    negativeKeywords: { pl: ['części samochodowe osobowe', 'sklep motoryzacyjny', 'części do motocykli'], ru: ['автозапчасти для легковых авто'], en: ['car parts store'] },
+    excludedBusinessTypes: ['auto_parts', 'car_dealer'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz ofertowy'],
+    searchTemplates: ['części do maszyn budowlanych sklep', 'części zamienne do koparek', 'łyżki koparkowe na sprzedaż', 'zęby do łyżek koparkowych', 'gąsienice do koparek sklep']
+  },
+  {
+    categoryId: 'leasing-maszyn-budowlanych',
+    labels: { pl: 'Leasing maszyn budowlanych', ru: 'Лизинг техники', en: 'Construction equipment leasing' },
+    aliases: ['leasing maszyn budowlanych', 'leasing sprzętu budowlanego', 'leasing koparek', 'leasing maszyn rolniczych i budowlanych'],
+    positiveKeywords: { pl: ['leasing maszyn budowlanych', 'leasing sprzętu budowlanego', 'leasing koparek', 'leasing maszyn używanych', 'finansowanie maszyn budowlanych', 'leasing operacyjny maszyn', 'leasing sprzętu ciężkiego', 'leasing dla firm budowlanych'], ru: ['лизинг спецтехники', 'лизинг строительной техники', 'лизинг экскаваторов', 'финансирование техники'], en: ['construction equipment leasing', 'heavy equipment financing', 'excavator leasing'] },
+    negativeKeywords: { pl: ['leasing samochodów osobowych', 'leasing mieszkań', 'kredyt hipoteczny'], ru: ['лизинг легковых автомобилей', 'ипотечный кредит'], en: ['car leasing', 'mortgage broker'] },
+    excludedBusinessTypes: ['car_leasing', 'mortgage_broker'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz ofertowy'],
+    searchTemplates: ['leasing maszyn budowlanych oferta', 'leasing koparek dla firm', 'finansowanie sprzętu budowlanego', 'leasing sprzętu ciężkiego warunki', 'leasing maszyn używanych budowlanych']
+  },
+  {
+    categoryId: 'window_manufacturer',
+    labels: { pl: 'Producenci okien', ru: 'Производители окон', en: 'Window manufacturers' },
+    aliases: ['producenci okien', 'okna producent', 'window manufacturers', 'производители окон'],
+    positiveKeywords: { pl: ['producent okien', 'produkcja okien', 'okna PVC producent', 'okna drewniane producent', 'okna aluminiowe producent', 'stolarka okienna produkcja', 'fabryka okien', 'okna na wymiar produkcja', 'profile okienne producent'], ru: ['производитель окон', 'производство окон', 'завод окон'], en: ['window manufacturer', 'window production', 'window factory'] },
+    negativeKeywords: { pl: ['montaż okien', 'serwis okien', 'naprawa okien', 'mycie okien', 'sklep z oknami', 'okna używane'], ru: ['установка окон', 'ремонт окон'], en: ['window installation', 'window repair'] },
+    excludedBusinessTypes: ['installation_service', 'retail_store', 'repair_service'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'katalog produktów'],
+    searchTemplates: ['producent okien', 'fabryka okien PVC', 'produkcja okien drewnianych', 'producent okien aluminiowych', 'stolarka okienna producent', 'okna na wymiar producent']
+  },
+  {
+    categoryId: 'door_manufacturer',
+    labels: { pl: 'Producenci drzwi', ru: 'Производители дверей', en: 'Door manufacturers' },
+    aliases: ['producenci drzwi', 'drzwi producent', 'door manufacturers'],
+    positiveKeywords: { pl: ['producent drzwi', 'produkcja drzwi', 'drzwi wewnętrzne producent', 'drzwi zewnętrzne producent', 'drzwi wejściowe producent', 'fabryka drzwi', 'drzwi drewniane produkcja', 'drzwi stalowe producent', 'drzwi przeciwpożarowe producent'], ru: ['производитель дверей', 'производство дверей', 'завод дверей'], en: ['door manufacturer', 'door production', 'door factory'] },
+    negativeKeywords: { pl: ['montaż drzwi', 'serwis drzwi', 'naprawa drzwi', 'sklep z drzwiami', 'ślusarz'], ru: ['установка дверей', 'ремонт дверей'], en: ['door installation', 'door repair'] },
+    excludedBusinessTypes: ['installation_service', 'retail_store', 'repair_service'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'katalog produktów'],
+    searchTemplates: ['producent drzwi', 'fabryka drzwi wewnętrznych', 'produkcja drzwi zewnętrznych', 'producent drzwi wejściowych', 'drzwi stalowe producent', 'producent drzwi przeciwpożarowych']
+  },
+  {
+    categoryId: 'facade_manufacturer',
+    labels: { pl: 'Producenci fasad', ru: 'Производители фасадов', en: 'Facade manufacturers' },
+    aliases: ['producenci fasad', 'producenci elewacji', 'facade manufacturers'],
+    positiveKeywords: { pl: ['producent fasad', 'produkcja fasad', 'fasady aluminiowe producent', 'fasady szklane producent', 'systemy fasadowe', 'elewacje wentylowane producent', 'fasady słupowo-ryglowe', 'konstrukcje fasadowe'], ru: ['производитель фасадов', 'производство фасадных систем'], en: ['facade manufacturer', 'curtain wall systems producer'] },
+    negativeKeywords: { pl: ['montaż elewacji', 'docieplenie budynków', 'elewacje tynkowanie', 'firma remontowa'], ru: ['монтаж фасадов', 'утепление фасадов'], en: ['facade installation'] },
+    excludedBusinessTypes: ['installation_service', 'renovation_service'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'katalog produktów'],
+    searchTemplates: ['producent fasad aluminiowych', 'producent systemów fasadowych', 'produkcja fasad szklanych', 'producent elewacji wentylowanych', 'konstrukcje fasadowe producent']
+  },
+  {
+    categoryId: 'furniture_manufacturer',
+    labels: { pl: 'Producenci mebli', ru: 'Производители мебели', en: 'Furniture manufacturers' },
+    aliases: ['producenci mebli', 'meble producent', 'furniture manufacturers', 'фабрика мебели'],
+    positiveKeywords: { pl: ['producent mebli', 'fabryka mebli', 'produkcja mebli na zamówienie', 'meble tapicerowane producent', 'meble biurowe producent', 'meble na wymiar produkcja', 'stolarnia meblowa', 'meble drewniane producent'], ru: ['производитель мебели', 'фабрика мебели', 'производство мебели на заказ'], en: ['furniture manufacturer', 'furniture factory'] },
+    negativeKeywords: { pl: ['sklep meblowy', 'salon meblowy', 'meble używane', 'wypożyczalnia mebli', 'naprawa mebli', 'tapicer serwis'], ru: ['магазин мебели', 'мебельный салон'], en: ['furniture store', 'furniture showroom'] },
+    excludedBusinessTypes: ['retail_store', 'showroom'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'katalog produktów'],
+    searchTemplates: ['producent mebli na zamówienie', 'fabryka mebli tapicerowanych', 'producent mebli biurowych', 'produkcja mebli drewnianych', 'stolarnia meblowa producent']
+  },
+  {
+    categoryId: 'kitchen_manufacturer',
+    labels: { pl: 'Producenci kuchni', ru: 'Производители кухонь', en: 'Kitchen manufacturers' },
+    aliases: ['producenci kuchni', 'kuchnie na wymiar producent', 'kitchen manufacturers'],
+    positiveKeywords: { pl: ['producent kuchni', 'kuchnie na wymiar produkcja', 'meble kuchenne producent', 'zabudowa kuchenna producent', 'fronty kuchenne producent', 'kuchnie na zamówienie fabryka'], ru: ['производитель кухонь', 'кухни на заказ производство'], en: ['kitchen manufacturer', 'custom kitchen production'] },
+    negativeKeywords: { pl: ['salon kuchenny', 'sklep meblowy kuchnie', 'montaż kuchni'], ru: ['салон кухонь', 'магазин кухонь'], en: ['kitchen showroom'] },
+    excludedBusinessTypes: ['retail_store', 'showroom'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'katalog produktów'],
+    searchTemplates: ['producent kuchni na wymiar', 'produkcja mebli kuchennych', 'fabryka kuchni na zamówienie', 'producent frontów kuchennych', 'kuchnie na wymiar producent']
+  },
+  {
+    categoryId: 'staircase_manufacturer',
+    labels: { pl: 'Producenci schodów', ru: 'Производители лестниц', en: 'Staircase manufacturers' },
+    aliases: ['producenci schodów', 'schody producent', 'staircase manufacturers'],
+    positiveKeywords: { pl: ['producent schodów', 'produkcja schodów drewnianych', 'schody na wymiar producent', 'schody metalowe producent', 'schody kręcone produkcja', 'balustrady schodowe producent', 'schody dywanowe producent'], ru: ['производитель лестниц', 'производство лестниц на заказ'], en: ['staircase manufacturer', 'custom stairs production'] },
+    negativeKeywords: { pl: ['montaż schodów', 'renowacja schodów', 'schody używane'], ru: ['монтаж лестниц'], en: ['staircase installation'] },
+    excludedBusinessTypes: ['installation_service'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'katalog produktów'],
+    searchTemplates: ['producent schodów drewnianych', 'schody na wymiar producent', 'producent schodów metalowych', 'produkcja schodów kręconych', 'producent balustrad schodowych']
+  },
+  {
+    categoryId: 'gate_manufacturer',
+    labels: { pl: 'Producenci bram', ru: 'Производители ворот', en: 'Gate manufacturers' },
+    aliases: ['producenci bram', 'bramy producent', 'gate manufacturers'],
+    positiveKeywords: { pl: ['producent bram', 'produkcja bram garażowych', 'bramy przemysłowe producent', 'bramy segmentowe producent', 'bramy przesuwne produkcja', 'bramy wjazdowe producent', 'napędy do bram producent'], ru: ['производитель ворот', 'производство ворот', 'гаражные ворота производитель'], en: ['gate manufacturer', 'garage door manufacturer'] },
+    negativeKeywords: { pl: ['montaż bram', 'serwis bram', 'naprawa bram', 'automatyka do bram serwis'], ru: ['установка ворот', 'ремонт ворот'], en: ['gate installation', 'gate repair'] },
+    excludedBusinessTypes: ['installation_service', 'repair_service'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'katalog produktów'],
+    searchTemplates: ['producent bram garażowych', 'producent bram przemysłowych', 'produkcja bram segmentowych', 'producent bram przesuwnych', 'producent bram wjazdowych']
+  },
+  {
+    categoryId: 'fencing_manufacturer',
+    labels: { pl: 'Producenci ogrodzeń', ru: 'Производители ограждений', en: 'Fencing manufacturers' },
+    aliases: ['producenci ogrodzeń', 'ogrodzenia producent', 'fencing manufacturers'],
+    positiveKeywords: { pl: ['producent ogrodzeń', 'produkcja ogrodzeń panelowych', 'ogrodzenia metalowe producent', 'ogrodzenia betonowe producent', 'siatka ogrodzeniowa producent', 'panele ogrodzeniowe producent', 'ogrodzenia kute produkcja'], ru: ['производитель ограждений', 'производство заборов'], en: ['fencing manufacturer', 'fence production'] },
+    negativeKeywords: { pl: ['montaż ogrodzeń', 'naprawa ogrodzeń', 'sklep z ogrodzeniami'], ru: ['установка заборов'], en: ['fence installation'] },
+    excludedBusinessTypes: ['installation_service', 'retail_store'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'katalog produktów'],
+    searchTemplates: ['producent ogrodzeń panelowych', 'produkcja ogrodzeń betonowych', 'producent siatki ogrodzeniowej', 'producent ogrodzeń metalowych', 'producent ogrodzeń kutych']
+  },
+  {
+    categoryId: 'aluminum_construction_manufacturer',
+    labels: { pl: 'Producenci konstrukcji aluminiowych', ru: 'Производители алюминиевых конструкций', en: 'Aluminum construction manufacturers' },
+    aliases: ['producenci konstrukcji aluminiowych', 'konstrukcje aluminiowe producent', 'aluminum construction manufacturers'],
+    positiveKeywords: { pl: ['producent konstrukcji aluminiowych', 'produkcja profili aluminiowych', 'systemy aluminiowe producent', 'obróbka aluminium produkcja', 'konstrukcje aluminiowo-szklane producent', 'aluminium na zamówienie produkcja'], ru: ['производитель алюминиевых конструкций', 'производство алюминиевых профилей'], en: ['aluminum construction manufacturer', 'aluminum profile production'] },
+    negativeKeywords: { pl: ['montaż konstrukcji aluminiowych', 'skup aluminium', 'złomowanie aluminium'], ru: ['монтаж алюминиевых конструкций'], en: ['aluminum installation'] },
+    excludedBusinessTypes: ['installation_service', 'scrap_dealer'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'katalog produktów'],
+    searchTemplates: ['producent konstrukcji aluminiowych', 'produkcja profili aluminiowych', 'producent systemów aluminiowych', 'konstrukcje aluminiowo-szklane producent', 'obróbka aluminium na zamówienie']
+  },
+  {
+    categoryId: 'pvc_manufacturer',
+    labels: { pl: 'Producenci PVC', ru: 'Производители ПВХ', en: 'PVC manufacturers' },
+    aliases: ['producenci PVC', 'wyroby PVC producent', 'PVC manufacturers'],
+    positiveKeywords: { pl: ['producent wyrobów PVC', 'produkcja profili PVC', 'stolarka PVC producent', 'przetwórstwo PVC', 'folia PVC producent', 'panele PVC produkcja', 'rury PVC producent'], ru: ['производитель ПВХ изделий', 'производство ПВХ профилей'], en: ['PVC manufacturer', 'PVC profile production'] },
+    negativeKeywords: { pl: ['montaż okien PVC', 'sklep z artykułami PVC'], ru: ['установка ПВХ окон'], en: ['PVC installation'] },
+    excludedBusinessTypes: ['installation_service', 'retail_store'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'katalog produktów'],
+    searchTemplates: ['producent profili PVC', 'produkcja wyrobów PVC', 'producent paneli PVC', 'przetwórstwo tworzyw PVC', 'producent rur PVC']
+  },
+  {
+    categoryId: 'glass_manufacturer',
+    labels: { pl: 'Producenci szkła', ru: 'Производители стекла', en: 'Glass manufacturers' },
+    aliases: ['producenci szkła', 'szkło producent', 'glass manufacturers', 'huta szkła'],
+    positiveKeywords: { pl: ['producent szkła', 'huta szkła', 'produkcja szyb zespolonych', 'szkło hartowane producent', 'szkło hartowane produkcja', 'szklenie konstrukcyjne producent', 'obróbka szkła zakład', 'szkło laminowane producent'], ru: ['производитель стекла', 'стекольный завод', 'производство стеклопакетов'], en: ['glass manufacturer', 'glass factory', 'tempered glass production'] },
+    negativeKeywords: { pl: ['szklarz naprawa', 'wymiana szyb serwis', 'sklep ze szkłem'], ru: ['ремонт стекол', 'замена стекол'], en: ['glass repair'] },
+    excludedBusinessTypes: ['repair_service', 'retail_store'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'katalog produktów'],
+    searchTemplates: ['producent szyb zespolonych', 'huta szkła producent', 'producent szkła hartowanego', 'zakład obróbki szkła', 'producent szkła laminowanego']
+  },
+  {
+    categoryId: 'building_materials_manufacturer',
+    labels: { pl: 'Producenci materiałów budowlanych', ru: 'Производители стройматериалов', en: 'Building materials manufacturers' },
+    aliases: ['producenci materiałów budowlanych', 'materiały budowlane producent', 'building materials manufacturers'],
+    positiveKeywords: { pl: ['producent materiałów budowlanych', 'zakład produkcyjny materiały budowlane', 'produkcja wyrobów budowlanych', 'hurtownia materiałów budowlanych producent', 'materiały izolacyjne producent', 'chemia budowlana producent', 'wyroby betonowe producent'], ru: ['производитель строительных материалов', 'завод строительных материалов'], en: ['building materials manufacturer', 'construction materials producer'] },
+    negativeKeywords: { pl: ['sklep budowlany', 'skład budowlany detaliczny', 'market budowlany'], ru: ['магазин стройматериалов'], en: ['building materials store'] },
+    excludedBusinessTypes: ['retail_store'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'katalog produktów'],
+    searchTemplates: ['producent materiałów budowlanych', 'zakład produkcji materiałów budowlanych', 'producent wyrobów budowlanych', 'producent materiałów izolacyjnych', 'producent chemii budowlanej']
+  },
+  {
+    categoryId: 'concrete_manufacturer',
+    labels: { pl: 'Producenci betonu', ru: 'Производители бетона', en: 'Concrete manufacturers' },
+    aliases: ['producenci betonu', 'beton producent', 'concrete manufacturers', 'wytwórnia betonu'],
+    positiveKeywords: { pl: ['producent betonu', 'wytwórnia betonu', 'betoniarnia', 'beton towarowy producent', 'prefabrykaty betonowe producent', 'kostka brukowa producent', 'beton komórkowy producent', 'płyty betonowe producent'], ru: ['производитель бетона', 'бетонный завод', 'производство бетона'], en: ['concrete manufacturer', 'concrete plant', 'precast concrete producer'] },
+    negativeKeywords: { pl: ['transport betonu usługi', 'wynajem betoniarki'], ru: ['доставка бетона услуги'], en: ['concrete delivery service'] },
+    excludedBusinessTypes: ['transport_service'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'katalog produktów'],
+    searchTemplates: ['producent betonu towarowego', 'wytwórnia betonu', 'producent prefabrykatów betonowych', 'producent kostki brukowej', 'producent betonu komórkowego']
+  },
+  {
+    categoryId: 'brick_manufacturer',
+    labels: { pl: 'Producenci cegły', ru: 'Производители кирпича', en: 'Brick manufacturers' },
+    aliases: ['producenci cegły', 'cegielnia', 'brick manufacturers'],
+    positiveKeywords: { pl: ['producent cegły', 'cegielnia', 'produkcja cegły klinkierowej', 'pustaki ceramiczne producent', 'cegła ręcznie formowana producent', 'wyroby ceramiczne budowlane producent'], ru: ['производитель кирпича', 'кирпичный завод'], en: ['brick manufacturer', 'brick factory'] },
+    negativeKeywords: { pl: ['sklep z cegłą', 'skład materiałów budowlanych'], ru: ['магазин кирпича'], en: ['brick retailer'] },
+    excludedBusinessTypes: ['retail_store'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'katalog produktów'],
+    searchTemplates: ['producent cegły klinkierowej', 'cegielnia produkcja', 'producent pustaków ceramicznych', 'producent cegły ręcznie formowanej', 'producent wyrobów ceramicznych budowlanych']
+  },
+  {
+    categoryId: 'tile_manufacturer',
+    labels: { pl: 'Producenci płytek', ru: 'Производители плитки', en: 'Tile manufacturers' },
+    aliases: ['producenci płytek', 'płytki ceramiczne producent', 'tile manufacturers'],
+    positiveKeywords: { pl: ['producent płytek ceramicznych', 'fabryka płytek', 'produkcja glazury i terakoty', 'płytki gresowe producent', 'płytki elewacyjne producent', 'zakład ceramiki budowlanej'], ru: ['производитель плитки', 'завод керамической плитки'], en: ['tile manufacturer', 'ceramic tile factory'] },
+    negativeKeywords: { pl: ['sklep z płytkami', 'układanie płytek usługi', 'glazurnik'], ru: ['магазин плитки', 'укладка плитки'], en: ['tile installation', 'tile store'] },
+    excludedBusinessTypes: ['retail_store', 'installation_service'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'katalog produktów'],
+    searchTemplates: ['producent płytek ceramicznych', 'fabryka płytek gresowych', 'producent glazury i terakoty', 'producent płytek elewacyjnych', 'zakład ceramiki budowlanej producent']
+  },
+  {
+    categoryId: 'parquet_manufacturer',
+    labels: { pl: 'Producenci parkietu', ru: 'Производители паркета', en: 'Parquet manufacturers' },
+    aliases: ['producenci parkietu', 'parkiet producent', 'parquet manufacturers'],
+    positiveKeywords: { pl: ['producent parkietu', 'produkcja deski podłogowej', 'parkiet dębowy producent', 'deska barlinecka producent', 'podłogi drewniane producent', 'tartak parkieciarnia'], ru: ['производитель паркета', 'производство паркетной доски'], en: ['parquet manufacturer', 'wood flooring producer'] },
+    negativeKeywords: { pl: ['cyklinowanie parkietu', 'układanie parkietu usługi', 'sklep z podłogami'], ru: ['укладка паркета', 'циклевка паркета'], en: ['parquet installation', 'floor sanding'] },
+    excludedBusinessTypes: ['installation_service', 'retail_store'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'katalog produktów'],
+    searchTemplates: ['producent parkietu dębowego', 'produkcja deski podłogowej', 'producent podłóg drewnianych', 'parkieciarnia produkcja', 'producent deski barlineckiej']
+  },
+  {
+    categoryId: 'roofing_manufacturer',
+    labels: { pl: 'Producenci pokryć dachowych', ru: 'Производители кровли', en: 'Roofing manufacturers' },
+    aliases: ['producenci pokryć dachowych', 'producenci dachówki', 'roofing manufacturers'],
+    positiveKeywords: { pl: ['producent pokryć dachowych', 'produkcja blachodachówki', 'dachówka ceramiczna producent', 'membrany dachowe producent', 'systemy rynnowe producent', 'blacha dachowa produkcja', 'gonty bitumiczne producent'], ru: ['производитель кровельных материалов', 'производство кровли'], en: ['roofing manufacturer', 'roofing materials producer'] },
+    negativeKeywords: { pl: ['montaż dachów', 'krycie dachów usługi', 'dekarz', 'naprawa dachu'], ru: ['монтаж крыш', 'кровельные работы'], en: ['roofing installation', 'roofing contractor'] },
+    excludedBusinessTypes: ['installation_service', 'contractor'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'katalog produktów'],
+    searchTemplates: ['producent blachodachówki', 'producent dachówki ceramicznej', 'produkcja pokryć dachowych', 'producent membran dachowych', 'producent systemów rynnowych']
+  },
+  {
+    categoryId: 'heating_systems',
+    labels: { pl: 'Ogrzewanie / instalacje grzewcze', ru: 'Отопление', en: 'Heating systems' },
+    aliases: ['ogrzewanie', 'instalacje grzewcze', 'heating', 'отопление'],
+    positiveKeywords: { pl: ['ogrzewanie', 'instalacje grzewcze', 'kotłownia', 'kocioł gazowy', 'kocioł na pellet', 'ogrzewanie podłogowe', 'piece c.o.', 'instalacje centralnego ogrzewania', 'serwis kotłów'], ru: ['отопление', 'котельная', 'газовый котел', 'система отопления'], en: ['heating', 'boiler', 'central heating', 'heating installation'] },
+    negativeKeywords: { pl: ['skład opału', 'sprzedaż węgla', 'kominiarz', 'kominki ozdobne', 'sklep AGD'], ru: ['продажа угля'], en: ['fuel supplier'] },
+    excludedBusinessTypes: ['fuel_supplier'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads lokalne', 'formularz wyceny'],
+    searchTemplates: ['montaż ogrzewania', 'instalacje centralnego ogrzewania', 'serwis kotłów gazowych', 'ogrzewanie podłogowe montaż', 'kotłownie na pellet', 'modernizacja instalacji grzewczej']
+  },
+  {
+    categoryId: 'heat_pumps',
+    labels: { pl: 'Pompy ciepła', ru: 'Тепловые насосы', en: 'Heat pumps' },
+    aliases: ['pompy ciepła', 'heat pumps', 'тепловые насосы', 'pompa ciepła'],
+    positiveKeywords: { pl: ['pompa ciepła', 'pompy ciepła', 'montaż pompy ciepła', 'pompa ciepła powietrze woda', 'pompa ciepła gruntowa', 'dofinansowanie pompa ciepła', 'serwis pomp ciepła', 'instalator pomp ciepła'], ru: ['тепловой насос', 'установка теплового насоса', 'воздух-вода насос'], en: ['heat pump', 'heat pump installation', 'air source heat pump', 'ground source heat pump'] },
+    negativeKeywords: { pl: ['klimatyzacja samochodowa', 'pompa wodna', 'pompa studzienna', 'hydrofor'], ru: ['водяной насос'], en: ['water pump'] },
+    excludedBusinessTypes: [],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads lokalne', 'formularz wyceny'],
+    searchTemplates: ['montaż pomp ciepła', 'pompy ciepła do domu', 'pompa ciepła powietrze woda montaż', 'instalator pomp ciepła', 'pompy ciepła dofinansowanie NFOŚ', 'serwis pomp ciepła']
+  },
+  {
+    categoryId: 'electrical_installation',
+    labels: { pl: 'Elektryka / elektroinstalacje', ru: 'Электромонтаж', en: 'Electrical installation' },
+    aliases: ['elektryk', 'elektroinstalacje', 'electrical', 'электрик'],
+    positiveKeywords: { pl: ['elektryk', 'elektroinstalacje', 'instalacje elektryczne', 'usługi elektryczne', 'pomiary elektryczne', 'rozdzielnice elektryczne', 'instalacje fotowoltaiczne', 'modernizacja instalacji elektrycznej', 'awarie elektryczne'], ru: ['электрик', 'электромонтаж', 'электроинсталляции', 'электроустановки'], en: ['electrician', 'electrical installation', 'wiring', 'electrical contractor'] },
+    negativeKeywords: { pl: ['sklep elektryczny', 'hurtownia elektryczna', 'serwis AGD', 'elektronika użytkowa'], ru: ['магазин электротоваров'], en: ['electronics store'] },
+    excludedBusinessTypes: ['electronics_store', 'hardware_store'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads lokalne', 'formularz wyceny'],
+    searchTemplates: ['usługi elektryczne', 'elektryk instalacje', 'modernizacja instalacji elektrycznej', 'pomiary elektryczne ochronne', 'montaż rozdzielnic', 'elektryk awarie 24h']
+  },
+  {
+    categoryId: 'plumbing',
+    labels: { pl: 'Hydraulika / usługi sanitarne', ru: 'Сантехника', en: 'Plumbing' },
+    aliases: ['hydraulik', 'santechnika', 'plumbing', 'сантехник'],
+    positiveKeywords: { pl: ['hydraulik', 'usługi hydrauliczne', 'instalacje sanitarne', 'udrażnianie rur', 'naprawa awarii wodnych', 'instalacje wodno-kanalizacyjne', 'montaż łazienek', 'serwis hydrauliczny'], ru: ['сантехник', 'сантехнические работы', 'устранение засоров', 'водопровод'], en: ['plumber', 'plumbing services', 'pipe installation', 'drain cleaning'] },
+    negativeKeywords: { pl: ['sklep sanitarny', 'hurtownia armatury', 'salon łazienek', 'sklep z płytkami'], ru: ['магазин сантехники'], en: ['bathroom showroom'] },
+    excludedBusinessTypes: ['hardware_store', 'home_goods_store'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads lokalne', 'formularz wyceny'],
+    searchTemplates: ['usługi hydrauliczne', 'hydraulik awaryjny', 'udrażnianie rur kanalizacyjnych', 'montaż instalacji wodno-kanalizacyjnej', 'hydraulik 24h', 'naprawa awarii hydraulicznych']
+  },
+  {
+    categoryId: 'building_automation',
+    labels: { pl: 'Automatyka budynkowa', ru: 'Автоматизация зданий', en: 'Building automation' },
+    aliases: ['automatyka budynkowa', 'BMS', 'building automation', 'автоматизация зданий'],
+    positiveKeywords: { pl: ['automatyka budynkowa', 'systemy BMS', 'zarządzanie budynkiem', 'automatyka budynków', 'integracja systemów budynkowych', 'sterowanie wentylacją i klimatyzacją', 'systemy zarządzania energią', 'automatyka HVAC'], ru: ['автоматизация зданий', 'BMS системы', 'диспетчеризация зданий'], en: ['building automation', 'BMS', 'building management system'] },
+    negativeKeywords: { pl: ['automatyka przemysłowa maszyn', 'automatyka bram i szlabanów', 'sterowniki PLC produkcja'], ru: ['промышленная автоматизация станков'], en: ['industrial machine automation'] },
+    excludedBusinessTypes: [],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads lokalne', 'formularz wyceny'],
+    searchTemplates: ['automatyka budynkowa firmy', 'systemy BMS montaż', 'integracja systemów budynkowych', 'zarządzanie budynkiem automatyka', 'systemy zarządzania energią budynku', 'automatyka HVAC dla budynków']
+  },
+  {
+    categoryId: 'smart_home',
+    labels: { pl: 'Inteligentny dom / smart home', ru: 'Умный дом', en: 'Smart home' },
+    aliases: ['inteligentny dom', 'smart home', 'умный дом', 'automatyka domowa'],
+    positiveKeywords: { pl: ['inteligentny dom', 'smart home', 'automatyka domowa', 'montaż smart home', 'sterowanie oświetleniem', 'system KNX', 'integracja smart home', 'instalacje inteligentne'], ru: ['умный дом', 'домашняя автоматизация', 'система умный дом'], en: ['smart home', 'home automation', 'KNX system'] },
+    negativeKeywords: { pl: ['sklep RTV AGD', 'elektronika użytkowa sklep', 'sprzedaż gadżetów'], ru: ['магазин электроники'], en: ['consumer electronics store'] },
+    excludedBusinessTypes: ['electronics_store'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads lokalne', 'formularz wyceny'],
+    searchTemplates: ['montaż inteligentnego domu', 'smart home instalacje', 'system KNX montaż', 'automatyka domowa firmy', 'integracja smart home', 'sterowanie oświetleniem i roletami']
+  },
+  {
+    categoryId: 'fire_safety',
+    labels: { pl: 'Systemy sygnalizacji pożaru / ochrona ppoż', ru: 'Пожарная безопасность', en: 'Fire safety systems' },
+    aliases: ['ochrona przeciwpożarowa', 'sygnalizacja pożaru', 'fire safety', 'пожарная безопасность'],
+    positiveKeywords: { pl: ['systemy sygnalizacji pożaru', 'ochrona przeciwpożarowa', 'instalacje ppoż', 'przegląd gaśnic', 'system oddymiania', 'przegląd hydrantów', 'SSP montaż', 'systemy przeciwpożarowe'], ru: ['пожарная сигнализация', 'противопожарная защита', 'системы пожаротушения'], en: ['fire alarm systems', 'fire safety', 'fire protection', 'smoke detection'] },
+    negativeKeywords: { pl: ['sklep z gaśnicami', 'jednostka straży pożarnej', 'szkolenia bhp ogólne'], ru: ['продажа огнетушителей'], en: ['fire extinguisher retailer'] },
+    excludedBusinessTypes: ['government_office'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads lokalne', 'formularz wyceny'],
+    searchTemplates: ['montaż systemów sygnalizacji pożaru', 'instalacje ppoż dla firm', 'przegląd gaśnic i hydrantów', 'systemy oddymiania montaż', 'ochrona przeciwpożarowa budynków', 'serwis systemów SSP']
+  },
+  {
+    categoryId: 'cctv',
+    labels: { pl: 'Monitoring wizyjny / CCTV', ru: 'Видеонаблюдение', en: 'CCTV / video surveillance' },
+    aliases: ['monitoring wizyjny', 'kamery przemysłowe', 'CCTV', 'видеонаблюдение'],
+    positiveKeywords: { pl: ['monitoring wizyjny', 'montaż kamer', 'systemy CCTV', 'kamery przemysłowe', 'monitoring dla firm', 'instalacja monitoringu', 'systemy dozoru wizyjnego', 'kamery IP montaż'], ru: ['видеонаблюдение', 'установка камер', 'системы CCTV'], en: ['CCTV installation', 'video surveillance', 'IP cameras'] },
+    negativeKeywords: { pl: ['sklep RTV AGD', 'wideofilmowanie ślubne', 'fotografia okolicznościowa', 'sklep elektroniczny'], ru: ['видеосъемка свадеб'], en: ['wedding videography'] },
+    excludedBusinessTypes: ['electronics_store', 'photography_studio'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads lokalne', 'formularz wyceny'],
+    searchTemplates: ['montaż monitoringu wizyjnego', 'instalacja kamer CCTV', 'systemy dozoru wizyjnego dla firm', 'monitoring dla firm montaż', 'kamery IP instalacja', 'serwis systemów monitoringu']
+  },
+  {
+    categoryId: 'access_control',
+    labels: { pl: 'Kontrola dostępu', ru: 'Контроль доступа', en: 'Access control' },
+    aliases: ['kontrola dostępu', 'systemy dostępowe', 'access control', 'контроль доступа'],
+    positiveKeywords: { pl: ['kontrola dostępu', 'systemy kontroli dostępu', 'montaż domofonów', 'wideodomofony montaż', 'systemy identyfikacji pracowników', 'czytniki kart montaż', 'elektrozaczepy montaż'], ru: ['контроль доступа', 'системы контроля доступа', 'установка домофонов'], en: ['access control systems', 'intercom installation', 'card readers'] },
+    negativeKeywords: { pl: ['ślusarz dorabianie kluczy', 'sklep z zamkami', 'pogotowie ślusarskie'], ru: ['изготовление ключей'], en: ['locksmith key cutting'] },
+    excludedBusinessTypes: ['locksmith'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads lokalne', 'formularz wyceny'],
+    searchTemplates: ['montaż systemów kontroli dostępu', 'instalacja domofonów i wideodomofonów', 'systemy kontroli dostępu dla firm', 'montaż czytników kart dostępu', 'elektrozaczepy montaż', 'systemy identyfikacji pracowników']
+  },
+  {
+    categoryId: 'elevator_company',
+    labels: { pl: 'Firmy windowe / dźwigi osobowe', ru: 'Лифтовые компании', en: 'Elevator companies' },
+    aliases: ['firmy windowe', 'dźwigi osobowe', 'windy', 'лифтовые компании'],
+    positiveKeywords: { pl: ['montaż wind', 'serwis wind', 'konserwacja dźwigów', 'modernizacja wind', 'naprawa wind', 'dźwigi osobowe', 'windy dla niepełnosprawnych', 'przeglądy UDT wind'], ru: ['монтаж лифтов', 'обслуживание лифтов', 'модернизация лифтов'], en: ['elevator installation', 'elevator maintenance', 'lift servicing'] },
+    negativeKeywords: { pl: ['wypożyczalnia wózków widłowych', 'transport towarowy', 'sklep z częściami zamiennymi'], ru: ['аренда погрузчиков'], en: ['forklift rental'] },
+    excludedBusinessTypes: [],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads lokalne', 'formularz wyceny'],
+    searchTemplates: ['montaż wind firmy', 'serwis i konserwacja dźwigów osobowych', 'modernizacja wind w budynkach', 'naprawa wind awaryjna', 'przeglądy UDT wind', 'windy dla osób niepełnosprawnych montaż']
+  },
+  {
+    categoryId: 'realestate-agencies',
+    labels: { pl: 'Agencje nieruchomości', ru: 'Агентства недвижимости', en: 'Real estate agencies' },
+    aliases: ['agencja nieruchomości', 'biuro nieruchomości', 'pośrednictwo nieruchomości', 'real estate agency'],
+    positiveKeywords: { pl: ['agencja nieruchomości', 'biuro nieruchomości', 'pośrednictwo w obrocie nieruchomościami', 'sprzedaż mieszkań', 'sprzedaż domów', 'wynajem nieruchomości', 'pośrednik nieruchomości', 'doradca ds. nieruchomości'], ru: ['агентство недвижимости', 'риэлтор', 'продажа квартир', 'аренда недвижимости'], en: ['real estate agency', 'realtor', 'property sales', 'property rental'] },
+    negativeKeywords: { pl: ['zarządzanie nieruchomościami', 'administrowanie nieruchomościami', 'wspólnota mieszkaniowa'], ru: ['управление недвижимостью'], en: ['property management'] },
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz ofertowy'],
+    searchTemplates: ['agencja nieruchomości', 'biuro nieruchomości', 'pośrednictwo w sprzedaży mieszkań', 'pośrednik nieruchomości', 'wynajem i sprzedaż nieruchomości']
+  },
+  {
+    categoryId: 'commercial-realestate',
+    labels: { pl: 'Nieruchomości komercyjne', ru: 'Коммерческая недвижимость', en: 'Commercial real estate' },
+    aliases: ['nieruchomości komercyjne', 'commercial real estate', 'powierzchnie komercyjne', 'nieruchomości biznesowe'],
+    positiveKeywords: { pl: ['nieruchomości komercyjne', 'wynajem powierzchni biurowej', 'wynajem lokali handlowych', 'powierzchnie biurowe', 'powierzchnie handlowe', 'inwestycje komercyjne', 'obsługa nieruchomości komercyjnych', 'doradztwo nieruchomości komercyjnych'], ru: ['коммерческая недвижимость', 'аренда офисов', 'торговые площади', 'инвестиции в недвижимость'], en: ['commercial real estate', 'office space for rent', 'retail space', 'commercial property investment'] },
+    negativeKeywords: { pl: ['mieszkania na sprzedaż', 'nieruchomości mieszkaniowe', 'domy jednorodzinne'], ru: ['жилая недвижимость'], en: ['residential real estate'] },
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz ofertowy'],
+    searchTemplates: ['nieruchomości komercyjne', 'wynajem powierzchni biurowej', 'wynajem lokali handlowych', 'doradztwo nieruchomości komercyjnych', 'inwestycje w nieruchomości komercyjne']
+  },
+  {
+    categoryId: 'new-developments',
+    labels: { pl: 'Mieszkania od dewelopera', ru: 'Продажа новостроек', en: 'New development sales' },
+    aliases: ['deweloper', 'nowe mieszkania', 'nowe inwestycje mieszkaniowe', 'new developments'],
+    positiveKeywords: { pl: ['mieszkania od dewelopera', 'deweloper mieszkaniowy', 'nowe inwestycje mieszkaniowe', 'sprzedaż mieszkań od dewelopera', 'nowe osiedle mieszkaniowe', 'apartamenty na sprzedaż', 'inwestycja deweloperska', 'biuro sprzedaży mieszkań'], ru: ['новостройки', 'застройщик', 'продажа квартир от застройщика', 'жилой комплекс'], en: ['new development', 'property developer', 'off-plan apartments', 'residential project'] },
+    negativeKeywords: { pl: ['nieruchomości z drugiej ręki', 'rynek wtórny', 'pośrednictwo nieruchomości'], ru: ['вторичный рынок недвижимости'], en: ['resale property'] },
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz ofertowy'],
+    searchTemplates: ['mieszkania od dewelopera', 'nowe inwestycje mieszkaniowe', 'deweloper mieszkaniowy', 'nowe osiedle na sprzedaż', 'biuro sprzedaży mieszkań deweloper']
+  },
+  {
+    categoryId: 'property-management',
+    labels: { pl: 'Zarządzanie nieruchomościami', ru: 'Управление недвижимостью', en: 'Property management' },
+    aliases: ['zarządzanie nieruchomościami', 'administrowanie nieruchomościami', 'property management', 'zarządca nieruchomości'],
+    positiveKeywords: { pl: ['zarządzanie nieruchomościami', 'administrowanie nieruchomościami', 'zarządca nieruchomości', 'zarządzanie wspólnotą mieszkaniową', 'obsługa nieruchomości', 'facility management', 'zarządzanie budynkami komercyjnymi', 'obsługa techniczna nieruchomości'], ru: ['управление недвижимостью', 'управляющая компания', 'обслуживание зданий', 'эксплуатация недвижимости'], en: ['property management', 'facility management', 'building administration'] },
+    negativeKeywords: { pl: ['sprzedaż mieszkań', 'agencja nieruchomości', 'pośrednictwo w sprzedaży nieruchomości'], ru: ['продажа недвижимости', 'агентство недвижимости'], en: ['real estate sales', 'real estate agency'] },
+    excludedBusinessTypes: ['real_estate_agency'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz ofertowy'],
+    searchTemplates: ['zarządzanie nieruchomościami', 'zarządca nieruchomości', 'administrowanie wspólnotami mieszkaniowymi', 'obsługa techniczna budynków', 'facility management nieruchomości']
+  },
+  {
+    categoryId: 'business-centers',
+    labels: { pl: 'Centra biznesowe', ru: 'Бизнес-центры', en: 'Business centers' },
+    aliases: ['centrum biznesowe', 'biurowiec', 'business center', 'centrum biurowe'],
+    positiveKeywords: { pl: ['centrum biznesowe', 'biurowiec', 'wynajem biur', 'przestrzeń biurowa', 'centrum biurowe', 'powierzchnie biurowe do wynajęcia', 'biura serwisowane', 'coworking'], ru: ['бизнес-центр', 'аренда офисов', 'офисное здание', 'коворкинг'], en: ['business center', 'office building', 'serviced offices', 'coworking space'] },
+    negativeKeywords: { pl: ['centrum handlowe', 'galeria handlowa'], ru: ['торговый центр'], en: ['shopping mall'] },
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz ofertowy'],
+    searchTemplates: ['centrum biznesowe wynajem biur', 'biurowiec wynajem powierzchni', 'centrum biurowe', 'biura serwisowane wynajem', 'przestrzeń coworkingowa dla firm']
+  },
+  {
+    categoryId: 'logistics-parks',
+    labels: { pl: 'Parki logistyczne', ru: 'Логистические парки', en: 'Logistics parks' },
+    aliases: ['park logistyczny', 'centrum logistyczne', 'logistics park', 'kompleks magazynowy'],
+    positiveKeywords: { pl: ['park logistyczny', 'centrum logistyczne', 'magazyn do wynajęcia', 'powierzchnia magazynowa', 'hala magazynowa na wynajem', 'kompleks magazynowo-logistyczny', 'centrum dystrybucyjne', 'magazyn wysokiego składowania'], ru: ['логистический парк', 'складской комплекс', 'аренда склада', 'распределительный центр'], en: ['logistics park', 'warehouse complex', 'distribution center', 'warehouse for rent'] },
+    negativeKeywords: { pl: ['park przemysłowy', 'hala produkcyjna'], ru: ['промышленный парк'], en: ['industrial park'] },
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz ofertowy'],
+    searchTemplates: ['park logistyczny wynajem magazynu', 'centrum logistyczne powierzchnia magazynowa', 'hala magazynowa do wynajęcia', 'kompleks magazynowo-logistyczny', 'centrum dystrybucyjne wynajem']
+  },
+  {
+    categoryId: 'industrial-parks',
+    labels: { pl: 'Parki przemysłowe', ru: 'Индустриальные парки', en: 'Industrial parks' },
+    aliases: ['park przemysłowy', 'strefa przemysłowa', 'industrial park', 'park inwestycyjny'],
+    positiveKeywords: { pl: ['park przemysłowy', 'strefa ekonomiczna', 'teren inwestycyjny przemysłowy', 'hala produkcyjna do wynajęcia', 'park inwestycyjny', 'nieruchomości przemysłowe', 'specjalna strefa ekonomiczna', 'grunty inwestycyjne przemysłowe'], ru: ['индустриальный парк', 'промышленная зона', 'особая экономическая зона', 'производственные площади в аренду'], en: ['industrial park', 'industrial zone', 'special economic zone', 'manufacturing space for lease'] },
+    negativeKeywords: { pl: ['park logistyczny', 'magazyn do wynajęcia'], ru: ['логистический парк'], en: ['logistics park'] },
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz ofertowy'],
+    searchTemplates: ['park przemysłowy', 'strefa ekonomiczna tereny inwestycyjne', 'hala produkcyjna do wynajęcia', 'park inwestycyjny przemysłowy', 'nieruchomości przemysłowe na sprzedaż']
+  },
+  {
+    categoryId: 'logistics-companies',
+    labels: { pl: 'Firmy logistyczne', ru: 'Логистические компании', en: 'Logistics companies' },
+    aliases: ['firma logistyczna', 'logistyka', 'logistics company', 'operator logistyczny'],
+    positiveKeywords: { pl: ['firma logistyczna', 'usługi logistyczne', 'operator logistyczny', 'logistyka kontraktowa', 'magazynowanie i dystrybucja', 'spedycja i logistyka', 'zarządzanie łańcuchem dostaw', 'centrum logistyczne obsługa'], ru: ['логистическая компания', 'логистические услуги', 'управление цепочками поставок', 'складская логистика'], en: ['logistics company', 'logistics services', 'supply chain management', 'contract logistics'] },
+    negativeKeywords: { pl: ['firma transportowa', 'przewóz osób'], ru: ['транспортная компания'], en: ['transport company'] },
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz ofertowy'],
+    searchTemplates: ['firma logistyczna', 'usługi logistyczne dla firm', 'operator logistyczny', 'logistyka kontraktowa', 'magazynowanie i dystrybucja towarów']
+  },
+  {
+    categoryId: 'transport-companies',
+    labels: { pl: 'Firmy transportowe', ru: 'Транспортные компании', en: 'Transport companies' },
+    aliases: ['firma transportowa', 'transport drogowy', 'transport company', 'przewoźnik'],
+    positiveKeywords: { pl: ['firma transportowa', 'transport drogowy towarów', 'przewóz towarów', 'transport międzynarodowy', 'transport krajowy i międzynarodowy', 'flota transportowa', 'przewoźnik towarów', 'usługi transportowe'], ru: ['транспортная компания', 'грузоперевозки', 'международные перевозки', 'автомобильные перевозки'], en: ['transport company', 'freight transport', 'trucking company', 'international haulage'] },
+    negativeKeywords: { pl: ['przewóz osób', 'transport pasażerski', 'taxi', 'wypożyczalnia samochodów'], ru: ['пассажирские перевозки', 'такси'], en: ['passenger transport', 'taxi'] },
+    excludedBusinessTypes: ['taxi_stand', 'car_rental'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz ofertowy'],
+    searchTemplates: ['firma transportowa towarów', 'transport drogowy krajowy i międzynarodowy', 'przewóz towarów ciężarówką', 'usługi transportowe dla firm', 'transport międzynarodowy towarów']
+  },
+  {
+    categoryId: 'export',
+    labels: { pl: 'Eksport', ru: 'Экспорт', en: 'Export' },
+    aliases: ['eksporter', 'firma eksportowa', 'export company', 'handel zagraniczny eksport'],
+    positiveKeywords: { pl: ['firma handlowa eksport import', 'eksporter', 'firma eksportowa', 'handel zagraniczny', 'eksport towarów', 'obsługa eksportu', 'dział eksportu', 'agencja handlu zagranicznego'], ru: ['экспортёр', 'экспортная компания', 'внешнеторговая компания', 'экспорт товаров'], en: ['exporter', 'export company', 'foreign trade company', 'export trading house'] },
+    negativeKeywords: { pl: ['sklep internetowy', 'sprzedaż detaliczna', 'usługi lokalne'], ru: ['розничная торговля'], en: ['retail store'] },
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz ofertowy'],
+    searchTemplates: ['firma eksportowa', 'eksporter towarów', 'firma handlowa eksport import', 'obsługa eksportu dla firm', 'handel zagraniczny eksport']
+  },
+  {
+    categoryId: 'import',
+    labels: { pl: 'Import', ru: 'Импорт', en: 'Import' },
+    aliases: ['importer', 'firma importowa', 'import company', 'handel zagraniczny import'],
+    positiveKeywords: { pl: ['firma handlowa eksport import', 'importer', 'firma importowa', 'import towarów', 'obsługa importu', 'dział importu', 'hurtownia importowa', 'agencja handlu zagranicznego'], ru: ['импортёр', 'импортная компания', 'внешнеторговая компания', 'импорт товаров'], en: ['importer', 'import company', 'foreign trade company', 'import trading house'] },
+    negativeKeywords: { pl: ['sklep internetowy', 'sprzedaż detaliczna', 'usługi lokalne'], ru: ['розничная торговля'], en: ['retail store'] },
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz ofertowy'],
+    searchTemplates: ['firma importowa', 'importer towarów', 'firma handlowa eksport import', 'obsługa importu dla firm', 'handel zagraniczny import']
+  },
+  {
+    categoryId: 'manufacturing',
+    labels: { pl: 'Przedsiębiorstwa produkcyjne', ru: 'Производственные предприятия', en: 'Manufacturing enterprises' },
+    aliases: ['przedsiębiorstwo produkcyjne', 'producent', 'manufacturing company', 'firma produkcyjna'],
+    positiveKeywords: { pl: ['przedsiębiorstwo produkcyjne', 'firma produkcyjna', 'producent', 'produkcja przemysłowa', 'wytwórnia', 'zakład wytwórczy', 'produkcja na zamówienie', 'produkcja kontraktowa'], ru: ['производственное предприятие', 'производитель', 'промышленное производство', 'контрактное производство'], en: ['manufacturing enterprise', 'manufacturer', 'contract manufacturing', 'industrial production'] },
+    negativeKeywords: { pl: ['sklep', 'hurtownia', 'dystrybutor'], ru: ['оптовый склад'], en: ['wholesale warehouse'] },
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz ofertowy'],
+    searchTemplates: ['przedsiębiorstwo produkcyjne', 'firma produkcyjna poszukuje', 'producent kontraktowy', 'produkcja na zamówienie dla firm', 'zakład wytwórczy']
+  },
+  {
+    categoryId: 'factories',
+    labels: { pl: 'Fabryki', ru: 'Заводы', en: 'Factories' },
+    aliases: ['fabryka', 'zakład produkcyjny', 'factory', 'hala produkcyjna'],
+    positiveKeywords: { pl: ['fabryka', 'zakład produkcyjny', 'hala produkcyjna', 'linia produkcyjna', 'produkcja przemysłowa na dużą skalę', 'przemysł ciężki', 'zakład przemysłowy', 'produkcja seryjna'], ru: ['завод', 'фабрика', 'производственный цех', 'тяжёлая промышленность'], en: ['factory', 'industrial plant', 'production line', 'heavy industry'] },
+    negativeKeywords: { pl: ['warsztat rzemieślniczy', 'manufaktura ręczna'], ru: ['ремесленная мастерская'], en: ['artisan workshop'] },
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz ofertowy'],
+    searchTemplates: ['fabryka produkcja przemysłowa', 'zakład produkcyjny poszukuje', 'hala produkcyjna firma', 'linia produkcyjna przedsiębiorstwo', 'zakład przemysłowy produkcja seryjna']
+  },
+  {
+    categoryId: 'wholesale-suppliers',
+    labels: { pl: 'Hurtownie', ru: 'Оптовые поставщики', en: 'Wholesale suppliers' },
+    aliases: ['hurtownia', 'dostawca hurtowy', 'wholesale supplier', 'sprzedaż hurtowa'],
+    positiveKeywords: { pl: ['hurtownia', 'sprzedaż hurtowa', 'dostawca hurtowy', 'zaopatrzenie hurtowe dla firm', 'hurt', 'magazyn hurtowy', 'dostawy hurtowe dla sklepów', 'ceny hurtowe'], ru: ['оптовый поставщик', 'оптовая торговля', 'оптовый склад', 'оптовые цены'], en: ['wholesale supplier', 'wholesale distributor', 'bulk supply', 'wholesale prices'] },
+    negativeKeywords: { pl: ['sklep detaliczny', 'sprzedaż detaliczna', 'sklep internetowy dla klientów indywidualnych'], ru: ['розничный магазин'], en: ['retail store'] },
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz ofertowy'],
+    searchTemplates: ['hurtownia dla firm', 'sprzedaż hurtowa towarów', 'dostawca hurtowy', 'zaopatrzenie hurtowe dla sklepów', 'hurtownia ceny hurtowe']
+  },
+  {
+    categoryId: 'distributors',
+    labels: { pl: 'Dystrybutorzy', ru: 'Дистрибьюторы', en: 'Distributors' },
+    aliases: ['dystrybutor', 'sieć dystrybucji', 'distributor', 'autoryzowany dystrybutor'],
+    positiveKeywords: { pl: ['dystrybutor', 'autoryzowany dystrybutor', 'sieć dystrybucji', 'dystrybucja produktów', 'przedstawiciel handlowy producenta', 'dystrybucja krajowa', 'wyłączny dystrybutor', 'dystrybucja hurtowa marek'], ru: ['дистрибьютор', 'официальный дистрибьютор', 'сеть дистрибуции', 'дистрибуция товаров'], en: ['distributor', 'authorized distributor', 'distribution network', 'exclusive distributor'] },
+    negativeKeywords: { pl: ['sklep detaliczny', 'sklep internetowy'], ru: ['розничный магазин'], en: ['retail store'] },
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz ofertowy'],
+    searchTemplates: ['dystrybutor produktów', 'autoryzowany dystrybutor marki', 'sieć dystrybucji dla firm', 'wyłączny dystrybutor producenta', 'dystrybucja hurtowa produktów']
+  },
+  {
+    categoryId: 'car_dealership',
+    labels: { pl: 'Salony samochodowe', ru: 'Автосалоны', en: 'Car dealerships' },
+    aliases: ['salon samochodowy', 'autosalon', 'car dealership', 'автосалон'],
+    positiveKeywords: { pl: ['salon samochodowy', 'sprzedaż samochodów', 'samochody nowe i używane', 'komis samochodowy', 'auto salon', 'sprzedaż aut', 'samochody na zamówienie', 'giełda samochodowa'], ru: ['автосалон', 'продажа автомобилей', 'продажа авто'], en: ['car dealership', 'car showroom', 'used cars', 'new cars'] },
+    negativeKeywords: { pl: ['wypożyczalnia samochodów', 'warsztat samochodowy', 'auto serwis', 'części samochodowe', 'lombard samochodowy', 'sprzedaż prywatna'], ru: ['прокат автомобилей', 'автосервис'], en: ['car rental', 'car repair'] },
+    excludedBusinessTypes: ['car_rental', 'car_repair', 'auto_parts_store'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads lokalne', 'formularz kontaktowy'],
+    searchTemplates: ['salon samochodowy', 'sprzedaż samochodów używanych', 'komis samochodowy', 'salon aut nowych i używanych', 'giełda samochodowa', 'auto salon sprzedaż']
+  },
+  {
+    categoryId: 'car_dealers',
+    labels: { pl: 'Autoryzowani dealerzy samochodowi', ru: 'Дилеры автомобилей', en: 'Authorized car dealers' },
+    aliases: ['dealer samochodowy', 'autoryzowany dealer', 'car dealer', 'официальный дилер'],
+    positiveKeywords: { pl: ['autoryzowany dealer', 'dealer samochodowy', 'oficjalny dealer', 'salon dealerski', 'punkt dealerski', 'autoryzowany serwis i sprzedaż', 'dealer marki', 'przedstawiciel marki'], ru: ['официальный дилер', 'дилерский центр', 'автодилер'], en: ['authorized dealer', 'official dealer', 'car dealership network'] },
+    negativeKeywords: { pl: ['komis samochodowy', 'giełda samochodowa', 'sprzedaż prywatna', 'auto skup', 'wypożyczalnia samochodów'], ru: ['перекупщик', 'частная продажа'], en: ['used car lot', 'private seller'] },
+    excludedBusinessTypes: ['car_rental', 'used_car_lot'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads lokalne', 'formularz kontaktowy'],
+    searchTemplates: ['autoryzowany dealer samochodowy', 'dealer samochodowy', 'oficjalny salon dealerski', 'punkt dealerski samochody', 'przedstawicielstwo marki samochodowej']
+  },
+  {
+    categoryId: 'premium_cars',
+    labels: { pl: 'Samochody premium i luksusowe', ru: 'Премиальные автомобили', en: 'Premium and luxury cars' },
+    aliases: ['auta premium', 'samochody luksusowe', 'luxury cars', 'премиум авто'],
+    positiveKeywords: { pl: ['salon samochodów premium', 'samochody luksusowe', 'auta klasy premium', 'salon Mercedes-Benz', 'salon BMW', 'salon Audi', 'centrum Porsche', 'salon Bentley', 'salon Lexus', 'samochody sportowe luksusowe'], ru: ['премиум автомобили', 'элитные автомобили', 'люксовые авто', 'спорткары'], en: ['luxury car dealership', 'premium car showroom', 'exotic cars'] },
+    negativeKeywords: { pl: ['tani samochód', 'samochody używane budżetowe', 'komis samochodowy', 'salon samochodowy popularne marki', 'auto skup', 'samochody dostawcze'], ru: ['бюджетные автомобили', 'подержанные авто'], en: ['budget cars', 'economy cars'] },
+    excludedBusinessTypes: ['used_car_lot', 'car_rental'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads lokalne', 'formularz kontaktowy'],
+    searchTemplates: ['salon samochodów premium', 'samochody luksusowe salon', 'dealer Mercedes-Benz', 'dealer BMW', 'dealer Porsche', 'salon aut sportowych']
+  },
+  {
+    categoryId: 'car_service',
+    labels: { pl: 'Autoserwisy i warsztaty samochodowe', ru: 'Автосервисы', en: 'Car repair shops' },
+    aliases: ['autoserwis', 'warsztat samochodowy', 'car service', 'car repair'],
+    positiveKeywords: { pl: ['autoserwis', 'warsztat samochodowy', 'mechanik samochodowy', 'naprawa samochodów', 'serwis samochodowy', 'wymiana oleju', 'diagnostyka komputerowa samochodów', 'serwis klimatyzacji samochodowej', 'wulkanizacja'], ru: ['автосервис', 'ремонт автомобилей', 'автомеханик'], en: ['car repair shop', 'auto mechanic', 'car service'] },
+    negativeKeywords: { pl: ['salon samochodowy', 'komis samochodowy', 'lakiernictwo blacharstwo', 'myjnia samochodowa', 'dealer samochodowy'], ru: ['автосалон', 'кузовной ремонт'], en: ['car dealership', 'body shop'] },
+    excludedBusinessTypes: ['car_dealer', 'car_wash'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads lokalne', 'formularz kontaktowy'],
+    searchTemplates: ['autoserwis', 'warsztat samochodowy', 'mechanik samochodowy', 'naprawa samochodów', 'serwis samochodowy całodobowy', 'diagnostyka samochodowa']
+  },
+  {
+    categoryId: 'car_wrapping',
+    labels: { pl: 'Oklejanie samochodów folią', ru: 'Оклейка авто плёнкой', en: 'Car wrapping' },
+    aliases: ['oklejanie aut', 'folia samochodowa', 'car wrapping', 'car wrap'],
+    positiveKeywords: { pl: ['oklejanie samochodów', 'folia samochodowa', 'zmiana koloru auta folią', 'oklejanie folią ochronną', 'folia ppf', 'oklejanie reklamowe samochodów', 'car wrapping', 'folia matowa na auto', 'oklejanie lakieru'], ru: ['оклейка авто плёнкой', 'антигравийная плёнка', 'изменение цвета авто'], en: ['car wrapping', 'vinyl wrap', 'paint protection film'] },
+    negativeKeywords: { pl: ['lakiernictwo samochodowe', 'malowanie samochodu', 'tuning mechaniczny', 'blacharstwo'], ru: ['покраска авто', 'кузовной ремонт'], en: ['car painting', 'body repair'] },
+    excludedBusinessTypes: [],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads lokalne', 'formularz kontaktowy'],
+    searchTemplates: ['oklejanie samochodów folią', 'folia ochronna na samochód', 'zmiana koloru auta folią', 'oklejanie samochodów reklamowe', 'folia ppf na samochód', 'car wrapping cennik']
+  },
+  {
+    categoryId: 'car_tuning_workshop',
+    labels: { pl: 'Tuning samochodowy', ru: 'Тюнинг автомобилей', en: 'Car tuning' },
+    aliases: ['tuning aut', 'chip tuning', 'car tuning', 'тюнинг авто'],
+    positiveKeywords: { pl: ['tuning samochodowy', 'chip tuning', 'modyfikacja silnika', 'tuning zawieszenia', 'sportowy układ wydechowy', 'tuning mechaniczny', 'remapping ecu', 'tuning optyczny', 'lifting samochodu'], ru: ['тюнинг автомобилей', 'чип-тюнинг', 'доработка двигателя'], en: ['car tuning', 'chip tuning', 'ecu remapping'] },
+    negativeKeywords: { pl: ['oklejanie samochodów', 'lakiernictwo', 'autoserwis ogólny', 'myjnia samochodowa'], ru: ['автомойка', 'общий автосервис'], en: ['car wash', 'general repair'] },
+    excludedBusinessTypes: [],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads lokalne', 'formularz kontaktowy'],
+    searchTemplates: ['tuning samochodowy', 'chip tuning', 'remapping ecu', 'tuning zawieszenia sportowego', 'modyfikacja silnika samochodowego', 'warsztat tuningowy']
+  },
+  {
+    categoryId: 'body_repair',
+    labels: { pl: 'Lakiernictwo i blacharstwo samochodowe', ru: 'Кузовной ремонт и покраска', en: 'Auto body and paint repair' },
+    aliases: ['blacharstwo samochodowe', 'lakiernictwo samochodowe', 'body shop', 'кузовной ремонт'],
+    positiveKeywords: { pl: ['blacharstwo samochodowe', 'lakiernictwo samochodowe', 'naprawa powypadkowa', 'usuwanie wgnieceń', 'malowanie samochodu', 'naprawa zderzaków', 'prostowanie karoserii', 'polerowanie lakieru', 'naprawa powypadkowa aut'], ru: ['кузовной ремонт', 'покраска авто', 'ремонт после дтп', 'рихтовка кузова'], en: ['auto body shop', 'car paint repair', 'dent removal', 'collision repair'] },
+    negativeKeywords: { pl: ['mechanika samochodowa', 'wulkanizacja', 'wymiana opon', 'myjnia samochodowa', 'oklejanie samochodów folią', 'diagnostyka komputerowa'], ru: ['шиномонтаж', 'автомойка'], en: ['tire shop', 'car wash'] },
+    excludedBusinessTypes: ['tire_service', 'car_wash'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads lokalne', 'formularz kontaktowy'],
+    searchTemplates: ['blacharstwo i lakiernictwo samochodowe', 'naprawa powypadkowa samochodów', 'usuwanie wgnieceń bez lakierowania', 'malowanie samochodu cennik', 'warsztat blacharski', 'prostowanie karoserii']
+  },
+  {
+    categoryId: 'truck_sales',
+    labels: { pl: 'Sprzedaż ciężarówek', ru: 'Продажа грузовиков', en: 'Truck sales' },
+    aliases: ['sprzedaż samochodów ciężarowych', 'truck sales', 'дилер грузовиков'],
+    positiveKeywords: { pl: ['sprzedaż ciężarówek', 'samochody ciężarowe', 'sprzedaż samochodów ciężarowych', 'dealer ciężarówek', 'ciągniki siodłowe sprzedaż', 'naczepy i ciężarówki', 'salon pojazdów użytkowych', 'ciężarówki używane'], ru: ['продажа грузовиков', 'грузовые автомобили', 'дилер грузовых авто', 'седельные тягачи'], en: ['truck sales', 'commercial trucks', 'semi trucks for sale'] },
+    negativeKeywords: { pl: ['wynajem ciężarówek', 'transport i spedycja', 'części do ciężarówek', 'serwis ciężarówek', 'lawety pomoc drogowa'], ru: ['аренда грузовиков', 'грузоперевозки', 'запчасти для грузовиков'], en: ['truck rental', 'freight transport', 'truck parts'] },
+    excludedBusinessTypes: ['truck_rental', 'logistics_company', 'auto_parts'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads lokalne', 'formularz kontaktowy'],
+    searchTemplates: ['sprzedaż ciężarówek', 'dealer samochodów ciężarowych', 'salon pojazdów użytkowych', 'ciągniki siodłowe sprzedaż', 'ciężarówki używane sprzedaż', 'sprzedaż naczep i ciężarówek']
+  },
+  {
+    categoryId: 'bus_sales',
+    labels: { pl: 'Sprzedaż autobusów', ru: 'Продажа автобусов', en: 'Bus sales' },
+    aliases: ['dealer autobusów', 'bus sales', 'дилер автобусов'],
+    positiveKeywords: { pl: ['sprzedaż autobusów', 'autobusy używane sprzedaż', 'dealer autobusów', 'autobusy miejskie sprzedaż', 'autokary sprzedaż', 'busy i minibusy sprzedaż', 'salon autobusów'], ru: ['продажа автобусов', 'дилер автобусов', 'автобусы б/у', 'туристические автобусы'], en: ['bus sales', 'coach sales', 'used buses for sale'] },
+    negativeKeywords: { pl: ['wynajem autokarów', 'przewozy autokarowe', 'serwis autobusów', 'części do autobusów'], ru: ['аренда автобусов', 'пассажирские перевозки'], en: ['bus rental', 'coach hire', 'passenger transport'] },
+    excludedBusinessTypes: ['bus_rental', 'transport_company'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads lokalne', 'formularz kontaktowy'],
+    searchTemplates: ['sprzedaż autobusów', 'dealer autobusów', 'autokary sprzedaż', 'autobusy używane sprzedaż', 'salon autobusów miejskich', 'sprzedaż busów i minibusów']
+  },
+  {
+    categoryId: 'farm_equipment_sales',
+    labels: { pl: 'Sprzedaż maszyn rolniczych', ru: 'Продажа сельхозтехники', en: 'Farm equipment sales' },
+    aliases: ['maszyny rolnicze sprzedaż', 'sprzęt rolniczy', 'farm equipment', 'сельхозтехника'],
+    positiveKeywords: { pl: ['sprzedaż maszyn rolniczych', 'ciągniki rolnicze sprzedaż', 'kombajny sprzedaż', 'maszyny rolnicze używane', 'dealer maszyn rolniczych', 'sprzęt rolniczy sprzedaż', 'traktory rolnicze salon', 'przyczepy rolnicze sprzedaż'], ru: ['продажа сельхозтехники', 'сельскохозяйственные машины', 'тракторы продажа', 'комбайны продажа'], en: ['farm equipment sales', 'agricultural machinery', 'tractors for sale'] },
+    negativeKeywords: { pl: ['wynajem maszyn rolniczych', 'serwis maszyn rolniczych', 'części do maszyn rolniczych', 'maszyny budowlane sprzedaż'], ru: ['аренда сельхозтехники', 'запчасти для сельхозтехники', 'строительная техника'], en: ['farm equipment rental', 'construction machinery'] },
+    excludedBusinessTypes: ['equipment_rental'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads lokalne', 'formularz kontaktowy'],
+    searchTemplates: ['sprzedaż maszyn rolniczych', 'dealer ciągników rolniczych', 'kombajny sprzedaż', 'maszyny rolnicze używane sprzedaż', 'salon maszyn rolniczych', 'sprzedaż sprzętu rolniczego']
+  },
+  {
+    categoryId: 'trailer_sales',
+    labels: { pl: 'Sprzedaż przyczep', ru: 'Продажа прицепов', en: 'Trailer sales' },
+    aliases: ['przyczepy sprzedaż', 'naczepy sprzedaż', 'trailer sales', 'прицепы продажа'],
+    positiveKeywords: { pl: ['sprzedaż przyczep', 'przyczepy samochodowe sprzedaż', 'naczepy sprzedaż', 'przyczepy ciężarowe', 'przyczepy laweta sprzedaż', 'przyczepy kempingowe sprzedaż', 'dealer przyczep', 'przyczepy do przewozu'], ru: ['продажа прицепов', 'прицепы для автомобилей', 'полуприцепы продажа', 'прицепы для перевозки'], en: ['trailer sales', 'semi-trailer sales', 'car trailers for sale'] },
+    negativeKeywords: { pl: ['wynajem przyczep', 'naprawa przyczep', 'części do przyczep'], ru: ['аренда прицепов', 'ремонт прицепов'], en: ['trailer rental', 'trailer repair'] },
+    excludedBusinessTypes: ['trailer_rental'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads lokalne', 'formularz kontaktowy'],
+    searchTemplates: ['sprzedaż przyczep', 'przyczepy samochodowe sprzedaż', 'naczepy sprzedaż', 'dealer przyczep ciężarowych', 'przyczepy kempingowe sprzedaż', 'przyczepy laweta sprzedaż']
+  },
+  {
+    categoryId: 'heavy_vehicle_sales',
+    labels: { pl: 'Sprzedaż pojazdów specjalistycznych', ru: 'Продажа спецтехники (коммерческий транспорт)', en: 'Specialty commercial vehicle sales' },
+    aliases: ['pojazdy specjalne sprzedaż', 'auta specjalistyczne', 'special purpose vehicles', 'спецтранспорт'],
+    positiveKeywords: { pl: ['sprzedaż pojazdów specjalistycznych', 'samochody specjalne sprzedaż', 'wozy strażackie sprzedaż', 'śmieciarki sprzedaż', 'pojazdy komunalne sprzedaż', 'lawety pomoc drogowa sprzedaż', 'cysterny sprzedaż', 'ambulanse sprzedaż', 'pojazdy do przewozu wartości'], ru: ['продажа спецтехники', 'коммунальная техника продажа', 'мусоровозы продажа', 'пожарные машины продажа'], en: ['specialty vehicle sales', 'municipal vehicles for sale', 'commercial special-purpose vehicles'] },
+    negativeKeywords: { pl: ['maszyny budowlane sprzedaż', 'koparki sprzedaż', 'sprzęt budowlany', 'wynajem pojazdów specjalistycznych'], ru: ['строительная техника', 'экскаваторы продажа', 'аренда спецтехники'], en: ['construction equipment', 'excavators for sale', 'equipment rental'] },
+    excludedBusinessTypes: ['construction_equipment_dealer', 'equipment_rental'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads lokalne', 'formularz kontaktowy'],
+    searchTemplates: ['sprzedaż pojazdów specjalistycznych', 'samochody specjalne sprzedaż', 'pojazdy komunalne sprzedaż', 'wozy strażackie i ambulanse sprzedaż', 'cysterny i śmieciarki sprzedaż', 'lawety pomoc drogowa sprzedaż']
+  },
+  {
+    categoryId: 'clinics_general',
+    labels: { pl: 'Kliniki medyczne', ru: 'Клиники', en: 'Medical clinics' },
+    aliases: ['kliniki medyczne', 'clinics', 'клиники', 'медицинские клиники'],
+    positiveKeywords: { pl: ['klinika medyczna', 'przychodnia prywatna', 'gabinet lekarski', 'poradnia specjalistyczna', 'wizyta u lekarza', 'konsultacja lekarska', 'lekarz specjalista', 'usługi medyczne'], ru: ['медицинская клиника', 'частная клиника', 'прием врача', 'консультация врача'], en: ['medical clinic', 'private clinic', 'doctor appointment', 'specialist consultation'] },
+    negativeKeywords: { pl: ['apteka', 'sklep medyczny', 'salon kosmetyczny', 'spa i wellness', 'sklep zielarski', 'gabinet weterynaryjny'], ru: ['аптека', 'ветеринарная клиника'], en: ['pharmacy', 'veterinary clinic'] },
+    excludedBusinessTypes: ['pharmacy', 'veterinary_care', 'beauty_salon'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads lokalne', 'formularz rejestracji wizyty'],
+    searchTemplates: ['klinika medyczna', 'przychodnia prywatna', 'poradnia specjalistyczna', 'gabinet lekarski prywatny', 'konsultacje lekarskie']
+  },
+  {
+    categoryId: 'medical_center',
+    labels: { pl: 'Centra medyczne', ru: 'Медицинские центры', en: 'Medical centers' },
+    aliases: ['centrum medyczne', 'medical center', 'медицинский центр'],
+    positiveKeywords: { pl: ['centrum medyczne', 'wielospecjalistyczne centrum medyczne', 'centrum zdrowia', 'opieka medyczna dla firm', 'pakiety medyczne', 'abonament medyczny', 'badania profilaktyczne', 'medycyna pracy'], ru: ['медицинский центр', 'многопрофильный медицинский центр', 'корпоративная медицина', 'медицинские пакеты'], en: ['medical center', 'multi-specialty clinic', 'corporate healthcare', 'health packages'] },
+    negativeKeywords: { pl: ['apteka', 'sanatorium', 'dom opieki', 'hospicjum'], ru: ['аптека', 'дом престарелых'], en: ['pharmacy', 'nursing home'] },
+    excludedBusinessTypes: ['pharmacy', 'nursing_home'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads lokalne', 'formularz rejestracji wizyty'],
+    searchTemplates: ['centrum medyczne', 'wielospecjalistyczne centrum medyczne', 'pakiety medyczne dla firm', 'badania profilaktyczne', 'medycyna pracy centrum', 'abonament medyczny']
+  },
+  {
+    categoryId: 'private_hospital',
+    labels: { pl: 'Szpitale prywatne', ru: 'Частные больницы', en: 'Private hospitals' },
+    aliases: ['szpital prywatny', 'private hospital', 'частная больница'],
+    positiveKeywords: { pl: ['szpital prywatny', 'oddział szpitalny prywatny', 'chirurgia szpitalna', 'izba przyjęć prywatna', 'planowe zabiegi szpitalne', 'hospitalizacja prywatna', 'blok operacyjny'], ru: ['частная больница', 'частный стационар', 'плановая госпитализация'], en: ['private hospital', 'private inpatient care', 'elective surgery hospital'] },
+    negativeKeywords: { pl: ['przychodnia', 'poradnia', 'gabinet lekarski', 'szpital publiczny', 'NFZ'], ru: ['поликлиника', 'государственная больница'], en: ['public hospital', 'clinic'] },
+    excludedBusinessTypes: ['public_hospital'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads lokalne', 'formularz rejestracji wizyty'],
+    searchTemplates: ['szpital prywatny', 'prywatny szpital chirurgiczny', 'hospitalizacja prywatna', 'planowe zabiegi operacyjne', 'prywatny oddział szpitalny', 'blok operacyjny prywatny']
+  },
+  {
+    categoryId: 'dentistry_clinic',
+    labels: { pl: 'Kliniki stomatologiczne', ru: 'Стоматологии', en: 'Dental clinics' },
+    aliases: ['stomatologia', 'dentysta', 'dental clinic', 'стоматология'],
+    positiveKeywords: { pl: ['stomatologia', 'gabinet stomatologiczny', 'dentysta', 'leczenie kanałowe', 'higiena jamy ustnej', 'wybielanie zębów', 'protetyka stomatologiczna', 'stomatologia estetyczna', 'przegląd stomatologiczny'], ru: ['стоматология', 'стоматологическая клиника', 'лечение зубов', 'отбеливание зубов'], en: ['dental clinic', 'dentist', 'root canal treatment', 'teeth whitening'] },
+    negativeKeywords: { pl: ['laboratorium protetyczne', 'hurtownia stomatologiczna', 'sklep dentystyczny', 'szkolenia stomatologiczne'], ru: ['стоматологическая лаборатория', 'магазин стоматологических материалов'], en: ['dental lab supplier', 'dental wholesale'] },
+    excludedBusinessTypes: ['dental_lab', 'medical_supply_store'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads lokalne', 'formularz rejestracji wizyty'],
+    searchTemplates: ['stomatologia', 'gabinet stomatologiczny', 'dentysta prywatny', 'leczenie zębów', 'przegląd stomatologiczny', 'stomatologia estetyczna']
+  },
+  {
+    categoryId: 'implantology',
+    labels: { pl: 'Implantologia stomatologiczna', ru: 'Имплантология', en: 'Dental implantology' },
+    aliases: ['implanty zębowe', 'implantologia', 'dental implants', 'имплантация зубов'],
+    positiveKeywords: { pl: ['implanty zębowe', 'implantologia stomatologiczna', 'wszczepienie implantu', 'all-on-4', 'all-on-6', 'odbudowa zęba na implancie', 'konsultacja implantologiczna'], ru: ['имплантация зубов', 'зубные имплантаты', 'имплантология'], en: ['dental implants', 'implantology', 'tooth implant'] },
+    negativeKeywords: { pl: ['implanty piersi', 'implanty ortopedyczne', 'chirurgia plastyczna'], ru: ['имплантация груди', 'ортопедические имплантаты'], en: ['breast implants', 'orthopedic implants'] },
+    excludedBusinessTypes: ['plastic_surgery_clinic'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads lokalne', 'formularz rejestracji wizyty'],
+    searchTemplates: ['implanty zębowe', 'implantologia stomatologiczna', 'wszczepienie implantu zęba', 'all-on-4 implanty', 'konsultacja implantologiczna', 'odbudowa zęba na implancie']
+  },
+  {
+    categoryId: 'orthodontics',
+    labels: { pl: 'Ortodoncja', ru: 'Ортодонтия', en: 'Orthodontics' },
+    aliases: ['ortodoncja', 'aparat ortodontyczny', 'orthodontics', 'ортодонтия'],
+    positiveKeywords: { pl: ['ortodoncja', 'aparat ortodontyczny', 'aparat na zęby', 'nakładki ortodontyczne', 'invisalign', 'wyrównywanie zębów', 'proteza ortodontyczna', 'konsultacja ortodontyczna'], ru: ['ортодонтия', 'брекеты', 'выравнивание зубов', 'элайнеры'], en: ['orthodontics', 'braces', 'invisalign', 'teeth straightening'] },
+    negativeKeywords: { pl: ['protetyka ogólna', 'chirurgia szczękowa', 'stomatologia dziecięca ogólna'], ru: ['общее протезирование', 'челюстная хирургия'], en: ['general dentistry', 'jaw surgery'] },
+    excludedBusinessTypes: [],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads lokalne', 'formularz rejestracji wizyty'],
+    searchTemplates: ['ortodoncja', 'aparat na zęby', 'nakładki ortodontyczne invisalign', 'wyrównywanie zębów', 'konsultacja ortodontyczna', 'aparat ortodontyczny cena']
+  },
+  {
+    categoryId: 'aesthetic_medicine_clinic',
+    labels: { pl: 'Medycyna estetyczna', ru: 'Эстетическая медицина', en: 'Aesthetic medicine' },
+    aliases: ['medycyna estetyczna', 'aesthetic medicine', 'эстетическая медицина', 'kosmetologia lekarska'],
+    positiveKeywords: { pl: ['medycyna estetyczna', 'botoks', 'kwas hialuronowy', 'mezoterapia', 'wypełniacze', 'lifting twarzy zabiegi', 'modelowanie ust', 'konsultacja lekarza medycyny estetycznej'], ru: ['эстетическая медицина', 'ботокс', 'гиалуроновая кислота', 'мезотерапия'], en: ['aesthetic medicine', 'botox', 'dermal fillers', 'mesotherapy'] },
+    negativeKeywords: { pl: ['salon kosmetyczny', 'salon fryzjerski', 'studio urody bez lekarza', 'manicure pedicure', 'solarium'], ru: ['косметический салон', 'парикмахерская'], en: ['beauty salon', 'hair salon'] },
+    excludedBusinessTypes: ['beauty_salon', 'hair_salon', 'nail_salon'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads lokalne', 'formularz rejestracji wizyty'],
+    searchTemplates: ['medycyna estetyczna', 'gabinet medycyny estetycznej', 'botoks zabiegi', 'kwas hialuronowy zabiegi', 'mezoterapia twarzy', 'konsultacja medycyna estetyczna']
+  },
+  {
+    categoryId: 'plastic_surgery',
+    labels: { pl: 'Chirurgia plastyczna', ru: 'Пластическая хирургия', en: 'Plastic surgery' },
+    aliases: ['chirurgia plastyczna', 'plastic surgery', 'пластическая хирургия', 'chirurgia estetyczna'],
+    positiveKeywords: { pl: ['chirurgia plastyczna', 'operacja plastyczna', 'powiększanie piersi', 'liposukcja', 'plastyka powiek', 'korekta nosa', 'lifting twarzy chirurgiczny', 'konsultacja chirurga plastycznego'], ru: ['пластическая хирургия', 'увеличение груди', 'липосакция', 'ринопластика'], en: ['plastic surgery', 'breast augmentation', 'liposuction', 'rhinoplasty'] },
+    negativeKeywords: { pl: ['medycyna estetyczna bez chirurgii', 'salon kosmetyczny', 'gabinet kosmetologiczny'], ru: ['косметология без операций'], en: ['non-surgical aesthetic clinic'] },
+    excludedBusinessTypes: ['beauty_salon'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads lokalne', 'formularz rejestracji wizyty'],
+    searchTemplates: ['chirurgia plastyczna', 'klinika chirurgii plastycznej', 'operacja plastyczna cena', 'powiększanie piersi', 'liposukcja zabieg', 'korekta nosa chirurgia']
+  },
+  {
+    categoryId: 'fertility_clinic',
+    labels: { pl: 'Kliniki leczenia niepłodności', ru: 'Репродуктивные центры', en: 'Fertility clinics' },
+    aliases: ['klinika leczenia niepłodności', 'in vitro', 'fertility clinic', 'репродуктивная медицина'],
+    positiveKeywords: { pl: ['leczenie niepłodności', 'klinika in vitro', 'zapłodnienie in vitro', 'diagnostyka niepłodności', 'bank komórek jajowych', 'mrożenie komórek jajowych', 'andrologia', 'konsultacja specjalisty niepłodności'], ru: ['лечение бесплодия', 'клиника эко', 'экстракорпоральное оплодотворение'], en: ['fertility clinic', 'ivf clinic', 'in vitro fertilization'] },
+    negativeKeywords: { pl: ['ginekologia ogólna', 'położnictwo ogólne', 'poradnia rodzinna'], ru: ['общая гинекология'], en: ['general gynecology'] },
+    excludedBusinessTypes: [],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads lokalne', 'formularz rejestracji wizyty'],
+    searchTemplates: ['klinika leczenia niepłodności', 'klinika in vitro', 'zapłodnienie in vitro', 'diagnostyka niepłodności', 'mrożenie komórek jajowych', 'konsultacja niepłodność']
+  },
+  {
+    categoryId: 'ophthalmology',
+    labels: { pl: 'Okulistyka', ru: 'Офтальмология', en: 'Ophthalmology' },
+    aliases: ['okulistyka', 'gabinet okulistyczny', 'ophthalmology', 'офтальмология'],
+    positiveKeywords: { pl: ['okulistyka', 'gabinet okulistyczny', 'badanie wzroku', 'operacja zaćmy', 'korekcja wzroku laserowa', 'laserowa korekcja wad wzroku', 'dobór okularów', 'soczewki kontaktowe konsultacja'], ru: ['офтальмология', 'проверка зрения', 'операция катаракты', 'лазерная коррекция зрения'], en: ['ophthalmology', 'eye exam', 'cataract surgery', 'laser eye surgery'] },
+    negativeKeywords: { pl: ['salon optyczny bez lekarza', 'sklep z okularami'], ru: ['оптика магазин очков'], en: ['optical store'] },
+    excludedBusinessTypes: ['optical_store'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads lokalne', 'formularz rejestracji wizyty'],
+    searchTemplates: ['okulistyka gabinet', 'badanie wzroku okulista', 'operacja zaćmy', 'laserowa korekcja wzroku', 'okulista prywatnie', 'klinika okulistyczna']
+  },
+  {
+    categoryId: 'orthopedics',
+    labels: { pl: 'Ortopedia', ru: 'Ортопедия', en: 'Orthopedics' },
+    aliases: ['ortopedia', 'gabinet ortopedyczny', 'orthopedics', 'ортопедия'],
+    positiveKeywords: { pl: ['ortopeda', 'gabinet ortopedyczny', 'leczenie kręgosłupa', 'endoprotezoplastyka stawu', 'artroskopia kolana', 'leczenie urazów sportowych', 'konsultacja ortopedyczna'], ru: ['ортопед', 'лечение суставов', 'эндопротезирование', 'артроскопия'], en: ['orthopedic surgeon', 'joint replacement', 'arthroscopy'] },
+    negativeKeywords: { pl: ['sklep ortopedyczny', 'obuwie ortopedyczne sklep', 'sklep medyczny zaopatrzenie'], ru: ['ортопедический магазин'], en: ['orthopedic supply store'] },
+    excludedBusinessTypes: ['medical_supply_store'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads lokalne', 'formularz rejestracji wizyty'],
+    searchTemplates: ['ortopeda prywatnie', 'gabinet ortopedyczny', 'endoprotezoplastyka stawu', 'artroskopia kolana', 'leczenie urazów sportowych', 'konsultacja ortopedyczna']
+  },
+  {
+    categoryId: 'medical_rehabilitation',
+    labels: { pl: 'Rehabilitacja medyczna', ru: 'Реабилитация', en: 'Medical rehabilitation' },
+    aliases: ['rehabilitacja', 'fizjoterapia', 'medical rehabilitation', 'реабилитация'],
+    positiveKeywords: { pl: ['rehabilitacja medyczna', 'fizjoterapia', 'gabinet rehabilitacji', 'terapia manualna', 'rehabilitacja po urazach', 'rehabilitacja neurologiczna', 'masaż leczniczy', 'ćwiczenia rehabilitacyjne'], ru: ['медицинская реабилитация', 'физиотерапия', 'лечебный массаж'], en: ['physiotherapy', 'medical rehabilitation', 'physical therapy'] },
+    negativeKeywords: { pl: ['siłownia', 'studio treningu personalnego', 'spa i wellness', 'masaż relaksacyjny salon'], ru: ['фитнес зал', 'спа салон'], en: ['gym', 'spa wellness'] },
+    excludedBusinessTypes: ['gym', 'spa'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads lokalne', 'formularz rejestracji wizyty'],
+    searchTemplates: ['rehabilitacja medyczna', 'gabinet fizjoterapii', 'rehabilitacja po urazach', 'terapia manualna', 'rehabilitacja neurologiczna', 'fizjoterapeuta prywatnie']
+  },
+  {
+    categoryId: 'psychology_practice',
+    labels: { pl: 'Psychoterapia i psychologia', ru: 'Психология', en: 'Psychology practice' },
+    aliases: ['psycholog', 'psychoterapia', 'psychology practice', 'психолог'],
+    positiveKeywords: { pl: ['psycholog', 'psychoterapia', 'gabinet psychologiczny', 'konsultacja psychologiczna', 'terapia par', 'terapia poznawczo-behawioralna', 'wsparcie psychologiczne', 'psychoterapeuta prywatnie'], ru: ['психолог', 'психотерапия', 'консультация психолога'], en: ['psychologist', 'psychotherapy', 'counseling'] },
+    negativeKeywords: { pl: ['szpital psychiatryczny', 'oddział psychiatryczny', 'coaching życiowy', 'trener rozwoju osobistego', 'wróżka', 'ośrodek odwykowy'], ru: ['психиатрическая больница', 'коучинг'], en: ['psychiatric hospital', 'life coaching'] },
+    excludedBusinessTypes: ['psychiatric_hospital'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads lokalne', 'formularz rejestracji wizyty'],
+    searchTemplates: ['psycholog prywatnie', 'gabinet psychologiczny', 'psychoterapia indywidualna', 'terapia par', 'konsultacja psychologiczna', 'psychoterapeuta']
+  },
+  {
+    categoryId: 'diagnostic_center',
+    labels: { pl: 'Centra diagnostyczne', ru: 'Диагностические центры', en: 'Diagnostic centers' },
+    aliases: ['centrum diagnostyczne', 'diagnostyka obrazowa', 'diagnostic center', 'диагностический центр'],
+    positiveKeywords: { pl: ['centrum diagnostyczne', 'diagnostyka obrazowa', 'rezonans magnetyczny', 'tomografia komputerowa', 'badania laboratoryjne', 'usg diagnostyczne', 'rtg prywatnie', 'punkt pobrań'], ru: ['диагностический центр', 'мрт', 'компьютерная томография', 'лабораторные анализы'], en: ['diagnostic center', 'mri scan', 'ct scan', 'lab tests'] },
+    negativeKeywords: { pl: ['apteka', 'sklep medyczny'], ru: ['аптека'], en: ['pharmacy'] },
+    excludedBusinessTypes: ['pharmacy'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads lokalne', 'formularz rejestracji wizyty'],
+    searchTemplates: ['centrum diagnostyczne', 'rezonans magnetyczny prywatnie', 'tomografia komputerowa prywatnie', 'badania laboratoryjne', 'usg diagnostyczne', 'punkt pobrań krwi']
+  },
+  {
+    categoryId: 'veterinary_clinic',
+    labels: { pl: 'Kliniki weterynaryjne', ru: 'Ветеринарные клиники', en: 'Veterinary clinics' },
+    aliases: ['klinika weterynaryjna', 'lecznica dla zwierząt', 'veterinary clinic', 'ветеринарная клиника'],
+    positiveKeywords: { pl: ['klinika weterynaryjna', 'lecznica dla zwierząt', 'weterynarz', 'szczepienia dla psów i kotów', 'chirurgia weterynaryjna', 'gabinet weterynaryjny', 'całodobowa klinika weterynaryjna', 'kastracja sterylizacja zwierząt'], ru: ['ветеринарная клиника', 'ветеринар', 'прививки для животных'], en: ['veterinary clinic', 'vet', 'pet vaccinations'] },
+    negativeKeywords: { pl: ['sklep zoologiczny', 'salon groomingu', 'hotel dla zwierząt', 'schronisko dla zwierząt'], ru: ['зоомагазин', 'груминг салон'], en: ['pet shop', 'pet grooming salon'] },
+    excludedBusinessTypes: ['pet_store', 'pet_grooming', 'animal_shelter'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads lokalne', 'formularz rejestracji wizyty'],
+    searchTemplates: ['klinika weterynaryjna', 'lecznica dla zwierząt', 'weterynarz całodobowo', 'szczepienia dla psów i kotów', 'chirurgia weterynaryjna', 'gabinet weterynaryjny']
+  },
+  {
+    categoryId: 'law_firm_advocate',
+    labels: { pl: 'Kancelarie adwokackie', ru: 'Адвокатские бюро', en: 'Advocate law offices' },
+    aliases: ['adwokat', 'kancelaria adwokacka', 'адвокат', 'law firm advocate'],
+    positiveKeywords: { pl: ['kancelaria adwokacka', 'adwokat', 'usługi adwokackie', 'obrona karna', 'porady prawne', 'reprezentacja przed sądem', 'adwokat rozwodowy', 'adwokat sprawy karne'], ru: ['адвокат', 'адвокатское бюро', 'юридическая защита', 'представительство в суде'], en: ['law firm', 'advocate', 'legal defense', 'court representation'] },
+    negativeKeywords: { pl: ['sąd rejonowy', 'sąd okręgowy', 'prokuratura', 'komornik sądowy', 'darmowa pomoc prawna'], ru: ['суд', 'прокуратура'], en: ['courthouse', 'public defender office'] },
+    excludedBusinessTypes: ['court', 'government_office', 'police'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz kontaktowy'],
+    searchTemplates: ['kancelaria adwokacka', 'adwokat sprawy karne', 'adwokat rozwodowy', 'adwokat odszkodowania', 'pomoc prawna dla firm i osób prywatnych']
+  },
+  {
+    categoryId: 'legal_firm',
+    labels: { pl: 'Kancelarie prawne', ru: 'Юридические фирмы', en: 'Legal firms' },
+    aliases: ['kancelaria prawna', 'firma prawnicza', 'юридическая фирма', 'legal firm'],
+    positiveKeywords: { pl: ['kancelaria prawna', 'usługi prawne', 'porady prawne', 'prawo cywilne', 'prawo rodzinne', 'prawo pracy', 'sporządzanie umów', 'reprezentacja prawna'], ru: ['юридическая фирма', 'юридические услуги', 'гражданское право', 'составление договоров'], en: ['law firm', 'legal services', 'civil law', 'contract drafting'] },
+    negativeKeywords: { pl: ['sąd', 'urząd gminy', 'blog prawny', 'darmowe wzory pism'], ru: ['юридический форум', 'бесплатная консультация форум'], en: ['legal blog', 'free legal templates'] },
+    excludedBusinessTypes: ['government_office', 'court'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz kontaktowy'],
+    searchTemplates: ['kancelaria prawna', 'usługi prawne dla firm i klientów indywidualnych', 'porady prawne cywilne i rodzinne', 'sporządzanie umów prawnych', 'kancelaria prawna prawo pracy']
+  },
+  {
+    categoryId: 'tax_advisor',
+    labels: { pl: 'Doradcy podatkowi', ru: 'Налоговые консультанты', en: 'Tax advisors' },
+    aliases: ['doradca podatkowy', 'doradztwo podatkowe', 'налоговый консультант', 'tax advisor'],
+    positiveKeywords: { pl: ['doradca podatkowy', 'doradztwo podatkowe', 'optymalizacja podatkowa', 'rozliczenia podatkowe firm', 'kontrola skarbowa', 'interpretacje podatkowe', 'doradztwo VAT', 'planowanie podatkowe'], ru: ['налоговый консультант', 'налоговое консультирование', 'оптимизация налогов', 'налоговое планирование'], en: ['tax advisor', 'tax consulting', 'tax optimization', 'tax planning'] },
+    negativeKeywords: { pl: ['urząd skarbowy', 'biuro rachunkowe', 'PIT za darmo', 'kalkulator podatkowy online'], ru: ['налоговая инспекция', 'бесплатный калькулятор налогов'], en: ['tax office', 'free tax calculator'] },
+    excludedBusinessTypes: ['government_office'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz kontaktowy'],
+    searchTemplates: ['doradca podatkowy', 'doradztwo podatkowe dla firm', 'optymalizacja podatkowa dla przedsiębiorców', 'planowanie podatkowe', 'doradca podatkowy VAT', 'pomoc przy kontroli podatkowej']
+  },
+  {
+    categoryId: 'bankruptcy_law',
+    labels: { pl: 'Kancelarie upadłościowe', ru: 'Банкротство', en: 'Bankruptcy law' },
+    aliases: ['upadłość konsumencka', 'prawo upadłościowe', 'банкротство', 'bankruptcy law'],
+    positiveKeywords: { pl: ['upadłość konsumencka', 'ogłoszenie upadłości', 'oddłużanie', 'restrukturyzacja firmy', 'syndyk masy upadłościowej', 'prawo upadłościowe', 'pomoc w oddłużeniu', 'układ z wierzycielami'], ru: ['банкротство физических лиц', 'списание долгов', 'реструктуризация долга', 'процедура банкротства'], en: ['consumer bankruptcy', 'debt relief', 'debt restructuring', 'insolvency law'] },
+    negativeKeywords: { pl: ['sąd upadłościowy', 'krajowy rejestr długów', 'firma windykacyjna', 'pożyczki chwilówki'], ru: ['коллекторское агентство', 'займы'], en: ['debt collection agency', 'payday loans'] },
+    excludedBusinessTypes: ['debt_collection_agency', 'payday_loan', 'court'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz kontaktowy'],
+    searchTemplates: ['upadłość konsumencka kancelaria', 'oddłużanie pomoc prawna', 'ogłoszenie upadłości firmy', 'restrukturyzacja zadłużenia', 'prawnik upadłość konsumencka', 'pomoc prawna syndyk']
+  },
+  {
+    categoryId: 'immigration_lawyer',
+    labels: { pl: 'Kancelarie imigracyjne', ru: 'Иммиграционные юристы', en: 'Immigration lawyers' },
+    aliases: ['prawnik imigracyjny', 'legalizacja pobytu', 'иммиграционный юрист', 'immigration lawyer'],
+    positiveKeywords: { pl: ['legalizacja pobytu', 'karta pobytu pomoc prawna', 'prawo imigracyjne', 'wiza pracownicza', 'zezwolenie na pracę cudzoziemca', 'kancelaria imigracyjna', 'procedura o obywatelstwo polskie', 'karta pobytu czasowego'], ru: ['иммиграционный юрист', 'легализация пребывания', 'вид на жительство помощь', 'разрешение на работу'], en: ['immigration lawyer', 'residence permit', 'work visa', 'legalization of stay'] },
+    negativeKeywords: { pl: ['urząd do spraw cudzoziemców', 'straż graniczna', 'biuro tłumaczeń', 'agencja pracy tymczasowej'], ru: ['миграционная служба', 'бюро переводов', 'агентство по трудоустройству'], en: ['immigration office', 'translation agency', 'staffing agency'] },
+    excludedBusinessTypes: ['government_office', 'translation_agency', 'travel_agency', 'staffing_agency'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz kontaktowy'],
+    searchTemplates: ['kancelaria imigracyjna', 'prawnik od legalizacji pobytu', 'pomoc prawna karta pobytu', 'zezwolenie na pracę dla cudzoziemca', 'prawnik imigracyjny dla firm', 'legalizacja pobytu cudzoziemca']
+  },
+  {
+    categoryId: 'business_lawyer',
+    labels: { pl: 'Obsługa prawna firm', ru: 'Бизнес-юристы', en: 'Business lawyers' },
+    aliases: ['obsługa prawna firm', 'prawnik dla firm', 'бизнес-юрист', 'business lawyer'],
+    positiveKeywords: { pl: ['obsługa prawna firm', 'prawnik korporacyjny', 'prawo spółek', 'umowy handlowe', 'compliance dla firm', 'rejestracja spółki', 'fuzje i przejęcia', 'stały nadzór prawny'], ru: ['юрист для бизнеса', 'корпоративное право', 'юридическое сопровождение сделок', 'регистрация компании'], en: ['corporate lawyer', 'business legal services', 'company registration', 'mergers and acquisitions'] },
+    negativeKeywords: { pl: ['kancelaria notarialna', 'urząd skarbowy', 'krajowy rejestr sądowy', 'doradca podatkowy'], ru: ['нотариус', 'налоговый консультант'], en: ['notary office', 'tax office'] },
+    excludedBusinessTypes: ['government_office', 'notary_public'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz kontaktowy'],
+    searchTemplates: ['obsługa prawna firm', 'prawnik korporacyjny', 'stała obsługa prawna przedsiębiorstw', 'prawnik do umów handlowych', 'kancelaria prawna dla biznesu', 'rejestracja spółki prawnik']
+  },
+  {
+    categoryId: 'notary',
+    labels: { pl: 'Kancelarie notarialne', ru: 'Нотариусы', en: 'Notaries' },
+    aliases: ['notariusz', 'kancelaria notarialna', 'нотариус', 'notary public'],
+    positiveKeywords: { pl: ['kancelaria notarialna', 'notariusz', 'akt notarialny', 'poświadczenie notarialne', 'notariusz umowa sprzedaży nieruchomości', 'testament notarialny', 'pełnomocnictwo notarialne'], ru: ['нотариус', 'нотариальная контора', 'нотариальное заверение', 'нотариальная доверенность'], en: ['notary public', 'notarial deed', 'notarization', 'notarized power of attorney'] },
+    negativeKeywords: { pl: ['sąd wieczystoksięgowy', 'urząd stanu cywilnego', 'tłumacz przysięgły', 'biuro tłumaczeń'], ru: ['загс', 'присяжный переводчик'], en: ['civil registry office', 'sworn translator'] },
+    excludedBusinessTypes: ['government_office', 'translation_agency'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz kontaktowy'],
+    searchTemplates: ['kancelaria notarialna', 'notariusz akty notarialne', 'notariusz umowa sprzedaży nieruchomości', 'notariusz pełnomocnictwo', 'notariusz testament', 'poświadczenie notarialne dokumentów']
+  },
+  {
+    categoryId: 'investment_company',
+    labels: { pl: 'Firmy inwestycyjne', ru: 'Инвестиционные компании', en: 'Investment companies' },
+    aliases: ['firma inwestycyjna', 'fundusz inwestycyjny', 'инвестиционная компания', 'investment company'],
+    positiveKeywords: { pl: ['firma inwestycyjna', 'fundusz inwestycyjny', 'zarządzanie aktywami', 'inwestycje kapitałowe', 'dom maklerski', 'inwestycje dla firm', 'zarządzanie portfelem inwestycyjnym', 'private equity'], ru: ['инвестиционная компания', 'управление активами', 'инвестиционный фонд', 'управление портфелем'], en: ['investment company', 'asset management', 'investment fund', 'portfolio management'] },
+    negativeKeywords: { pl: ['bank komercyjny', 'giełda papierów wartościowych urząd', 'doradca finansowy dla klienta indywidualnego', 'kantor wymiany walut'], ru: ['коммерческий банк', 'обменный пункт'], en: ['commercial bank', 'currency exchange'] },
+    excludedBusinessTypes: ['bank', 'currency_exchange', 'government_office'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz kontaktowy'],
+    searchTemplates: ['firma inwestycyjna', 'fundusz inwestycyjny dla firm', 'zarządzanie aktywami', 'dom maklerski', 'inwestycje kapitałowe dla przedsiębiorstw', 'usługi private equity']
+  },
+  {
+    categoryId: 'financial_advisor',
+    labels: { pl: 'Doradcy finansowi', ru: 'Финансовые консультанты', en: 'Financial advisors' },
+    aliases: ['doradca finansowy', 'doradztwo finansowe', 'финансовый консультант', 'financial advisor'],
+    positiveKeywords: { pl: ['doradca finansowy', 'doradztwo finansowe', 'planowanie finansowe', 'niezależny doradca finansowy', 'doradztwo emerytalne', 'analiza finansowa dla firm', 'doradca ds. finansów osobistych'], ru: ['финансовый консультант', 'финансовое планирование', 'независимый финансовый советник', 'пенсионное консультирование'], en: ['financial advisor', 'financial planning', 'independent financial consultant', 'retirement planning'] },
+    negativeKeywords: { pl: ['bank detaliczny', 'doradca kredytowy chwilówki', 'parabank', 'kantor wymiany walut'], ru: ['банк', 'микрозаймы'], en: ['retail bank', 'payday loans'] },
+    excludedBusinessTypes: ['bank', 'payday_loan'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz kontaktowy'],
+    searchTemplates: ['doradca finansowy', 'doradztwo finansowe dla firm', 'niezależny doradca finansowy', 'planowanie finansowe osobiste', 'doradca emerytalny', 'doradztwo finansowe dla przedsiębiorców']
+  },
+  {
+    categoryId: 'mortgage_broker',
+    labels: { pl: 'Brokerzy hipoteczni', ru: 'Ипотечные брокеры', en: 'Mortgage brokers' },
+    aliases: ['broker hipoteczny', 'doradca kredytu hipotecznego', 'ипотечный брокер', 'mortgage broker'],
+    positiveKeywords: { pl: ['broker hipoteczny', 'kredyt hipoteczny doradztwo', 'doradca kredytu hipotecznego', 'porównanie kredytów hipotecznych', 'pośrednik kredytowy', 'kredyt hipoteczny dla firm', 'refinansowanie kredytu hipotecznego'], ru: ['ипотечный брокер', 'ипотечный кредит консультация', 'подбор ипотеки', 'рефинансирование ипотеки'], en: ['mortgage broker', 'mortgage advisor', 'home loan consultant', 'mortgage refinancing'] },
+    negativeKeywords: { pl: ['bank hipoteczny', 'deweloper mieszkaniowy', 'agencja nieruchomości', 'biuro nieruchomości'], ru: ['банк', 'агентство недвижимости'], en: ['mortgage bank', 'real estate agency'] },
+    excludedBusinessTypes: ['bank', 'real_estate_agency'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz kontaktowy'],
+    searchTemplates: ['broker hipoteczny', 'doradca kredytu hipotecznego', 'pośrednik kredytowy hipoteczny', 'porównanie ofert kredytów hipotecznych', 'kredyt hipoteczny doradztwo', 'refinansowanie hipoteki']
+  },
+  {
+    categoryId: 'insurance_agency',
+    labels: { pl: 'Agencje ubezpieczeniowe', ru: 'Страховые агентства', en: 'Insurance agencies' },
+    aliases: ['agencja ubezpieczeniowa', 'broker ubezpieczeniowy', 'страховое агентство', 'insurance agency'],
+    positiveKeywords: { pl: ['agencja ubezpieczeniowa', 'broker ubezpieczeniowy', 'multiagencja ubezpieczeniowa', 'pośrednictwo ubezpieczeniowe', 'porównanie ofert ubezpieczeń', 'ubezpieczenia dla firm agencja', 'agent ubezpieczeniowy'], ru: ['страховое агентство', 'страховой брокер', 'посредничество в страховании', 'подбор страховки'], en: ['insurance agency', 'insurance broker', 'insurance brokerage', 'insurance intermediary'] },
+    negativeKeywords: { pl: ['towarzystwo ubezpieczeniowe', 'zakład ubezpieczeń', 'kalkulator ubezpieczenia samochodu online', 'oddział ubezpieczyciela'], ru: ['страховая компания', 'калькулятор страховки онлайн'], en: ['insurance carrier', 'insurance company direct'] },
+    excludedBusinessTypes: ['insurance_company'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz kontaktowy'],
+    searchTemplates: ['agencja ubezpieczeniowa', 'broker ubezpieczeniowy', 'multiagencja ubezpieczeniowa dla firm', 'pośrednictwo ubezpieczeniowe', 'agent ubezpieczeniowy dla przedsiębiorstw', 'porównanie ofert ubezpieczeniowych']
+  },
+  {
+    categoryId: 'leasing_company',
+    labels: { pl: 'Firmy leasingowe', ru: 'Лизинговые компании', en: 'Leasing companies' },
+    aliases: ['firma leasingowa', 'leasing dla firm', 'лизинговая компания', 'leasing company'],
+    positiveKeywords: { pl: ['firma leasingowa', 'leasing samochodów dla firm', 'leasing maszyn', 'leasing operacyjny', 'leasing finansowy', 'leasing sprzętu firmowego', 'leasing floty pojazdów'], ru: ['лизинговая компания', 'лизинг автомобилей для бизнеса', 'лизинг оборудования', 'финансовый лизинг'], en: ['leasing company', 'equipment leasing', 'fleet leasing', 'operating lease'] },
+    negativeKeywords: { pl: ['wypożyczalnia samochodów', 'salon samochodowy', 'komis samochodowy', 'wynajem długoterminowy prywatny'], ru: ['прокат автомобилей', 'автосалон'], en: ['car rental', 'car dealership'] },
+    excludedBusinessTypes: ['car_rental', 'car_dealer'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz kontaktowy'],
+    searchTemplates: ['firma leasingowa', 'leasing samochodów dla firm', 'leasing maszyn i urządzeń', 'leasing operacyjny dla przedsiębiorstw', 'leasing floty pojazdów', 'leasing finansowy sprzętu']
+  },
+  {
+    categoryId: 'accounting_firm',
+    labels: { pl: 'Obsługa księgowa firm', ru: 'Бухгалтерские фирмы', en: 'Accounting firms' },
+    aliases: ['obsługa księgowa firm', 'biuro rachunkowe dla firm', 'бухгалтерская фирма', 'accounting firm'],
+    positiveKeywords: { pl: ['obsługa księgowa firm', 'biuro rachunkowe dla spółek', 'pełna księgowość dla firm', 'outsourcing księgowy', 'kadry i płace dla firm', 'sprawozdania finansowe', 'audyt księgowy', 'księgowość dla spółek z o.o.'], ru: ['бухгалтерская фирма', 'бухгалтерское обслуживание компаний', 'аутсорсинг бухгалтерии', 'финансовая отчетность'], en: ['accounting firm', 'corporate accounting services', 'accounting outsourcing', 'financial statements'] },
+    negativeKeywords: { pl: ['urząd skarbowy', 'PIT roczny dla osoby fizycznej', 'program do faktur online', 'darmowy kalkulator wynagrodzeń'], ru: ['налоговая инспекция', 'бесплатный калькулятор зарплаты'], en: ['tax office', 'free payroll calculator'] },
+    excludedBusinessTypes: ['government_office'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz kontaktowy'],
+    searchTemplates: ['obsługa księgowa firm', 'biuro rachunkowe dla spółek', 'pełna księgowość dla przedsiębiorstw', 'outsourcing księgowy dla firm', 'kadry i płace obsługa firm', 'audyt i sprawozdania finansowe']
+  },
+  {
+    categoryId: 'hotel',
+    labels: { pl: 'Hotele', ru: 'Отели', en: 'Hotels' },
+    aliases: ['hotel', 'hotele', 'отель', 'hotels'],
+    positiveKeywords: { pl: ['hotel', 'nocleg', 'pokoje hotelowe', 'hotel biznesowy', 'hotel butikowy', 'apartamenty hotelowe', 'rezerwacja hotelu', 'hotel spa', 'hotel konferencyjny', 'hotel 4 gwiazdki'], ru: ['отель', 'гостиница', 'номера', 'бронирование отеля'], en: ['hotel', 'accommodation', 'hotel booking', 'boutique hotel'] },
+    negativeKeywords: { pl: ['hostel', 'pokoje gościnne', 'kwatery pracownicze', 'motel przy trasie', 'noclegownia'], ru: ['хостел', 'общежитие'], en: ['hostel', 'motel'] },
+    excludedBusinessTypes: ['hostel', 'motel', 'workers_dormitory'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads lokalne', 'system rezerwacji online'],
+    searchTemplates: ['hotel w centrum', 'hotel biznesowy', 'hotel z basenem', 'hotel dla par', 'hotel z restauracją', 'hotel na weekend']
+  },
+  {
+    categoryId: 'boutique_hotel',
+    labels: { pl: 'Hotele butikowe', ru: 'Бутик-отели', en: 'Boutique hotels' },
+    aliases: ['hotel butikowy', 'boutique hotel', 'бутик-отель'],
+    positiveKeywords: { pl: ['hotel butikowy', 'kameralny hotel', 'ekskluzywny hotel', 'design hotel', 'hotel z charakterem', 'unikalny hotel', 'butikowy nocleg', 'hotel premium'], ru: ['бутик-отель', 'дизайн-отель', 'камерный отель'], en: ['boutique hotel', 'design hotel', 'small luxury hotel'] },
+    negativeKeywords: { pl: ['hotel sieciowy', 'hotel przy autostradzie', 'hostel', 'apartamenty na dobę'], ru: ['сетевой отель', 'хостел'], en: ['chain hotel', 'budget hotel'] },
+    excludedBusinessTypes: ['chain_hotel', 'hostel', 'budget_motel'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads lokalne', 'system rezerwacji online'],
+    searchTemplates: ['hotel butikowy', 'kameralny hotel z klimatem', 'hotel butikowy w centrum', 'design hotel', 'ekskluzywny hotel butikowy', 'hotel butikowy na romantyczny weekend']
+  },
+  {
+    categoryId: 'spa_center',
+    labels: { pl: 'Salony SPA', ru: 'СПА', en: 'Spa centers' },
+    aliases: ['spa', 'salon spa', 'centrum spa', 'спа-салон'],
+    positiveKeywords: { pl: ['salon spa', 'centrum spa', 'masaż relaksacyjny', 'zabiegi spa', 'dzień spa', 'rytuały spa', 'spa dla dwojga', 'spa i wellness', 'luksusowy spa'], ru: ['спа-салон', 'массаж', 'спа-процедуры', 'спа для двоих'], en: ['spa', 'spa treatments', 'wellness spa', 'day spa'] },
+    negativeKeywords: { pl: ['salon fryzjerski', 'salon paznokci', 'solarium', 'gabinet kosmetyczny podstawowy'], ru: ['парикмахерская', 'маникюр'], en: ['nail salon', 'barber shop'] },
+    excludedBusinessTypes: ['hair_salon', 'nail_salon', 'tanning_salon'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads lokalne', 'system rezerwacji online'],
+    searchTemplates: ['salon spa', 'centrum spa i wellness', 'dzień spa dla dwojga', 'masaże i zabiegi spa', 'luksusowe spa', 'spa z basenem']
+  },
+  {
+    categoryId: 'resort',
+    labels: { pl: 'Resorty', ru: 'Курорты', en: 'Resorts' },
+    aliases: ['resort', 'ośrodek wypoczynkowy', 'kurort', 'курорт'],
+    positiveKeywords: { pl: ['resort', 'ośrodek wypoczynkowy', 'all inclusive', 'resort spa', 'resort nad morzem', 'resort w górach', 'kurort wypoczynkowy', 'ekskluzywny resort'], ru: ['курорт', 'курортный отель', 'все включено'], en: ['resort', 'all inclusive resort', 'holiday resort'] },
+    negativeKeywords: { pl: ['pole namiotowe', 'camping', 'domki campingowe', 'schronisko młodzieżowe'], ru: ['кемпинг'], en: ['campsite', 'hostel'] },
+    excludedBusinessTypes: ['campsite', 'hostel', 'youth_hostel'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads lokalne', 'system rezerwacji online'],
+    searchTemplates: ['resort nad morzem', 'resort w górach', 'resort all inclusive', 'ekskluzywny resort wypoczynkowy', 'resort spa', 'resort rodzinny premium']
+  },
+  {
+    categoryId: 'fine_dining_restaurant',
+    labels: { pl: 'Restauracje fine dining', ru: 'Рестораны высокого уровня', en: 'Fine dining restaurants' },
+    aliases: ['fine dining', 'restauracja premium', 'restauracja wykwintna', 'ресторан высокой кухни'],
+    positiveKeywords: { pl: ['restauracja fine dining', 'kuchnia autorska', 'restauracja z gwiazdką', 'szef kuchni', 'restauracja premium', 'wykwintna kuchnia', 'degustacyjne menu', 'restauracja na specjalne okazje'], ru: ['ресторан высокой кухни', 'фаин дайнинг', 'авторская кухня'], en: ['fine dining', 'tasting menu', 'chef restaurant'] },
+    negativeKeywords: { pl: ['fast food', 'bar szybkiej obsługi', 'restauracja sieciowa', 'pizzeria', 'kebab', 'stołówka', 'bar mleczny'], ru: ['фастфуд', 'сетевой ресторан'], en: ['fast food', 'chain restaurant'] },
+    excludedBusinessTypes: ['fast_food', 'food_court', 'cafeteria', 'pizzeria_chain'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads lokalne', 'system rezerwacji online'],
+    searchTemplates: ['restauracja fine dining', 'restauracja z autorską kuchnią', 'wykwintna restauracja na kolację', 'restauracja premium w centrum', 'restauracja na romantyczną kolację', 'najlepsza restauracja w mieście']
+  },
+  {
+    categoryId: 'catering_company',
+    labels: { pl: 'Firmy cateringowe', ru: 'Кейтеринг', en: 'Catering companies' },
+    aliases: ['catering', 'firma cateringowa', 'кейтеринг'],
+    positiveKeywords: { pl: ['catering', 'catering firmowy', 'catering na wesele', 'catering premium', 'organizacja przyjęć', 'catering eventowy', 'catering dietetyczny', 'obsługa gastronomiczna eventów'], ru: ['кейтеринг', 'выездное обслуживание', 'кейтеринг на свадьбу'], en: ['catering', 'event catering', 'wedding catering'] },
+    negativeKeywords: { pl: ['stołówka pracownicza', 'bar szybkiej obsługi', 'dowóz pizzy'], ru: ['доставка еды'], en: ['food delivery'] },
+    excludedBusinessTypes: ['cafeteria', 'fast_food', 'food_delivery'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads lokalne', 'system rezerwacji online'],
+    searchTemplates: ['catering na wesele', 'catering firmowy', 'catering na eventy', 'catering premium', 'obsługa cateringowa imprez', 'catering dietetyczny dla firm']
+  },
+  {
+    categoryId: 'fitness_club',
+    labels: { pl: 'Kluby fitness', ru: 'Фитнес-клубы', en: 'Fitness clubs' },
+    aliases: ['fitness club', 'klub fitness', 'siłownia', 'фитнес-клуб'],
+    positiveKeywords: { pl: ['klub fitness', 'siłownia', 'zajęcia fitness', 'trening personalny', 'karnet fitness', 'klub sportowy', 'zajęcia grupowe fitness', 'fitness club'], ru: ['фитнес-клуб', 'тренажерный зал', 'групповые тренировки'], en: ['fitness club', 'gym', 'personal training'] },
+    negativeKeywords: { pl: ['siłownia plenerowa', 'siłownia zewnętrzna', 'plac zabaw sportowy'], ru: ['уличные тренажеры'], en: ['outdoor gym'] },
+    excludedBusinessTypes: ['outdoor_gym', 'playground'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads lokalne', 'system rezerwacji online'],
+    searchTemplates: ['klub fitness', 'siłownia z trenerem personalnym', 'karnet na siłownię', 'zajęcia fitness grupowe', 'klub fitness premium', 'siłownia i fitness club']
+  },
+  {
+    categoryId: 'premium_gym',
+    labels: { pl: 'Ekskluzywne siłownie', ru: 'Премиальные залы', en: 'Premium gyms' },
+    aliases: ['siłownia premium', 'ekskluzywna siłownia', 'boutique gym', 'премиальный зал'],
+    positiveKeywords: { pl: ['ekskluzywna siłownia', 'siłownia premium', 'butikowa siłownia', 'prywatny trening', 'siłownia z osobistym trenerem', 'elitarny klub sportowy', 'siłownia 5 gwiazdek', 'luksusowy klub fitness'], ru: ['премиальный фитнес-клуб', 'элитный тренажерный зал', 'бутик-фитнес'], en: ['premium gym', 'boutique fitness', 'luxury gym'] },
+    negativeKeywords: { pl: ['siłownia osiedlowa', 'tania siłownia', 'siłownia 24h budżetowa', 'klub fitness sieciowy tani'], ru: ['бюджетный зал'], en: ['budget gym'] },
+    excludedBusinessTypes: ['budget_gym', 'chain_low_cost_gym'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads lokalne', 'system rezerwacji online'],
+    searchTemplates: ['ekskluzywna siłownia', 'siłownia premium z trenerem', 'butikowa siłownia', 'elitarny klub fitness', 'prywatna siłownia vip', 'luksusowy klub sportowy']
+  },
+  {
+    categoryId: 'pilates_studio',
+    labels: { pl: 'Studia pilatesu', ru: 'Студии пилатеса', en: 'Pilates studios' },
+    aliases: ['pilates', 'studio pilates', 'студия пилатеса'],
+    positiveKeywords: { pl: ['studio pilatesu', 'zajęcia pilates', 'pilates reformer', 'pilates dla początkujących', 'trening pilates', 'pilates i joga', 'pilates butikowe studio'], ru: ['студия пилатеса', 'пилатес реформер', 'занятия пилатесом'], en: ['pilates studio', 'reformer pilates'] },
+    negativeKeywords: { pl: ['siłownia ogólna', 'klub fitness z pilatesem jako dodatek'], ru: [], en: [] },
+    excludedBusinessTypes: [],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads lokalne', 'system rezerwacji online'],
+    searchTemplates: ['studio pilatesu', 'zajęcia pilates reformer', 'pilates dla początkujących', 'studio pilates i jogi', 'trening pilates w studio', 'butikowe studio pilates']
+  },
+  {
+    categoryId: 'dance_schools',
+    labels: { pl: 'Szkoły tańca', ru: 'Танцевальные школы', en: 'Dance schools' },
+    aliases: ['szkoła tańca', 'szkoła taneczna', 'dance school', 'танцевальная школа'],
+    positiveKeywords: { pl: ['szkoła tańca', 'nauka tańca', 'kurs tańca', 'zajęcia taneczne', 'szkoła tańca towarzyskiego', 'lekcje tańca dla par', 'taniec dla dzieci', 'pierwszy taniec'], ru: ['школа танцев', 'уроки танцев', 'первый танец'], en: ['dance school', 'dance lessons'] },
+    negativeKeywords: { pl: ['klub nocny', 'dyskoteka', 'sala weselna'], ru: ['ночной клуб'], en: ['nightclub'] },
+    excludedBusinessTypes: ['nightclub', 'event_hall'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads lokalne', 'system rezerwacji online'],
+    searchTemplates: ['szkoła tańca', 'kurs tańca dla par', 'nauka pierwszego tańca', 'zajęcia taneczne dla dzieci', 'szkoła tańca towarzyskiego', 'lekcje tańca dla dorosłych']
+  },
+  {
+    categoryId: 'tennis_club',
+    labels: { pl: 'Kluby tenisowe', ru: 'Теннисные клубы', en: 'Tennis clubs' },
+    aliases: ['klub tenisowy', 'kort tenisowy', 'tennis club', 'теннисный клуб'],
+    positiveKeywords: { pl: ['klub tenisowy', 'korty tenisowe', 'nauka tenisa', 'trener tenisa', 'wynajem kortu', 'akademia tenisa', 'kort tenisowy kryty'], ru: ['теннисный клуб', 'теннисные корты', 'тренер по теннису'], en: ['tennis club', 'tennis courts', 'tennis academy'] },
+    negativeKeywords: { pl: ['boisko wielofunkcyjne osiedlowe', 'squash klub'], ru: [], en: ['squash club'] },
+    excludedBusinessTypes: ['squash_club', 'public_playground'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads lokalne', 'system rezerwacji online'],
+    searchTemplates: ['klub tenisowy', 'korty tenisowe kryte', 'nauka tenisa dla dzieci', 'wynajem kortu tenisowego', 'akademia tenisa ziemnego', 'trener tenisa prywatny']
+  },
+  {
+    categoryId: 'golf_club',
+    labels: { pl: 'Kluby golfowe', ru: 'Гольф-клубы', en: 'Golf clubs' },
+    aliases: ['klub golfowy', 'pole golfowe', 'golf club', 'гольф-клуб'],
+    positiveKeywords: { pl: ['klub golfowy', 'pole golfowe', 'nauka golfa', 'akademia golfa', 'driving range', 'trener golfa', 'ekskluzywny klub golfowy', 'członkostwo klubu golfowego'], ru: ['гольф-клуб', 'поле для гольфа', 'академия гольфа'], en: ['golf club', 'golf course', 'golf academy'] },
+    negativeKeywords: { pl: ['minigolf', 'mini golf dla dzieci', 'park rozrywki'], ru: ['мини-гольф'], en: ['mini golf'] },
+    excludedBusinessTypes: ['mini_golf', 'amusement_park'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads lokalne', 'system rezerwacji online'],
+    searchTemplates: ['klub golfowy', 'pole golfowe premium', 'nauka golfa dla początkujących', 'akademia golfa', 'driving range golf', 'ekskluzywny klub golfowy']
+  },
+  {
+    categoryId: 'private_school',
+    labels: { pl: 'Szkoły prywatne', ru: 'Частные школы', en: 'Private schools' },
+    aliases: ['szkoła prywatna', 'szkoła niepubliczna', 'private school', 'частная школа'],
+    positiveKeywords: { pl: ['szkoła prywatna', 'szkoła niepubliczna', 'liceum prywatne', 'szkoła podstawowa prywatna', 'edukacja spersonalizowana', 'kameralne klasy', 'szkoła z międzynarodową maturą', 'ekskluzywna szkoła'], ru: ['частная школа', 'негосударственная школа', 'международный бакалавриат'], en: ['private school', 'independent school', 'international school'] },
+    negativeKeywords: { pl: ['szkoła publiczna', 'szkoła państwowa', 'zespół szkół publicznych'], ru: ['государственная школа'], en: ['public school'] },
+    excludedBusinessTypes: ['public_school', 'state_school'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads lokalne', 'system rezerwacji online'],
+    searchTemplates: ['szkoła prywatna', 'liceum prywatne', 'szkoła podstawowa niepubliczna', 'prywatna szkoła z maturą międzynarodową', 'ekskluzywna szkoła prywatna', 'szkoła prywatna dla dzieci']
+  },
+  {
+    categoryId: 'language_schools',
+    labels: { pl: 'Szkoły językowe', ru: 'Языковые школы', en: 'Language schools' },
+    aliases: ['szkoła językowa', 'kurs językowy', 'language school', 'языковая школа'],
+    positiveKeywords: { pl: ['szkoła językowa', 'kurs angielskiego', 'nauka języków obcych', 'lekcje języka angielskiego', 'kurs języka dla firm', 'szkoła językowa dla dzieci', 'przygotowanie do certyfikatu językowego', 'korepetycje językowe'], ru: ['языковая школа', 'курсы английского', 'изучение иностранных языков'], en: ['language school', 'english courses', 'language learning'] },
+    negativeKeywords: { pl: ['korepetytor prywatny freelancer', 'nauczyciel indywidualny bez firmy'], ru: [], en: [] },
+    excludedBusinessTypes: [],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads lokalne', 'system rezerwacji online'],
+    searchTemplates: ['szkoła językowa', 'kurs angielskiego dla dorosłych', 'szkoła językowa dla dzieci', 'kursy językowe dla firm', 'nauka języka obcego online i stacjonarnie', 'przygotowanie do egzaminu językowego']
+  },
+  {
+    categoryId: 'online_school',
+    labels: { pl: 'Szkoły online', ru: 'Онлайн-школы', en: 'Online schools' },
+    aliases: ['szkoła online', 'kursy online', 'e-learning', 'онлайн-школа'],
+    positiveKeywords: { pl: ['szkoła online', 'kursy online', 'platforma edukacyjna', 'nauka zdalna', 'szkolenia online', 'kurs e-learning', 'edukacja przez internet', 'szkoła internetowa'], ru: ['онлайн-школа', 'онлайн-курсы', 'дистанционное обучение'], en: ['online school', 'online courses', 'e-learning platform'] },
+    negativeKeywords: { pl: ['szkoła stacjonarna', 'kurs jednorazowy webinar bezpłatny'], ru: [], en: [] },
+    excludedBusinessTypes: [],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads lokalne', 'system rezerwacji online'],
+    searchTemplates: ['szkoła online', 'kursy online z certyfikatem', 'platforma e-learningowa', 'szkolenia online dla firm', 'nauka zdalna online', 'kurs online z instruktorem']
+  },
+  {
+    categoryId: 'training_center',
+    labels: { pl: 'Centra szkoleniowe', ru: 'Учебные центры', en: 'Training centers' },
+    aliases: ['centrum szkoleniowe', 'ośrodek szkoleniowy', 'training center', 'учебный центр'],
+    positiveKeywords: { pl: ['centrum szkoleniowe', 'ośrodek szkoleniowy', 'szkolenia zawodowe', 'kursy kwalifikacyjne', 'szkolenia branżowe', 'centrum edukacyjne dla dorosłych', 'kursy certyfikowane'], ru: ['учебный центр', 'профессиональное обучение', 'сертифицированные курсы'], en: ['training center', 'professional training', 'certified courses'] },
+    negativeKeywords: { pl: ['szkoła podstawowa', 'przedszkole'], ru: [], en: [] },
+    excludedBusinessTypes: ['kindergarten', 'primary_school'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads lokalne', 'system rezerwacji online'],
+    searchTemplates: ['centrum szkoleniowe', 'ośrodek szkoleń zawodowych', 'kursy kwalifikacyjne dla dorosłych', 'centrum edukacyjne z certyfikatami', 'szkolenia branżowe dla specjalistów', 'kursy zawodowe stacjonarne']
+  },
+  {
+    categoryId: 'corporate_training',
+    labels: { pl: 'Szkolenia korporacyjne', ru: 'Корпоративное обучение', en: 'Corporate training' },
+    aliases: ['szkolenia dla firm', 'szkolenia biznesowe', 'corporate training', 'корпоративное обучение'],
+    positiveKeywords: { pl: ['szkolenia korporacyjne', 'szkolenia dla firm', 'szkolenia biznesowe', 'rozwój kompetencji pracowników', 'warsztaty dla firm', 'szkolenia menedżerskie', 'szkolenia z zakresu przywództwa', 'firma szkoleniowa b2b'], ru: ['корпоративное обучение', 'бизнес-тренинги', 'обучение персонала'], en: ['corporate training', 'business training', 'employee development'] },
+    negativeKeywords: { pl: ['szkolenie bhp podstawowe', 'kurs prawa jazdy'], ru: [], en: [] },
+    excludedBusinessTypes: ['driving_school'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads lokalne', 'system rezerwacji online'],
+    searchTemplates: ['szkolenia korporacyjne', 'szkolenia dla firm z zakresu zarządzania', 'warsztaty biznesowe dla pracowników', 'firma szkoleniowa b2b', 'szkolenia menedżerskie dla kadry', 'rozwój kompetencji miękkich w firmie']
+  },
+  {
+    categoryId: 'jewelry_house',
+    labels: { pl: 'Domy jubilerskie', ru: 'Ювелирные дома', en: 'Jewelry houses' },
+    aliases: ['jubiler', 'biżuteria luksusowa', 'dom jubilerski', 'jewelry house'],
+    positiveKeywords: { pl: ['dom jubilerski', 'biżuteria luksusowa', 'jubiler', 'pracownia jubilerska', 'biżuteria na zamówienie', 'kamienie szlachetne', 'obrączki na zamówienie', 'wycena biżuterii', 'antyczna biżuteria', 'zegarki luksusowe'], ru: ['ювелирный дом', 'элитные украшения', 'ювелир', 'украшения на заказ'], en: ['jewelry house', 'luxury jewelry', 'bespoke jewelry', 'fine jewelry'] },
+    negativeKeywords: { pl: ['lombard', 'skup złota i biżuterii', 'biżuteria sztuczna', 'sieć sklepów z biżuterią', 'biżuteria kostiumowa'], ru: ['ломбард', 'скупка золота', 'бижутерия'], en: ['pawn shop', 'costume jewelry', 'gold buyer'] },
+    excludedBusinessTypes: ['pawn_shop'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'portfolio realizacji'],
+    searchTemplates: ['dom jubilerski', 'biżuteria luksusowa na zamówienie', 'pracownia jubilerska', 'ekskluzywna biżuteria autorska', 'zegarki i biżuteria premium']
+  },
+  {
+    categoryId: 'premium_furniture',
+    labels: { pl: 'Meble premium', ru: 'Премиальная мебель', en: 'Premium furniture' },
+    aliases: ['meble luksusowe', 'meble na zamówienie premium', 'premium furniture'],
+    positiveKeywords: { pl: ['meble premium', 'meble luksusowe', 'meble na zamówienie', 'meble designerskie', 'salon mebli ekskluzywnych', 'meble włoskie', 'meble tapicerowane na wymiar', 'stolarnia meblowa artystyczna'], ru: ['премиальная мебель', 'элитная мебель', 'мебель на заказ', 'дизайнерская мебель'], en: ['premium furniture', 'luxury furniture', 'bespoke furniture', 'designer furniture'] },
+    negativeKeywords: { pl: ['meble sieciowe', 'meble ogrodowe plastikowe', 'market meblowy', 'meble tanie', 'sklep meblowy dyskontowy'], ru: ['мебельный магазин эконом', 'сетевая мебель'], en: ['budget furniture store', 'flat-pack furniture'] },
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'portfolio realizacji'],
+    searchTemplates: ['meble premium na zamówienie', 'salon mebli luksusowych', 'meble designerskie do wnętrz', 'stolarnia meblowa ekskluzywna', 'meble włoskie na wymiar']
+  },
+  {
+    categoryId: 'interior_design',
+    labels: { pl: 'Projektowanie wnętrz', ru: 'Дизайн интерьеров', en: 'Interior design' },
+    aliases: ['architekt wnętrz', 'projektant wnętrz', 'interior design'],
+    positiveKeywords: { pl: ['projektowanie wnętrz', 'architekt wnętrz', 'aranżacja wnętrz', 'projekt wnętrz mieszkania', 'pracownia projektowania wnętrz', 'design wnętrz', 'wykończenie wnętrz pod klucz'], ru: ['дизайн интерьера', 'дизайнер интерьеров', 'проектирование интерьера'], en: ['interior design', 'interior designer', 'interior architecture'] },
+    negativeKeywords: { pl: ['sklep z dekoracjami', 'hurtownia wykończeniowa', 'firma sprzątająca'], ru: ['магазин декора'], en: ['home decor store'] },
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'portfolio realizacji'],
+    searchTemplates: ['pracownia projektowania wnętrz', 'architekt wnętrz mieszkania', 'aranżacja wnętrz pod klucz', 'projekt wnętrz biura', 'design wnętrz apartamentu']
+  },
+  {
+    categoryId: 'luxury_architecture_studio',
+    labels: { pl: 'Pracownie architektury rezydencjonalnej', ru: 'Архитектура частных резиденций', en: 'Luxury residential architecture studios' },
+    aliases: ['architekt rezydencji', 'architektura luksusowych domów', 'private residence architect'],
+    positiveKeywords: { pl: ['architektura rezydencjonalna', 'projekt domu jednorodzinnego luksusowego', 'architekt rezydencji', 'pracownia architektoniczna willi', 'projektowanie domów ekskluzywnych', 'architekt domów pod klucz'], ru: ['архитектура резиденций', 'архитектор частных домов', 'проект элитного дома'], en: ['residential architecture', 'private residence architect', 'luxury home architect'] },
+    negativeKeywords: { pl: ['biuro architektoniczne osiedla', 'architektura komercyjna', 'architektura biurowa', 'projektowanie budynków wielorodzinnych', 'architekt wnętrz'], ru: ['коммерческая архитектура', 'архитектура жилых комплексов'], en: ['commercial architecture firm', 'multifamily housing architect'] },
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'portfolio realizacji'],
+    searchTemplates: ['pracownia architektoniczna rezydencji', 'architekt domów jednorodzinnych luksusowych', 'projekt willi na zamówienie', 'architektura ekskluzywnych domów', 'pracownia architektury willowej']
+  },
+  {
+    categoryId: 'private_villa_developer',
+    labels: { pl: 'Budowa willi', ru: 'Частные виллы (застройщики)', en: 'Private villa developers' },
+    aliases: ['deweloper willi', 'budowa domów luksusowych', 'villa developer'],
+    positiveKeywords: { pl: ['budowa willi', 'generalny wykonawca willi', 'firma budująca domy luksusowe', 'budowa rezydencji', 'domy pod klucz premium', 'deweloper domów jednorodzinnych ekskluzywnych'], ru: ['строительство вилл', 'застройщик частных вилл', 'генподрядчик элитных домов'], en: ['villa construction', 'luxury home builder', 'private villa developer'] },
+    negativeKeywords: { pl: ['deweloper mieszkaniowy blokowy', 'budowa bloków', 'osiedle domów szeregowych budżetowych', 'firma remontowa mała'], ru: ['застройщик многоквартирных домов', 'бюджетное жилье'], en: ['apartment block developer', 'budget housing developer'] },
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'portfolio realizacji'],
+    searchTemplates: ['generalny wykonawca willi', 'budowa domów luksusowych pod klucz', 'firma budująca rezydencje', 'deweloper domów jednorodzinnych premium', 'budowa willi na indywidualny projekt']
+  },
+  {
+    categoryId: 'yacht_sales',
+    labels: { pl: 'Jachty - sprzedaż i czarter', ru: 'Яхты', en: 'Yachts - sales & charter' },
+    aliases: ['broker jachtowy', 'sprzedaż jachtów', 'yacht brokerage'],
+    positiveKeywords: { pl: ['sprzedaż jachtów', 'broker jachtowy', 'czarter jachtów luksusowych', 'jachty motorowe premium', 'jachty na zamówienie', 'agencja jachtowa', 'jachty żaglowe ekskluzywne'], ru: ['продажа яхт', 'брокер яхт', 'чартер яхт', 'яхтенный брокер'], en: ['yacht sales', 'yacht broker', 'yacht charter', 'superyacht'] },
+    negativeKeywords: { pl: ['wypożyczalnia kajaków', 'wypożyczalnia łódek rekreacyjnych', 'szkoła żeglarska podstawowa', 'sklep wędkarski'], ru: ['прокат лодок', 'прокат байдарок'], en: ['kayak rental', 'boat rental basic', 'fishing shop'] },
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'portfolio realizacji'],
+    searchTemplates: ['broker jachtowy', 'sprzedaż jachtów luksusowych', 'czarter jachtów premium', 'agencja sprzedaży jachtów', 'jachty motorowe na zamówienie']
+  },
+  {
+    categoryId: 'private_aviation',
+    labels: { pl: 'Lotnictwo prywatne', ru: 'Частная авиация', en: 'Private aviation' },
+    aliases: ['czarter samolotów prywatnych', 'private jet charter', 'loty prywatne'],
+    positiveKeywords: { pl: ['czarter samolotów prywatnych', 'wynajem samolotu prywatnego', 'loty czarterowe biznesowe', 'zarządzanie samolotem prywatnym', 'broker lotów prywatnych', 'jet prywatny'], ru: ['чартер частных самолетов', 'аренда частного самолета', 'бизнес-авиация', 'брокер частных перелетов'], en: ['private jet charter', 'private aviation', 'business jet', 'jet management'] },
+    negativeKeywords: { pl: ['tanie linie lotnicze', 'szkoła lotnicza rekreacyjna', 'aeroklub amatorski', 'wycieczki balonem'], ru: ['бюджетные авиалинии', 'авиашкола любительская'], en: ['budget airline', 'flight school hobby', 'hot air balloon rides'] },
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'portfolio realizacji'],
+    searchTemplates: ['czarter samolotów prywatnych', 'wynajem jetu prywatnego', 'broker lotów biznesowych', 'zarządzanie flotą samolotów prywatnych', 'loty czarterowe VIP']
+  },
+  {
+    categoryId: 'landscaping_company',
+    labels: { pl: 'Firmy ogrodnicze / architektura krajobrazu', ru: 'Ландшафтные компании', en: 'Landscaping companies' },
+    aliases: ['architektura krajobrazu', 'firma ogrodnicza', 'landscaping'],
+    positiveKeywords: { pl: ['architektura krajobrazu', 'projektowanie ogrodów', 'firma ogrodnicza', 'zakładanie ogrodów', 'pielęgnacja ogrodów', 'projekt zieleni działki', 'ogrody przydomowe pod klucz'], ru: ['ландшафтный дизайн', 'ландшафтная компания', 'озеленение участка', 'проектирование сада'], en: ['landscaping company', 'landscape architecture', 'garden design'] },
+    negativeKeywords: { pl: ['koszenie trawy usługa jednorazowa', 'sklep ogrodniczy', 'hurtownia nasion', 'wycinka drzew tylko'], ru: ['магазин садовых товаров'], en: ['garden supply store', 'lawn mowing only'] },
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'portfolio realizacji'],
+    searchTemplates: ['architektura krajobrazu firma', 'projektowanie i zakładanie ogrodów', 'firma ogrodnicza kompleksowa', 'ogrody przydomowe pod klucz', 'projekt zieleni wokół domu']
+  },
+  {
+    categoryId: 'greenery_planting',
+    labels: { pl: 'Nasadzenia i zieleń', ru: 'Озеленение', en: 'Greenery planting' },
+    aliases: ['zieleń miejska', 'nasadzenia roślin', 'ozelenienie'],
+    positiveKeywords: { pl: ['nasadzenia roślin', 'zieleń miejska', 'usługi ogrodnicze nasadzenia', 'projektowanie zieleni', 'żywopłoty nasadzenia', 'trawniki zakładanie', 'pielęgnacja terenów zielonych'], ru: ['озеленение территории', 'посадка растений', 'благоустройство зелени'], en: ['greenery planting', 'planting services', 'green area maintenance'] },
+    negativeKeywords: { pl: ['leśnictwo przemysłowe', 'gospodarstwo rolne', 'szkółka hurtowa sprzedaż detaliczna'], ru: ['лесное хозяйство', 'питомник розничный'], en: ['forestry', 'retail plant nursery'] },
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'portfolio realizacji'],
+    searchTemplates: ['nasadzenia roślin i zieleni', 'firma zajmująca się zielenią miejską', 'zakładanie trawników i żywopłotów', 'pielęgnacja terenów zielonych', 'projektowanie i nasadzenia zieleni']
+  },
+  {
+    categoryId: 'irrigation_systems',
+    labels: { pl: 'Systemy nawadniania', ru: 'Автоматический полив', en: 'Irrigation systems' },
+    aliases: ['nawadnianie automatyczne', 'systemy irygacyjne', 'irrigation'],
+    positiveKeywords: { pl: ['automatyczne nawadnianie', 'systemy nawadniania ogrodu', 'instalacja nawadniania', 'montaż zraszaczy', 'nawadnianie trawnika automatyczne', 'systemy irygacyjne'], ru: ['автоматический полив', 'системы орошения', 'установка полива'], en: ['irrigation systems', 'automatic watering', 'sprinkler installation'] },
+    negativeKeywords: { pl: ['nawadnianie rolnicze pola', 'hurtownia węży ogrodowych'], ru: ['сельскохозяйственное орошение'], en: ['agricultural irrigation'] },
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'portfolio realizacji'],
+    searchTemplates: ['montaż systemów nawadniania', 'automatyczne nawadnianie ogrodu', 'instalacja zraszaczy', 'systemy irygacyjne do ogrodu', 'nawadnianie trawników automatyczne']
+  },
+  {
+    categoryId: 'pool_construction',
+    labels: { pl: 'Baseny - budowa', ru: 'Бассейны', en: 'Pool construction' },
+    aliases: ['budowa basenów', 'baseny ogrodowe', 'pool construction'],
+    positiveKeywords: { pl: ['budowa basenów', 'baseny ogrodowe', 'baseny skimmerowe', 'basen przydomowy pod klucz', 'firma budująca baseny', 'baseny betonowe', 'niecki basenowe'], ru: ['строительство бассейнов', 'бассейны для дома', 'частный бассейн под ключ'], en: ['pool construction', 'private pool builder', 'swimming pool contractor'] },
+    negativeKeywords: { pl: ['basen publiczny', 'kryta pływalnia miejska', 'aquapark', 'basen hotelowy zarządzanie'], ru: ['общественный бассейн', 'аквапарк'], en: ['public swimming pool', 'municipal pool', 'aquapark'] },
+    excludedBusinessTypes: ['public_pool', 'water_park'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'portfolio realizacji'],
+    searchTemplates: ['budowa basenów przydomowych', 'firma budująca baseny ogrodowe', 'basen skimmerowy pod klucz', 'baseny betonowe na zamówienie', 'budowa niecki basenowej']
+  },
+  {
+    categoryId: 'sauna_manufacturer',
+    labels: { pl: 'Sauny - produkcja i montaż', ru: 'Сауны', en: 'Sauna manufacturers' },
+    aliases: ['budowa saun', 'producent saun', 'sauna manufacturer'],
+    positiveKeywords: { pl: ['produkcja saun', 'budowa saun ogrodowych', 'montaż sauny', 'sauny na wymiar', 'sauny fińskie producent', 'sauny beczki ogrodowe', 'sauny do domu'], ru: ['производство саун', 'строительство бань', 'сауна на заказ'], en: ['sauna manufacturer', 'sauna construction', 'custom sauna builder'] },
+    negativeKeywords: { pl: ['salon spa publiczny', 'sauna miejska basen', 'siłownia z sauną'], ru: ['общественная сауна', 'спа-салон'], en: ['public spa', 'gym sauna facility'] },
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'portfolio realizacji'],
+    searchTemplates: ['producent saun na wymiar', 'budowa saun ogrodowych', 'montaż sauny fińskiej', 'sauny do ogrodu producent', 'sauny beczkowe na zamówienie']
+  },
+  {
+    categoryId: 'terrace_construction',
+    labels: { pl: 'Tarasy - budowa', ru: 'Террасы', en: 'Terrace construction' },
+    aliases: ['budowa tarasów', 'tarasy drewniane', 'terrace builder'],
+    positiveKeywords: { pl: ['budowa tarasów', 'tarasy drewniane', 'tarasy kompozytowe', 'montaż desek tarasowych', 'zadaszenia tarasów', 'tarasy ogrodowe pod klucz'], ru: ['строительство террас', 'террасная доска монтаж', 'терраса под ключ'], en: ['terrace construction', 'deck building', 'composite decking installation'] },
+    negativeKeywords: { pl: ['taras restauracyjny wyposażenie', 'meble tarasowe sklep'], ru: [], en: [] },
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'portfolio realizacji'],
+    searchTemplates: ['budowa tarasów drewnianych', 'montaż tarasów kompozytowych', 'firma budująca tarasy ogrodowe', 'zadaszenia i tarasy na zamówienie', 'tarasy przy domu pod klucz']
+  },
+  {
+    categoryId: 'paving_stones',
+    labels: { pl: 'Kostka brukowa - układanie', ru: 'Брусчатка', en: 'Paving stones' },
+    aliases: ['brukarstwo', 'układanie kostki brukowej', 'paving contractor'],
+    positiveKeywords: { pl: ['układanie kostki brukowej', 'brukarstwo', 'firma brukarska', 'kostka brukowa podjazdy', 'brukowanie działki', 'układanie płyt tarasowych brukarz'], ru: ['укладка брусчатки', 'мощение', 'брусчатка для двора'], en: ['paving stone installation', 'driveway paving', 'block paving contractor'] },
+    negativeKeywords: { pl: ['hurtownia kostki brukowej sprzedaż', 'producent kostki brukowej'], ru: ['продажа брусчатки оптом'], en: ['paving stone wholesaler'] },
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'portfolio realizacji'],
+    searchTemplates: ['firma brukarska układanie kostki', 'brukowanie podjazdów i tarasów', 'układanie kostki brukowej działka', 'brukarz kompleksowe usługi', 'kostka brukowa montaż ogród']
+  },
+  {
+    categoryId: 'fencing_company',
+    labels: { pl: 'Ogrodzenia', ru: 'Заборы', en: 'Fencing companies' },
+    aliases: ['montaż ogrodzeń', 'firma ogrodzeniowa', 'fencing contractor'],
+    positiveKeywords: { pl: ['montaż ogrodzeń', 'firma ogrodzeniowa', 'ogrodzenia panelowe', 'ogrodzenia kute', 'bramy i ogrodzenia', 'ogrodzenia posesji', 'producent ogrodzeń na zamówienie'], ru: ['установка заборов', 'изготовление ограждений', 'заборы на заказ'], en: ['fence installation', 'fencing company', 'custom fencing'] },
+    negativeKeywords: { pl: ['ogrodzenia tymczasowe budowlane wynajem', 'siatka ogrodzeniowa hurt sklep'], ru: ['аренда временных заборов'], en: ['temporary fence rental'] },
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'portfolio realizacji'],
+    searchTemplates: ['montaż ogrodzeń posesji', 'firma ogrodzeniowa panele i brama', 'ogrodzenia kute na zamówienie', 'producent ogrodzeń metalowych', 'bramy wjazdowe i ogrodzenia']
+  },
+  {
+    categoryId: 'outdoor_lighting',
+    labels: { pl: 'Oświetlenie terenów zewnętrznych', ru: 'Освещение участков', en: 'Outdoor lighting' },
+    aliases: ['oświetlenie ogrodowe', 'iluminacja terenu', 'landscape lighting'],
+    positiveKeywords: { pl: ['oświetlenie ogrodowe', 'oświetlenie terenów zewnętrznych', 'iluminacja ogrodu', 'montaż oświetlenia elewacji', 'oświetlenie architektury krajobrazu', 'lampy solarne montaż ogród'], ru: ['освещение участка', 'ландшафтное освещение', 'подсветка сада'], en: ['outdoor lighting', 'landscape lighting', 'garden lighting installation'] },
+    negativeKeywords: { pl: ['oświetlenie uliczne miejskie przetarg', 'sklep z lampami'], ru: ['уличное освещение муниципальное'], en: ['municipal street lighting', 'lighting retail store'] },
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'portfolio realizacji'],
+    searchTemplates: ['montaż oświetlenia ogrodowego', 'iluminacja terenu posesji', 'oświetlenie elewacji i ogrodu', 'projekt oświetlenia krajobrazu', 'oświetlenie ścieżek i tarasu']
+  },
+  {
+    categoryId: 'mechanical_engineering',
+    labels: { pl: 'Budowa maszyn', ru: 'Машиностроение', en: 'Mechanical engineering' },
+    aliases: ['konstrukcje maszyn', 'przemysł maszynowy', 'machine building'],
+    positiveKeywords: { pl: ['budowa maszyn', 'konstruowanie maszyn przemysłowych', 'projektowanie maszyn', 'producent maszyn na zamówienie', 'maszyny specjalistyczne', 'inżynieria mechaniczna przemysłowa'], ru: ['машиностроение', 'производство машин на заказ', 'проектирование промышленных машин'], en: ['mechanical engineering', 'custom machine building', 'industrial machinery manufacturer'] },
+    negativeKeywords: { pl: ['serwis maszyn rolniczych mały warsztat', 'sklep z narzędziami', 'wypożyczalnia sprzętu budowlanego'], ru: ['ремонт бытовой техники'], en: ['tool retail shop', 'equipment rental'] },
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'portfolio realizacji'],
+    searchTemplates: ['budowa maszyn przemysłowych na zamówienie', 'producent maszyn specjalistycznych', 'projektowanie i konstrukcja maszyn', 'inżynieria mechaniczna dla przemysłu', 'maszyny na zamówienie dla fabryk']
+  },
+  {
+    categoryId: 'metalworking',
+    labels: { pl: 'Obróbka metali', ru: 'Металлообработка', en: 'Metalworking' },
+    aliases: ['obróbka metalu', 'usługi ślusarskie przemysłowe', 'metal fabrication'],
+    positiveKeywords: { pl: ['obróbka metali', 'obróbka skrawaniem', 'toczenie i frezowanie', 'usługi ślusarskie przemysłowe', 'produkcja elementów metalowych', 'gięcie blach', 'konstrukcje stalowe na zamówienie'], ru: ['металлообработка', 'токарные и фрезерные работы', 'изготовление металлоконструкций'], en: ['metalworking', 'metal fabrication', 'CNC turning and milling', 'steel structures'] },
+    negativeKeywords: { pl: ['kowalstwo artystyczne hobby', 'ślusarz kluczy usługi domowe'], ru: ['художественная ковка хобби'], en: ['hobby blacksmithing', 'locksmith residential'] },
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'portfolio realizacji'],
+    searchTemplates: ['firma zajmująca się obróbką metali', 'usługi toczenia i frezowania metalu', 'produkcja elementów metalowych na zamówienie', 'gięcie i cięcie blach przemysłowe', 'konstrukcje stalowe producent']
+  },
+  {
+    categoryId: 'laser_cutting',
+    labels: { pl: 'Cięcie laserowe', ru: 'Лазерная резка', en: 'Laser cutting' },
+    aliases: ['wycinanie laserowe', 'usługi cięcia laserem', 'laser cutting service'],
+    positiveKeywords: { pl: ['cięcie laserowe metalu', 'wycinanie laserowe blach', 'usługi cięcia laserem przemysłowe', 'laser fiber cięcie', 'cięcie laserowe na zamówienie', 'grawerowanie i cięcie laserowe'], ru: ['лазерная резка металла', 'услуги лазерной резки', 'резка листового металла лазером'], en: ['laser cutting service', 'metal laser cutting', 'industrial laser cutting'] },
+    negativeKeywords: { pl: ['grawerowanie pamiątek hobby', 'makerspace amatorski', 'plotter laserowy domowy'], ru: ['хобби гравировка', 'домашний лазерный станок'], en: ['hobbyist laser engraving', 'makerspace', 'desktop laser cutter'] },
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'portfolio realizacji'],
+    searchTemplates: ['usługi cięcia laserowego metalu', 'wycinanie laserowe blach na zamówienie', 'firma zajmująca się cięciem laserowym', 'cięcie laserowe stali i aluminium', 'laser przemysłowy usługi produkcyjne']
+  },
+  {
+    categoryId: 'cnc_machining',
+    labels: { pl: 'Obróbka CNC', ru: 'Обработка на станках CNC', en: 'CNC machining' },
+    aliases: ['frezowanie CNC', 'toczenie CNC', 'CNC machining service'],
+    positiveKeywords: { pl: ['obróbka CNC', 'frezowanie CNC', 'toczenie CNC', 'usługi CNC na zamówienie', 'obrabiarki CNC produkcja', 'prototypowanie CNC', 'obróbka mechaniczna precyzyjna'], ru: ['ЧПУ обработка', 'фрезерование с ЧПУ', 'токарные работы ЧПУ'], en: ['CNC machining', 'CNC milling', 'CNC turning service'] },
+    negativeKeywords: { pl: ['frezarka domowa hobby', 'makerspace amatorski CNC', 'szkoła programowania CNC kurs'], ru: ['хобби ЧПУ станок'], en: ['hobbyist CNC router', 'makerspace CNC'] },
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'portfolio realizacji'],
+    searchTemplates: ['usługi obróbki CNC na zamówienie', 'frezowanie i toczenie CNC', 'firma świadcząca usługi CNC', 'precyzyjna obróbka mechaniczna CNC', 'prototypowanie i produkcja CNC']
+  },
+  {
+    categoryId: 'welding_services',
+    labels: { pl: 'Spawalnictwo / usługi spawalnicze', ru: 'Сварка', en: 'Welding services' },
+    aliases: ['usługi spawalnicze', 'spawanie konstrukcji', 'welding contractor'],
+    positiveKeywords: { pl: ['usługi spawalnicze', 'spawanie konstrukcji stalowych', 'spawanie MIG MAG TIG', 'firma spawalnicza', 'spawanie aluminium przemysłowe', 'produkcja konstrukcji spawanych'], ru: ['сварочные работы', 'сварка металлоконструкций', 'услуги сварщика'], en: ['welding services', 'industrial welding', 'welded steel structures'] },
+    negativeKeywords: { pl: ['kurs spawania szkolenie', 'spawanie drobne naprawy domowe'], ru: ['курсы сварки обучение'], en: ['welding training course'] },
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'portfolio realizacji'],
+    searchTemplates: ['firma spawalnicza usługi przemysłowe', 'spawanie konstrukcji stalowych na zamówienie', 'usługi spawalnicze MIG MAG TIG', 'produkcja konstrukcji spawanych', 'spawanie aluminium i stali nierdzewnej']
+  },
+  {
+    categoryId: 'robotics_automation',
+    labels: { pl: 'Robotyzacja produkcji', ru: 'Роботизация', en: 'Robotics automation' },
+    aliases: ['integrator robotów przemysłowych', 'automatyzacja robotyczna', 'robotic integration'],
+    positiveKeywords: { pl: ['robotyzacja produkcji', 'integrator robotów przemysłowych', 'wdrażanie robotów w produkcji', 'roboty spawalnicze przemysłowe', 'cele zrobotyzowane', 'automatyzacja linii produkcyjnej robotami'], ru: ['роботизация производства', 'интеграция промышленных роботов', 'внедрение роботов на производстве'], en: ['industrial robotics integration', 'production robotization', 'robotic automation systems'] },
+    negativeKeywords: { pl: ['roboty edukacyjne dla dzieci', 'sklep z zabawkami robotycznymi'], ru: ['образовательные роботы для детей'], en: ['educational robotics kits', 'toy robots'] },
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'portfolio realizacji'],
+    searchTemplates: ['integrator robotów przemysłowych', 'robotyzacja linii produkcyjnej', 'wdrożenia zrobotyzowane w fabryce', 'firma zajmująca się robotyzacją produkcji', 'automatyzacja produkcji za pomocą robotów']
+  },
+  {
+    categoryId: 'production_automation',
+    labels: { pl: 'Automatyzacja produkcji', ru: 'Автоматизация производства', en: 'Production automation' },
+    aliases: ['automatyka przemysłowa', 'systemy sterowania produkcją', 'industrial automation'],
+    positiveKeywords: { pl: ['automatyzacja produkcji', 'automatyka przemysłowa', 'systemy sterowania PLC', 'integracja systemów SCADA', 'projektowanie linii produkcyjnych', 'modernizacja linii produkcyjnych automatyka'], ru: ['автоматизация производства', 'промышленная автоматика', 'системы управления ПЛК'], en: ['production automation', 'industrial automation', 'PLC control systems'] },
+    negativeKeywords: { pl: ['automatyka domowa smart home', 'automatyka bram garażowych'], ru: ['умный дом автоматика'], en: ['smart home automation', 'garage door automation'] },
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'portfolio realizacji'],
+    searchTemplates: ['firma zajmująca się automatyzacją produkcji', 'automatyka przemysłowa dla fabryk', 'projektowanie systemów sterowania PLC', 'integracja SCADA w produkcji', 'modernizacja linii produkcyjnych automatyka']
+  },
+  {
+    categoryId: 'solar_power_plants',
+    labels: { pl: 'Elektrownie słoneczne / fotowoltaika', ru: 'Солнечные электростанции', en: 'Solar power plants' },
+    aliases: ['instalacje fotowoltaiczne', 'farmy fotowoltaiczne', 'solar power plants'],
+    positiveKeywords: { pl: ['elektrownie słoneczne', 'instalacje fotowoltaiczne', 'farmy fotowoltaiczne', 'montaż paneli słonecznych przemysłowych', 'fotowoltaika dla biznesu', 'budowa elektrowni fotowoltaicznej'], ru: ['солнечные электростанции', 'фотовольтаические установки', 'солнечные панели для бизнеса'], en: ['solar power plants', 'photovoltaic installations', 'solar farms'] },
+    negativeKeywords: { pl: ['panele słoneczne do ogrzewania wody domowe małe', 'sklep z bateriami słonecznymi kalkulator'], ru: ['солнечные батареи для дома розница'], en: ['residential solar panel retail'] },
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'portfolio realizacji'],
+    searchTemplates: ['budowa elektrowni fotowoltaicznych', 'firma instalująca panele fotowoltaiczne przemysłowe', 'farmy fotowoltaiczne pod klucz', 'instalacje solarne dla biznesu', 'fotowoltaika komercyjna i przemysłowa']
+  },
+  {
+    categoryId: 'wind_energy',
+    labels: { pl: 'Energetyka wiatrowa', ru: 'Ветрогенерация', en: 'Wind energy' },
+    aliases: ['elektrownie wiatrowe', 'farmy wiatrowe', 'wind power'],
+    positiveKeywords: { pl: ['energetyka wiatrowa', 'elektrownie wiatrowe', 'farmy wiatrowe budowa', 'turbiny wiatrowe montaż', 'projektowanie elektrowni wiatrowych', 'serwis turbin wiatrowych'], ru: ['ветроэнергетика', 'ветряные электростанции', 'ветропарки строительство'], en: ['wind energy', 'wind farms', 'wind turbine installation'] },
+    negativeKeywords: { pl: ['małe turbiny wiatrowe hobby', 'wiatraki dekoracyjne ogrodowe'], ru: ['декоративные ветряки для сада'], en: ['decorative garden windmill'] },
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'portfolio realizacji'],
+    searchTemplates: ['budowa elektrowni wiatrowych', 'firma zajmująca się energetyką wiatrową', 'montaż i serwis turbin wiatrowych', 'projektowanie farm wiatrowych', 'elektrownie wiatrowe dla przemysłu']
+  },
+  {
+    categoryId: 'ev_charging_stations',
+    labels: { pl: 'Stacje ładowania samochodów elektrycznych', ru: 'Зарядные станции для электромобилей', en: 'EV charging stations' },
+    aliases: ['ładowarki EV', 'infrastruktura ładowania elektromobilność', 'EV charging'],
+    positiveKeywords: { pl: ['stacje ładowania samochodów elektrycznych', 'montaż ładowarek EV', 'infrastruktura ładowania pojazdów elektrycznych', 'wallbox montaż firma', 'ładowarki dla flot elektrycznych', 'punkty ładowania EV instalacja'], ru: ['зарядные станции для электромобилей', 'установка зарядных станций', 'инфраструктура зарядки электромобилей'], en: ['EV charging stations', 'EV charger installation', 'charging infrastructure'] },
+    negativeKeywords: { pl: ['sklep z ładowarkami do telefonów', 'ładowarki przenośne akcesoria detal'], ru: ['зарядки для телефонов магазин'], en: ['phone charger retail'] },
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'portfolio realizacji'],
+    searchTemplates: ['montaż stacji ładowania samochodów elektrycznych', 'firma instalująca ładowarki EV', 'infrastruktura ładowania dla firm', 'wallboxy montaż dla biznesu', 'punkty ładowania pojazdów elektrycznych instalacja']
+  },
+  {
+    categoryId: 'energy_audit',
+    labels: { pl: 'Audyt energetyczny', ru: 'Энергоаудит', en: 'Energy audit' },
+    aliases: ['audyt energetyczny budynku', 'audyt efektywności energetycznej', 'energy audit'],
+    positiveKeywords: { pl: ['audyt energetyczny', 'audyt efektywności energetycznej przedsiębiorstwa', 'audyt energetyczny budynku', 'świadectwo charakterystyki energetycznej', 'analiza zużycia energii firma', 'certyfikacja energetyczna budynków'], ru: ['энергоаудит', 'аудит энергоэффективности', 'энергетическое обследование'], en: ['energy audit', 'energy efficiency audit', 'energy performance certification'] },
+    negativeKeywords: { pl: ['sprzedaż liczników energii sklep', 'kontrola liczników gazowych odczyt'], ru: ['продажа счетчиков магазин'], en: ['energy meter retail'] },
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'portfolio realizacji'],
+    searchTemplates: ['firma wykonująca audyty energetyczne', 'audyt efektywności energetycznej przedsiębiorstwa', 'świadectwa charakterystyki energetycznej budynków', 'audyt energetyczny budynków przemysłowych', 'analiza i optymalizacja zużycia energii']
+  },
+  {
+    categoryId: 'energy_service_company',
+    labels: { pl: 'Przedsiębiorstwa usług energetycznych (ESCO)', ru: 'Энергосервисные компании', en: 'Energy service companies (ESCO)' },
+    aliases: ['ESCO', 'firma ESCO', 'kontrakty efektywności energetycznej', 'energy service company'],
+    positiveKeywords: { pl: ['przedsiębiorstwo usług energetycznych', 'firma ESCO', 'kontrakty efektywności energetycznej', 'finansowanie modernizacji energetycznej', 'usługi energetyczne dla przemysłu', 'zarządzanie energią w przedsiębiorstwie'], ru: ['энергосервисная компания', 'ЭСКО', 'энергосервисный контракт'], en: ['energy service company', 'ESCO', 'energy performance contracting'] },
+    negativeKeywords: { pl: ['dostawca prądu sprzedawca energii', 'zakład energetyczny dystrybucja'], ru: ['поставщик электроэнергии сбыт'], en: ['electricity retailer', 'utility distribution company'] },
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'portfolio realizacji'],
+    searchTemplates: ['firma ESCO usługi energetyczne', 'kontrakty efektywności energetycznej dla firm', 'przedsiębiorstwo usług energetycznych', 'modernizacja energetyczna finansowanie ESCO', 'zarządzanie energią w przedsiębiorstwie usługi']
   }
 ];
 
