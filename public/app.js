@@ -332,6 +332,16 @@ const copy = {
     custom: 'Своя категория',
     topGroup: 'Топ-категории',
     allGroup: 'Все категории',
+    groupConstruction: 'Строительство и девелопмент',
+    groupFacades: 'Фасады и архитектура',
+    groupEngineering: 'Инженерия и инженерные системы',
+    groupManufacturing: 'Производство для строительства',
+    groupHeavyEquipment: 'Спецтехника',
+    groupCommercialRealEstate: 'Коммерческая недвижимость',
+    groupMedicine: 'Медицина',
+    groupLegalFinance: 'Право и финансы',
+    groupLogistics: 'Логистика и транспорт',
+    groupPremiumAutomotive: 'Премиальный автобизнес',
     all: 'Все',
     noOwnSite: 'Нет своего сайта',
     siteFound: 'Сайт найден',
@@ -419,6 +429,16 @@ const copy = {
     custom: 'Własna kategoria',
     topGroup: 'Top kategorie',
     allGroup: 'Wszystkie kategorie',
+    groupConstruction: 'Budownictwo i deweloperka',
+    groupFacades: 'Fasady i architektura',
+    groupEngineering: 'Inżynieria i instalacje',
+    groupManufacturing: 'Produkcja dla budownictwa',
+    groupHeavyEquipment: 'Ciężki sprzęt',
+    groupCommercialRealEstate: 'Nieruchomości komercyjne',
+    groupMedicine: 'Medycyna',
+    groupLegalFinance: 'Prawo i finanse',
+    groupLogistics: 'Logistyka i transport',
+    groupPremiumAutomotive: 'Motoryzacja premium',
     all: 'Wszystkie',
     noOwnSite: 'Brak własnej strony',
     siteFound: 'Strona znaleziona',
@@ -1124,7 +1144,189 @@ const categoryOptions = [
   { id: 'winter_garden_pergola', value: 'Ogrody zimowe i pergole', label: 'Зимние сады и перголы', labelPl: 'Ogrody zimowe i pergole' }
 ];
 
-const topCategories = categoryOptions.slice(0, 12);
+// Curated top-12 priority niches (client-ranked business value: developers,
+// construction, architecture, manufacturers, HVAC/engineering, medical
+// clinics, commercial real estate, legal, manufacturing enterprises,
+// logistics, investment/finance, premium automotive) - NOT the first 12
+// entries of categoryOptions by array position. See fixpromt.txt-style task
+// scoping note in the top-categories feature commit for the full mapping.
+const topCategoryIds = [
+  'residential_developer',
+  'construction_company',
+  'architecture_firm',
+  'building_materials_manufacturer',
+  'hvac',
+  'clinics_general',
+  'commercial-realestate',
+  'legal_firm',
+  'manufacturing',
+  'logistics-companies',
+  'investment_company',
+  'premium_cars'
+];
+const topCategories = topCategoryIds
+  .map((id) => categoryOptions.find((category) => category.id === id))
+  .filter(Boolean);
+
+// Static thematic "top ~10" niche clusters shown as their own <optgroup>
+// sections in the discover category preset dropdown, in addition to the
+// flat top-12 (topCategories) above. Picks favor the highest commercial-value
+// / most commonly searched categoryIds per cluster (e.g. generalny wykonawca
+// / firma budowlana / deweloper before more obscure ids like geodesy/geology).
+// The same categoryId can legitimately appear in more than one group, in the
+// top-12, and again in the full alphabetical list - that's expected.
+const categoryGroups = [
+  {
+    labelKey: 'groupConstruction',
+    ids: [
+      'residential_developer',
+      'commercial_developer',
+      'building_investor',
+      'general_contractor',
+      'construction_company',
+      'industrial_construction',
+      'warehouse_construction',
+      'building_reconstruction',
+      'road_construction',
+      'budowa-domow'
+    ]
+  },
+  {
+    labelKey: 'groupFacades',
+    ids: [
+      'architecture_firm',
+      'facade',
+      'facade_manufacturer',
+      'design_bureau',
+      'bim_design',
+      'landscape_architecture',
+      'public_space_design',
+      'steel_structures',
+      'roofing',
+      'heritage_restoration'
+    ]
+  },
+  {
+    labelKey: 'groupEngineering',
+    ids: [
+      'heating_systems',
+      'heat_pumps',
+      'electrical_installation',
+      'plumbing',
+      'building_automation',
+      'smart_home',
+      'fire_safety',
+      'cctv',
+      'access_control',
+      'elevator_company'
+    ]
+  },
+  {
+    labelKey: 'groupManufacturing',
+    ids: [
+      'window_manufacturer',
+      'door_manufacturer',
+      'furniture_manufacturer',
+      'kitchen_manufacturer',
+      'staircase_manufacturer',
+      'building_materials_manufacturer',
+      'concrete_manufacturer',
+      'brick_manufacturer',
+      'aluminum_construction_manufacturer',
+      'glass_manufacturer'
+    ]
+  },
+  {
+    labelKey: 'groupHeavyEquipment',
+    ids: [
+      'sprzedaz-koparek',
+      'sprzedaz-ladowarek',
+      'sprzedaz-dzwigow',
+      'sprzedaz-maszyn-budowlanych',
+      'wynajem-maszyn-budowlanych',
+      'serwis-maszyn-budowlanych',
+      'czesci-do-maszyn-budowlanych',
+      'leasing-maszyn-budowlanych',
+      'forklift_sales',
+      'aerial_platform_sales'
+    ]
+  },
+  {
+    labelKey: 'groupCommercialRealEstate',
+    ids: [
+      'commercial-realestate',
+      'business-centers',
+      'logistics-parks',
+      'industrial-parks',
+      'property-management',
+      'new-developments',
+      'realestate-agencies',
+      'office_building_construction',
+      'office_fitout',
+      'serviced_apartment_operator'
+    ]
+  },
+  {
+    labelKey: 'groupMedicine',
+    ids: [
+      'clinics_general',
+      'medical_center',
+      'private_hospital',
+      'dentistry_clinic',
+      'aesthetic_medicine_clinic',
+      'plastic_surgery',
+      'ophthalmology',
+      'orthopedics',
+      'diagnostic_center',
+      'implantology'
+    ]
+  },
+  {
+    labelKey: 'groupLegalFinance',
+    ids: [
+      'legal_firm',
+      'law_firm_advocate',
+      'business_lawyer',
+      'tax_advisor',
+      'notary',
+      'investment_company',
+      'financial_advisor',
+      'mortgage_broker',
+      'insurance_agency',
+      'accounting_firm'
+    ]
+  },
+  {
+    labelKey: 'groupLogistics',
+    ids: [
+      'logistics-companies',
+      'transport-companies',
+      'logistics-parks',
+      'industrial-parks',
+      'oversized_transport',
+      'export',
+      'import',
+      'wholesale-suppliers',
+      'distributors',
+      'container_manufacturer'
+    ]
+  },
+  {
+    labelKey: 'groupPremiumAutomotive',
+    ids: [
+      'premium_cars',
+      'car_dealers',
+      'car_dealership',
+      'car_service',
+      'body_repair',
+      'car_tuning_workshop',
+      'car_wrapping',
+      'truck_sales',
+      'bus_sales',
+      'heavy_vehicle_sales'
+    ]
+  }
+];
 const allCategories = categoryOptions;
 const categoryById = new Map(categoryOptions.map((option) => [option.id, option]));
 const categoryByLookup = new Map();
@@ -1647,14 +1849,23 @@ async function loadCitySuggestions(query = '') {
   if (Array.isArray(data.suggestions) && data.suggestions.length) populateCitySuggestions(data.suggestions);
 }
 
-function populateCategoryPreset() {
-  const selectedValue = els.discoverCategoryPreset.value;
-  const topOptions = topCategories
+function categoryOptionsMarkup(categories) {
+  return categories
     .map((category) => `<option value="cat:${escapeAttribute(category.id)}">${escapeHtml(displayCategory(category.id))}</option>`)
     .join('');
-  const allOptions = allCategories
-    .filter((category) => !topCategories.some((topCategory) => topCategory.id === category.id))
-    .map((category) => `<option value="cat:${escapeAttribute(category.id)}">${escapeHtml(displayCategory(category.id))}</option>`)
+}
+
+function populateCategoryPreset() {
+  const selectedValue = els.discoverCategoryPreset.value;
+  const topOptions = categoryOptionsMarkup(topCategories);
+  const allOptions = categoryOptionsMarkup(
+    allCategories.filter((category) => !topCategories.some((topCategory) => topCategory.id === category.id))
+  );
+  const groupOptgroups = categoryGroups
+    .map((group) => {
+      const groupCategories = group.ids.map((id) => categoryById.get(id)).filter(Boolean);
+      return `<optgroup label="${escapeAttribute(tr(group.labelKey))}">${categoryOptionsMarkup(groupCategories)}</optgroup>`;
+    })
     .join('');
 
   els.discoverCategoryPreset.innerHTML = `
@@ -1662,6 +1873,7 @@ function populateCategoryPreset() {
     <option value="all_categories">${escapeHtml(tr('allCategories'))}</option>
     <option value="custom">${escapeHtml(tr('custom'))}</option>
     <optgroup label="${escapeAttribute(tr('topGroup'))}">${topOptions}</optgroup>
+    ${groupOptgroups}
     <optgroup label="${escapeAttribute(tr('allGroup'))}">${allOptions}</optgroup>
   `;
   if ([...els.discoverCategoryPreset.options].some((option) => option.value === selectedValue)) {
