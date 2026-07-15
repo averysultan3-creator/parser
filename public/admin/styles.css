@@ -607,6 +607,35 @@ button.link-item {
   min-height: auto;
 }
 
+.settings-form {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  align-items: start;
+}
+
+.settings-form label {
+  display: grid;
+  font-weight: 800;
+  gap: 6px;
+}
+
+.settings-form .checkbox-row {
+  align-items: center;
+  display: flex;
+  flex-direction: row;
+  gap: 10px;
+}
+
+.settings-form .checkbox-row input {
+  min-height: auto;
+}
+
+.settings-form .full-width {
+  grid-column: 1 / -1;
+  justify-self: start;
+}
+
 .toast-host {
   bottom: 18px;
   display: grid;
@@ -711,6 +740,16 @@ button.link-item {
 .badge-archived {
   background: #f0f0f0;
   color: #666;
+}
+
+.badge-fail {
+  background: #fdeceb;
+  color: var(--red);
+}
+
+.badge-progress {
+  background: #eaf3ff;
+  color: var(--blue);
 }
 
 .history-state-message {

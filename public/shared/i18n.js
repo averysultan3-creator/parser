@@ -981,7 +981,161 @@
       pl: 'Nie udało się sprawdzić testu. Spróbuj ponownie.',
       ru: 'Не удалось проверить тест. Попробуйте ещё раз.',
       en: 'Could not check the test. Please try again.'
-    }
+    },
+
+    // Admin > "AI Search" tab - settings form + jobs monitoring table for the
+    // admin-configurable AI company search pipeline. All new keys are
+    // prefixed admin_ai_search_/admin_btn_ to avoid any collision with the
+    // worker-side AI search UI keys added concurrently in this same file.
+    admin_tab_ai_search: { pl: 'AI Search', ru: 'AI-поиск', en: 'AI Search' },
+    admin_ai_search_eyebrow: { pl: 'AI Search', ru: 'AI-поиск', en: 'AI Search' },
+    admin_ai_search_settings_title: { pl: 'Ustawienia wyszukiwania AI', ru: 'Настройки AI-поиска', en: 'AI search settings' },
+    admin_ai_search_settings_subtitle: {
+      pl: "Modele, tryb wnioskowania, limity równoległości, budżetu i czasu dla pipeline'u wyszukiwania firm przez AI.",
+      ru: 'Модели, режим рассуждений, лимиты параллельности, бюджета и времени для конвейера AI-поиска компаний.',
+      en: 'Models, reasoning effort, and the parallelism/budget/timeout limits for the AI company search pipeline.'
+    },
+    admin_ai_search_model_search_label: { pl: 'Model wyszukiwania', ru: 'Модель поиска', en: 'Search model' },
+    admin_ai_search_model_enrich_label: { pl: 'Model wzbogacania', ru: 'Модель обогащения', en: 'Enrich model' },
+    admin_ai_search_web_search_label: { pl: 'Wyszukiwanie w internecie włączone', ru: 'Веб-поиск включён', en: 'Web search enabled' },
+    admin_ai_search_reasoning_effort_label: { pl: 'Poziom wnioskowania', ru: 'Уровень рассуждений', en: 'Reasoning effort' },
+    admin_ai_search_reasoning_low: { pl: 'Niski', ru: 'Низкий', en: 'Low' },
+    admin_ai_search_reasoning_medium: { pl: 'Średni', ru: 'Средний', en: 'Medium' },
+    admin_ai_search_reasoning_high: { pl: 'Wysoki', ru: 'Высокий', en: 'High' },
+    admin_ai_search_max_parallel_label: { pl: 'Maks. równoległych zapytań (1-10)', ru: 'Макс. параллельных запросов (1-10)', en: 'Max parallel requests (1-10)' },
+    admin_ai_search_max_companies_label: { pl: 'Maks. firm na zapytanie (1-100)', ru: 'Макс. компаний на запрос (1-100)', en: 'Max companies per request (1-100)' },
+    admin_ai_search_daily_budget_label: { pl: 'Dzienny limit budżetu (USD)', ru: 'Дневной лимит бюджета (USD)', en: 'Daily budget limit (USD)' },
+    admin_ai_search_daily_budget_hint: { pl: '0 = bez limitu', ru: '0 = без лимита', en: '0 = unlimited' },
+    admin_ai_search_timeout_label: { pl: 'Limit czasu żądania, s (10-300)', ru: 'Таймаут запроса, с (10-300)', en: 'Request timeout, s (10-300)' },
+    admin_btn_save_ai_search_settings: { pl: 'Zapisz ustawienia', ru: 'Сохранить настройки', en: 'Save settings' },
+    admin_toast_ai_search_settings_saved: { pl: 'Ustawienia AI Search zapisane', ru: 'Настройки AI-поиска сохранены', en: 'AI Search settings saved' },
+
+    admin_ai_search_jobs_eyebrow: { pl: 'Monitoring', ru: 'Мониторинг', en: 'Monitoring' },
+    admin_ai_search_jobs_title: { pl: 'Zadania wyszukiwania AI', ru: 'Задачи AI-поиска', en: 'AI search jobs' },
+    admin_ai_search_jobs_subtitle: {
+      pl: 'Ostatnie zadania wyszukiwania/wzbogacania firm przez AI, uruchamiane przez pracowników.',
+      ru: 'Последние задачи AI-поиска/обогащения компаний, запущенные сотрудниками.',
+      en: 'Recent AI company search/enrichment jobs launched by workers.'
+    },
+    admin_btn_refresh_jobs: { pl: 'Odśwież', ru: 'Обновить', en: 'Refresh' },
+    admin_btn_cancel_job: { pl: 'Anuluj', ru: 'Отменить', en: 'Cancel' },
+    admin_th_created_at: { pl: 'Utworzono', ru: 'Создано', en: 'Created' },
+    admin_th_creator_worker: { pl: 'Worker', ru: 'Сотрудник', en: 'Worker' },
+    admin_th_mode: { pl: 'Tryb', ru: 'Режим', en: 'Mode' },
+    admin_th_job_stage: { pl: 'Etap', ru: 'Этап', en: 'Stage' },
+    admin_th_progress: { pl: 'Postęp', ru: 'Прогресс', en: 'Progress' },
+    admin_ai_search_jobs_empty: { pl: 'Brak zadań AI Search.', ru: 'Нет задач AI-поиска.', en: 'No AI Search jobs yet.' },
+    admin_toast_ai_search_job_cancelled: { pl: 'Zadanie anulowane', ru: 'Задача отменена', en: 'Job cancelled' },
+    admin_ai_search_progress_template: {
+      pl: '{saved}/{found} zapisanych, {rejected} odrzuconych',
+      ru: '{saved}/{found} сохранено, {rejected} отклонено',
+      en: '{saved}/{found} saved, {rejected} rejected'
+    },
+
+    admin_ai_search_mode_ai_search: { pl: 'Wyszukiwanie AI', ru: 'AI-поиск', en: 'AI search' },
+    admin_ai_search_mode_combined: { pl: 'Połączone', ru: 'Комбинированный', en: 'Combined' },
+    admin_ai_search_mode_ai_enrich: { pl: 'Wzbogacanie AI', ru: 'AI-обогащение', en: 'AI enrich' },
+
+    admin_ai_search_stage_queued: { pl: 'W kolejce', ru: 'В очереди', en: 'Queued' },
+    admin_ai_search_stage_planning: { pl: 'Planowanie', ru: 'Планирование', en: 'Planning' },
+    admin_ai_search_stage_searching: { pl: 'Wyszukiwanie', ru: 'Поиск', en: 'Searching' },
+    admin_ai_search_stage_validating: { pl: 'Walidacja', ru: 'Проверка', en: 'Validating' },
+    admin_ai_search_stage_enriching: { pl: 'Wzbogacanie', ru: 'Обогащение', en: 'Enriching' },
+    admin_ai_search_stage_scoring: { pl: 'Ocenianie', ru: 'Оценка', en: 'Scoring' },
+    admin_ai_search_stage_saving: { pl: 'Zapisywanie', ru: 'Сохранение', en: 'Saving' },
+    admin_ai_search_stage_completed: { pl: 'Zakończone', ru: 'Завершено', en: 'Completed' },
+    admin_ai_search_stage_partial: { pl: 'Częściowe', ru: 'Частично', en: 'Partial' },
+    admin_ai_search_stage_failed: { pl: 'Błąd', ru: 'Ошибка', en: 'Failed' },
+    admin_ai_search_stage_cancelled: { pl: 'Anulowane', ru: 'Отменено', en: 'Cancelled' },
+    admin_ai_search_stage_paused: { pl: 'Wstrzymane', ru: 'Приостановлено', en: 'Paused' },
+
+    // Parser discover panel - AI company search mode selector (public/app.js
+    // runDiscovery()/runAiCompanySearch() branch on #discoverMode). Not loaded
+    // by Academy/Admin (see admin_ai_search_* above, added concurrently) -
+    // used only by the parser (index.html + app.js).
+    discover_mode_step_title: { pl: '0. Tryb wyszukiwania', ru: '0. Режим поиска', en: '0. Search mode' },
+    discover_mode_field_label: { pl: 'Tryb wyszukiwania', ru: 'Режим поиска', en: 'Search mode' },
+    discover_mode_standard: { pl: 'Standardowe', ru: 'Стандартный', en: 'Standard' },
+    discover_mode_ai_search: { pl: 'ChatGPT', ru: 'ChatGPT', en: 'ChatGPT' },
+    discover_mode_combined: { pl: 'Kombinowany', ru: 'Комбинированный', en: 'Combined' },
+    discover_mode_ai_enrich: { pl: 'Wzbogacenie AI', ru: 'Обогащение AI', en: 'AI enrichment' },
+
+    // AI search curated-criteria block (#aiSearchOptions), shown for ai_search/combined
+    ai_search_section_title: { pl: 'Kryteria wyszukiwania AI', ru: 'Критерии AI-поиска', en: 'AI search criteria' },
+    ai_field_client_type: { pl: 'Typ klienta', ru: 'Тип клиента', en: 'Client type' },
+    ai_client_type_any: { pl: 'Dowolny', ru: 'Любой', en: 'Any' },
+    ai_client_type_b2b: { pl: 'B2B', ru: 'B2B', en: 'B2B' },
+    ai_client_type_b2c: { pl: 'B2C', ru: 'B2C', en: 'B2C' },
+    ai_client_type_both: { pl: 'B2B + B2C', ru: 'B2B + B2C', en: 'B2B + B2C' },
+    ai_field_company_size: { pl: 'Wielkość firmy', ru: 'Размер компании', en: 'Company size' },
+    ai_company_size_any: { pl: 'Dowolna / nieznana', ru: 'Любой / неизвестно', en: 'Any / unknown' },
+    ai_field_min_years: { pl: 'Min. lat na rynku', ru: 'Мин. лет на рынке', en: 'Min. years in business' },
+    ai_field_website_presence: { pl: 'Obecność strony', ru: 'Наличие сайта', en: 'Website presence' },
+    ai_website_presence_any: { pl: 'Dowolna', ru: 'Любая', en: 'Any' },
+    ai_website_presence_has: { pl: 'Ma stronę', ru: 'Есть сайт', en: 'Has website' },
+    ai_website_presence_no: { pl: 'Brak strony', ru: 'Нет сайта', en: 'No website' },
+    ai_field_quality_flags: { pl: 'Problemy ze stroną', ru: 'Проблемы сайта', en: 'Website quality flags' },
+    ai_flag_weak_outdated: { pl: 'Słaba / przestarzała', ru: 'Слабый / устаревший', en: 'Weak / outdated' },
+    ai_flag_no_mobile: { pl: 'Brak wersji mobilnej', ru: 'Нет мобильной версии', en: 'No mobile version' },
+    ai_flag_no_cta: { pl: 'Brak wyraźnego CTA', ru: 'Нет явного CTA', en: 'No clear CTA' },
+    ai_flag_no_contact_info: { pl: 'Trudno znaleźć kontakt', ru: 'Сложно найти контакты', en: 'Hard to find contact info' },
+    ai_field_extra_keywords: { pl: 'Dodatkowe słowa kluczowe', ru: 'Доп. ключевые слова', en: 'Extra keywords' },
+    ai_field_exclude_keywords: { pl: 'Wykluczające słowa kluczowe', ru: 'Исключающие ключевые слова', en: 'Exclude keywords' },
+    ai_field_min_reviews: { pl: 'Min. opinii Google', ru: 'Мин. отзывов Google', en: 'Min. Google reviews' },
+    ai_field_min_rating: { pl: 'Min. ocena (0-5)', ru: 'Мин. рейтинг (0-5)', en: 'Min. rating (0-5)' },
+    ai_field_count: { pl: 'Liczba firm (1-100)', ru: 'Кол-во компаний (1-100)', en: 'Company count (1-100)' },
+
+    // ai_enrich mode note (#aiEnrichNote) - explains that this mode enriches
+    // the currently visible/filtered leads instead of running a new search
+    ai_enrich_note: {
+      pl: 'Ten tryb nie uruchamia nowego wyszukiwania: wzbogaca AI-profilem firmy, które są teraz widoczne w tabeli wyników (po zastosowaniu filtrów) i mają już zapisane ID.',
+      ru: 'Этот режим не запускает новый поиск: он обогащает AI-профилем компании, которые сейчас видны в таблице результатов (с учётом фильтров) и уже имеют сохранённый ID.',
+      en: 'This mode does not run a new search: it enriches with an AI profile the companies currently visible in the results table (after filters) that already have a saved ID.'
+    },
+    ai_enrich_count_prefix: { pl: 'Do wzbogacenia:', ru: 'К обогащению:', en: 'To enrich:' },
+    ai_enrich_count_suffix: { pl: 'firm', ru: 'компаний', en: 'companies' },
+    ai_enrich_none_eligible: {
+      pl: 'Brak widocznych firm z zapisanym ID. Otwórz historię lub wyszukiwanie standardowe, a potem wróć do tego trybu.',
+      ru: 'Нет видимых компаний с сохранённым ID. Откройте историю или обычный поиск, затем вернитесь в этот режим.',
+      en: 'No visible companies with a saved ID. Open history or a standard search, then come back to this mode.'
+    },
+
+    // AI search job status polling (waitForAiSearchCompletion) - job.stage labels
+    ai_stage_queued: { pl: 'W kolejce', ru: 'В очереди', en: 'Queued' },
+    ai_stage_planning: { pl: 'Planowanie zapytań', ru: 'Планирование запросов', en: 'Planning' },
+    ai_stage_searching: { pl: 'Wyszukiwanie', ru: 'Поиск', en: 'Searching' },
+    ai_stage_validating: { pl: 'Weryfikacja', ru: 'Проверка', en: 'Validating' },
+    ai_stage_enriching: { pl: 'Wzbogacanie', ru: 'Обогащение', en: 'Enriching' },
+    ai_stage_scoring: { pl: 'Ocena', ru: 'Скоринг', en: 'Scoring' },
+    ai_stage_saving: { pl: 'Zapisywanie', ru: 'Сохранение', en: 'Saving' },
+    ai_stage_completed: { pl: 'Zakończono', ru: 'Завершено', en: 'Completed' },
+    ai_stage_partial: { pl: 'Zakończono częściowo', ru: 'Завершено частично', en: 'Partially completed' },
+    ai_stage_failed: { pl: 'Błąd', ru: 'Ошибка', en: 'Failed' },
+    ai_stage_cancelled: { pl: 'Anulowano', ru: 'Отменено', en: 'Cancelled' },
+    ai_stage_paused: { pl: 'Wstrzymano', ru: 'Приостановлено', en: 'Paused' },
+
+    // AI search job progress counters (job.progress.*)
+    ai_progress_planned_queries: { pl: 'Zaplanowane zapytania', ru: 'Запланировано запросов', en: 'Planned queries' },
+    ai_progress_queries_run: { pl: 'Wykonane zapytania', ru: 'Выполнено запросов', en: 'Queries run' },
+    ai_progress_candidates_found: { pl: 'Znalezione kandydatury', ru: 'Найдено кандидатов', en: 'Candidates found' },
+    ai_progress_candidates_confirmed: { pl: 'Potwierdzone', ru: 'Подтверждено', en: 'Confirmed' },
+    ai_progress_duplicates_skipped: { pl: 'Pominięte duplikaty', ru: 'Пропущено дублей', en: 'Duplicates skipped' },
+    ai_progress_rejected: { pl: 'Odrzucone', ru: 'Отклонено', en: 'Rejected' },
+    ai_progress_enriched: { pl: 'Wzbogacone', ru: 'Обогащено', en: 'Enriched' },
+    ai_progress_saved: { pl: 'Zapisane', ru: 'Сохранено', en: 'Saved' },
+
+    ai_search_cancel: { pl: 'Anuluj wyszukiwanie', ru: 'Отменить поиск', en: 'Cancel search' },
+    ai_search_cancelling: { pl: 'Anulowanie...', ru: 'Отмена...', en: 'Cancelling...' },
+    ai_search_errors_label: { pl: 'Błędy:', ru: 'Ошибки:', en: 'Errors:' },
+
+    // AI company profile summary card in the lead detail "AI" tab
+    // (renderAiCompanyProfileBlock) - shown only when
+    // result.aiCompanyProfile?.status === 'COMPLETED'
+    ai_profile_title: { pl: 'AI-profil firmy', ru: 'AI-профиль компании', en: 'AI company profile' },
+    ai_profile_top_services: { pl: 'Usługi (top 5)', ru: 'Услуги (топ 5)', en: 'Top services' },
+    ai_profile_opening: { pl: 'Sugerowane otwarcie rozmowy', ru: 'Предлагаемое начало разговора', en: 'Suggested opening' },
+    ai_profile_offer: { pl: 'Proponowana oferta', ru: 'Предлагаемое предложение', en: 'Proposed offer' },
+    ai_profile_verification: { pl: 'Status weryfikacji', ru: 'Статус верификации', en: 'Verification status' }
   };
 
   function normalizeLang(lang) {

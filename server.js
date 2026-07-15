@@ -111,6 +111,20 @@ const CROSS_VERIFY_TIMEOUT_MS = Number(process.env.CROSS_VERIFY_TIMEOUT_MS || 25
 const MAX_EXTRA_PAGES = 5;
 const REGISTRY_TIMEOUT_MS = Number(process.env.REGISTRY_TIMEOUT_MS || 10_000);
 const OPENAI_TIMEOUT_MS = Number(process.env.OPENAI_TIMEOUT_MS || 30_000);
+// Per-call timeout override (milliseconds) for the AI-search feature's three
+// OpenAI call sites (planAiSearchQueries, runAiSearchBatch,
+// enrichCompanyProfile - including their repair-retry calls). Real
+// web_search-enabled calls plus large structured-output schemas routinely
+// exceed the global client's OPENAI_TIMEOUT_MS default above, so those three
+// functions read this admin-configurable setting fresh on every call instead
+// of relying on the client default. store.js already clamps
+// aiRequestTimeoutSeconds to 10-300 on save; this just guards against a
+// missing/non-numeric value defensively and converts to milliseconds.
+function clampAiRequestTimeoutMs(seconds) {
+  const parsed = Number(seconds);
+  const safeSeconds = Number.isFinite(parsed) && parsed > 0 ? Math.min(Math.max(parsed, 10), 300) : 120;
+  return safeSeconds * 1000;
+}
 // If a source keeps returning only companies we already know about this many
 // times in a row, further attempts are extremely unlikely to find anything
 // new - stop early instead of burning through every remaining district/niche
@@ -1977,6 +1991,116 @@ const CATEGORY_CATALOG = [
     negativeKeywords: { pl: ['dostawca prądu sprzedawca energii', 'zakład energetyczny dystrybucja'], ru: ['поставщик электроэнергии сбыт'], en: ['electricity retailer', 'utility distribution company'] },
     relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'portfolio realizacji'],
     searchTemplates: ['firma ESCO usługi energetyczne', 'kontrakty efektywności energetycznej dla firm', 'przedsiębiorstwo usług energetycznych', 'modernizacja energetyczna finansowanie ESCO', 'zarządzanie energią w przedsiębiorstwie usługi']
+  },
+  {
+    categoryId: 'office_building_construction',
+    labels: { pl: 'Budowa biurowców', ru: 'Строительство офисных зданий', en: 'Office building construction' },
+    aliases: ['budowa biurowców', 'budownictwo biurowe', 'generalny wykonawca biurowców'],
+    positiveKeywords: { pl: ['budowa biurowców', 'budowa centrów biurowych', 'generalny wykonawca biurowca', 'budowa biurowca klasy A', 'wykonawca budynków biurowych', 'realizacja biurowca pod klucz', 'budowa parku biurowego'], ru: ['строительство офисных зданий', 'строительство бизнес-центров', 'генподрядчик офисного здания'], en: ['office building construction', 'office tower construction', 'business center construction'] },
+    negativeKeywords: { pl: ['wynajem powierzchni biurowych', 'sprzedaż biura', 'pośrednictwo nieruchomości biurowych'], ru: ['аренда офисов'], en: ['office space rental', 'office leasing agency'] },
+    excludedBusinessTypes: ['real_estate_agency', 'office_leasing_agency'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz ofertowy'],
+    searchTemplates: ['budowa biurowca generalny wykonawca', 'wykonawca budynków biurowych', 'budowa centrum biurowego pod klucz', 'realizacja biurowca klasy A', 'generalny wykonawca parku biurowego']
+  },
+  {
+    categoryId: 'public_building_construction',
+    labels: { pl: 'Budowa obiektów użyteczności publicznej', ru: 'Строительство общественных зданий', en: 'Public building construction' },
+    aliases: ['budowa obiektów publicznych', 'budowa obiektów użyteczności publicznej', 'wykonawca obiektów publicznych'],
+    positiveKeywords: { pl: ['budowa obiektów użyteczności publicznej', 'budowa szkół i przedszkoli', 'budowa szpitali', 'wykonawca budynków użyteczności publicznej', 'budowa urzędów', 'realizacja inwestycji publicznych', 'generalny wykonawca obiektów publicznych'], ru: ['строительство общественных зданий', 'строительство школ и больниц', 'генподрядчик общественных объектов'], en: ['public building construction', 'school and hospital construction', 'government building contractor'] },
+    negativeKeywords: { pl: ['przetargi publiczne doradztwo', 'zamówienia publiczne konsulting'], ru: ['консалтинг госзакупок'], en: ['public procurement consulting'] },
+    excludedBusinessTypes: ['consulting_firm', 'government_office'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz ofertowy'],
+    searchTemplates: ['budowa obiektów użyteczności publicznej wykonawca', 'generalny wykonawca szkół i szpitali', 'budowa urzędu przetarg', 'wykonawca inwestycji publicznych', 'budowa obiektu publicznego pod klucz']
+  },
+  {
+    categoryId: 'office_fitout',
+    labels: { pl: 'Fit-out i wykończenia biur', ru: 'Фит-аут и отделка офисов', en: 'Office fit-out' },
+    aliases: ['fit-out', 'fit out biur', 'wykończenie biur pod klucz', 'workplace design'],
+    positiveKeywords: { pl: ['fit-out biur', 'wykończenie biur pod klucz', 'aranżacja przestrzeni biurowej', 'projektowanie miejsc pracy', 'adaptacja powierzchni biurowej', 'wykonawca fit-out', 'zabudowa biur', 'workplace design'], ru: ['фит-аут офисов', 'отделка офисов под ключ', 'дизайн рабочего пространства'], en: ['office fit-out', 'workplace design', 'office interior build-out', 'turnkey office fit-out'] },
+    negativeKeywords: { pl: ['projektowanie wnętrz mieszkań', 'aranżacja wnętrz domowych'], ru: ['дизайн квартир'], en: ['residential interior design'] },
+    excludedBusinessTypes: ['residential_interior_design'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'portfolio realizacji'],
+    searchTemplates: ['fit-out biur wykonawca', 'wykończenie biur pod klucz firma', 'aranżacja przestrzeni biurowej', 'projektowanie miejsc pracy workplace design', 'zabudowa i adaptacja biur']
+  },
+  {
+    categoryId: 'container_manufacturer',
+    labels: { pl: 'Producenci kontenerów', ru: 'Производители контейнеров', en: 'Container manufacturers' },
+    aliases: ['producenci kontenerów', 'kontenery na zamówienie', 'container manufacturers'],
+    positiveKeywords: { pl: ['producent kontenerów', 'kontenery biurowe produkcja', 'kontenery magazynowe produkcja', 'kontenery budowlane socjalne producent', 'kontenery na zamówienie', 'zabudowa kontenerowa producent', 'kontenery modułowe przemysłowe'], ru: ['производитель контейнеров', 'производство бытовок', 'модульные контейнеры производство'], en: ['container manufacturer', 'site container producer', 'modular container fabrication'] },
+    negativeKeywords: { pl: ['domy modułowe całoroczne', 'domy z kontenerów mieszkalne'], ru: ['модульные дома'], en: ['modular homes'] },
+    excludedBusinessTypes: ['modular_home_manufacturer'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'katalog produktów'],
+    searchTemplates: ['producent kontenerów budowlanych', 'kontenery biurowe na zamówienie', 'kontenery magazynowe producent', 'zabudowa kontenerowa firma', 'kontenery socjalne produkcja']
+  },
+  {
+    categoryId: 'forklift_sales',
+    labels: { pl: 'Sprzedaż wózków widłowych', ru: 'Продажа вилочных погрузчиков', en: 'Forklift sales' },
+    aliases: ['sprzedaż wózków widłowych', 'wózki widłowe dealer', 'forklift sales'],
+    positiveKeywords: { pl: ['sprzedaż wózków widłowych', 'wózki widłowe używane', 'wózki widłowe magazynowe', 'dealer wózków widłowych', 'wózki widłowe elektryczne sprzedaż', 'wózki wysokiego składowania', 'wynajem wózków widłowych'], ru: ['продажа вилочных погрузчиков', 'вилочные погрузчики б/у', 'дилер погрузчиков'], en: ['forklift sales', 'forklift dealer', 'used forklifts'] },
+    negativeKeywords: { pl: ['ładowarki teleskopowe', 'ładowarki kołowe budowlane'], ru: ['телескопические погрузчики'], en: ['telehandler sales'] },
+    excludedBusinessTypes: ['construction_loader_dealer'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz ofertowy'],
+    searchTemplates: ['sprzedaż wózków widłowych', 'dealer wózków widłowych Polska', 'wózki widłowe używane sprzedaż', 'wynajem i sprzedaż wózków widłowych', 'wózki widłowe elektryczne cena']
+  },
+  {
+    categoryId: 'aerial_platform_sales',
+    labels: { pl: 'Sprzedaż i wynajem podnośników', ru: 'Продажа и аренда подъёмников', en: 'Aerial work platform sales & rental' },
+    aliases: ['podnośniki koszowe', 'wynajem podnośników', 'aerial platform sales'],
+    positiveKeywords: { pl: ['sprzedaż podnośników koszowych', 'wynajem podnośników nożycowych', 'podnośniki teleskopowe sprzedaż', 'platformy robocze wynajem', 'podesty ruchome przejezdne', 'dealer podnośników', 'podnośniki montażowe wynajem'], ru: ['продажа автовышек', 'аренда подъёмников', 'ножничные подъёмники'], en: ['aerial platform sales', 'boom lift rental', 'scissor lift rental'] },
+    negativeKeywords: { pl: ['wynajem rusztowań elewacyjnych', 'drabiny sklep'], ru: ['аренда лесов'], en: ['scaffolding rental'] },
+    excludedBusinessTypes: ['scaffolding_rental'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz ofertowy'],
+    searchTemplates: ['wynajem podnośników koszowych', 'sprzedaż podnośników teleskopowych', 'dealer podnośników nożycowych', 'wynajem platform roboczych', 'podnośniki montażowe wypożyczalnia']
+  },
+  {
+    categoryId: 'demolition_equipment_sales',
+    labels: { pl: 'Sprzęt wyburzeniowy - sprzedaż i wynajem', ru: 'Продажа и аренда оборудования для сноса', en: 'Demolition equipment sales & rental' },
+    aliases: ['sprzęt wyburzeniowy', 'młoty hydrauliczne sprzedaż', 'demolition equipment'],
+    positiveKeywords: { pl: ['sprzęt wyburzeniowy sprzedaż', 'młoty hydrauliczne do koparek', 'nożyce do rozbiórki', 'kruszarki do gruzu sprzedaż', 'chwytaki wyburzeniowe', 'osprzęt wyburzeniowy koparki', 'wynajem sprzętu wyburzeniowego'], ru: ['оборудование для сноса продажа', 'гидромолоты для экскаваторов', 'ножницы для сноса'], en: ['demolition equipment sales', 'hydraulic breaker', 'demolition attachments'] },
+    negativeKeywords: { pl: ['firma rozbiórkowa usługi', 'wyburzenia budynków wykonawca'], ru: ['снос зданий услуги'], en: ['demolition contractor services'] },
+    excludedBusinessTypes: ['demolition_contractor'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz ofertowy'],
+    searchTemplates: ['sprzedaż młotów hydraulicznych do koparek', 'osprzęt wyburzeniowy sprzedaż', 'nożyce do rozbiórki sprzedaż', 'kruszarki do gruzu dealer', 'wynajem sprzętu wyburzeniowego']
+  },
+  {
+    categoryId: 'oversized_transport',
+    labels: { pl: 'Transport ponadgabarytowy', ru: 'Негабаритные перевозки', en: 'Oversized cargo transport' },
+    aliases: ['transport ponadgabarytowy', 'przewóz ładunków ponadnormatywnych', 'oversized transport'],
+    positiveKeywords: { pl: ['transport ponadgabarytowy', 'przewóz ładunków ponadnormatywnych', 'transport maszyn budowlanych', 'transport elementów wielkogabarytowych', 'pilotaż transportu ponadgabarytowego', 'zezwolenia na przejazd nienormatywny', 'transport konstrukcji stalowych'], ru: ['негабаритные перевозки', 'перевозка крупногабаритных грузов', 'транспортировка спецтехники'], en: ['oversized cargo transport', 'heavy haulage', 'abnormal load transport'] },
+    negativeKeywords: { pl: ['przewóz osób', 'kurier paczki', 'transport międzynarodowy towarów standardowych'], ru: ['пассажирские перевозки'], en: ['parcel courier'] },
+    excludedBusinessTypes: ['courier_service', 'passenger_transport'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz ofertowy'],
+    searchTemplates: ['transport ponadgabarytowy firma', 'przewóz ładunków ponadnormatywnych', 'transport maszyn budowlanych ciężki', 'pilotaż i zezwolenia transport nienormatywny', 'firma transportu wielkogabarytowego']
+  },
+  {
+    categoryId: 'energy_storage_systems',
+    labels: { pl: 'Magazyny energii', ru: 'Системы накопления энергии', en: 'Energy storage systems' },
+    aliases: ['magazyny energii', 'baterie magazynujące energię', 'energy storage systems'],
+    positiveKeywords: { pl: ['magazyny energii', 'magazynowanie energii dla firm', 'systemy magazynowania energii', 'baterie do fotowoltaiki', 'magazyn energii przemysłowy', 'montaż magazynów energii', 'akumulatory energii słonecznej'], ru: ['системы накопления энергии', 'аккумуляторы для солнечных панелей', 'промышленные накопители энергии'], en: ['energy storage system', 'battery energy storage', 'solar battery storage'] },
+    negativeKeywords: { pl: ['fotowoltaika montaż paneli', 'elektrownia słoneczna budowa'], ru: ['монтаж солнечных панелей'], en: ['solar panel installation'] },
+    excludedBusinessTypes: ['solar_installer'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz ofertowy'],
+    searchTemplates: ['magazyny energii dla firm', 'systemy magazynowania energii przemysłowe', 'montaż magazynu energii z fotowoltaiką', 'baterie magazynujące energię sprzedaż', 'magazyn energii dla biznesu']
+  },
+  {
+    categoryId: 'serviced_apartment_operator',
+    labels: { pl: 'Operatorzy apartamentów', ru: 'Операторы апарт-отелей', en: 'Serviced apartment operators' },
+    aliases: ['operator apartamentów', 'apartamenty serwisowane', 'serviced apartment operator', 'aparthotel'],
+    positiveKeywords: { pl: ['operator apartamentów', 'apartamenty serwisowane', 'zarządzanie najmem apartamentów', 'aparthotel', 'apartamenty na wynajem krótkoterminowy zarządzanie', 'condohotel operator', 'najem instytucjonalny apartamentów'], ru: ['оператор апарт-отелей', 'сервисные апартаменты', 'управление арендой апартаментов'], en: ['serviced apartment operator', 'aparthotel operator', 'short-term rental management'] },
+    negativeKeywords: { pl: ['hotel klasyczny rezerwacja', 'agencja nieruchomości sprzedaż mieszkań'], ru: ['продажа квартир'], en: ['classic hotel booking'] },
+    excludedBusinessTypes: ['real_estate_agency', 'traditional_hotel'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'formularz ofertowy'],
+    searchTemplates: ['operator apartamentów serwisowanych', 'zarządzanie najmem krótkoterminowym apartamentów', 'aparthotel operator Warszawa', 'condohotel zarządzanie najmem', 'apartamenty serwisowane dla firm']
+  },
+  {
+    categoryId: 'winter_garden_pergola',
+    labels: { pl: 'Ogrody zimowe i pergole', ru: 'Зимние сады и перголы', en: 'Winter gardens and pergolas' },
+    aliases: ['ogrody zimowe', 'pergole aluminiowe', 'winter gardens', 'pergolas'],
+    positiveKeywords: { pl: ['ogrody zimowe producent', 'zabudowa ogrodu zimowego', 'pergole aluminiowe produkcja', 'pergole tarasowe montaż', 'werandy szklane producent', 'zadaszenia tarasów aluminiowe', 'konstrukcje szklane ogrodowe'], ru: ['зимние сады производство', 'перголы алюминиевые', 'веранды застекленные'], en: ['winter garden manufacturer', 'aluminum pergola', 'glass veranda'] },
+    negativeKeywords: { pl: ['wiaty garażowe producent', 'altany drewniane ogrodowe'], ru: ['деревянные беседки'], en: ['garden gazebo'] },
+    excludedBusinessTypes: ['garden_gazebo_manufacturer'],
+    relatedServices: ['strona usługowa', 'Google Business Profile', 'Google Ads B2B', 'katalog produktów'],
+    searchTemplates: ['ogrody zimowe producent', 'pergole aluminiowe na taras', 'zabudowa ogrodu zimowego cena', 'werandy szklane montaż', 'pergole tarasowe producent']
   }
 ];
 
@@ -3822,6 +3946,179 @@ app.post('/api/discover/jobs/:id/cancel', (req, res) => {
   res.json({ ok: true, status: job.status });
 });
 
+// --- Round 5: AI Search Job API (mirrors /api/discover + /api/discover/jobs/:id
+// above in request/response shape, so the frontend can reuse similar polling
+// logic) --------------------------------------------------------------------
+const AI_SEARCH_TERMINAL_STAGES = new Set(['COMPLETED', 'PARTIAL', 'CANCELLED', 'PAUSED', 'FAILED']);
+
+function requireAiSearchJobAccess(req, res, job) {
+  if (!job) {
+    res.status(404).json({ error: 'AI search job not found.' });
+    return false;
+  }
+  if (isAdminAuthorized(req)) return true;
+  const workerId = requestWorkerId(req);
+  if (!workerId || workerId !== job.creator_worker_id) {
+    res.status(403).json({ error: 'This AI search job belongs to another worker.' });
+    return false;
+  }
+  return true;
+}
+
+app.post('/api/ai-search/jobs', async (req, res) => {
+  try {
+    const session = currentSession(req);
+    if (!isAdminAuthorized(req) && !(session && session.role === 'worker')) {
+      res.setHeader('WWW-Authenticate', 'Basic realm="Aura Admin"');
+      return res.status(401).json({ error: 'Login required to run AI search.' });
+    }
+    const workerId = requestWorkerId(req) || 'worker-default';
+    const body = req.body || {};
+    const mode = body.mode === 'combined' ? 'combined' : 'ai_search';
+
+    const requestedNichesRaw = Array.isArray(body.niches) ? body.niches.map(cleanText).filter(Boolean) : [];
+    const niche = cleanText(body.niche || body.category || requestedNichesRaw[0] || '');
+    const niches = unique(requestedNichesRaw.length ? requestedNichesRaw : [niche]).filter(Boolean).slice(0, 40);
+    const country = cleanText(body.country || '');
+    const city = cleanText(body.city || (country ? '' : 'Warszawa'));
+
+    if (!niches.length) {
+      return res.status(400).json({ error: 'Укажите категорию или нишу для поиска.' });
+    }
+    if (!city && !country) {
+      return res.status(400).json({ error: 'Укажите город или страну для поиска.' });
+    }
+
+    const requestedCount = clamp(Number.parseInt(body.requestedCount, 10) || 10, 1, 100);
+    const params = {
+      niche,
+      niches,
+      city,
+      country,
+      district: cleanText(body.district || ''),
+      radiusKm: Number.parseFloat(body.radiusKm) || 0,
+      language: cleanText(body.language || body.uiLanguage || 'ru'),
+      requestedCount,
+      sourceFocus: cleanText(body.sourceFocus || ''),
+      excludeLists: {
+        domains: Array.isArray(body.excludeLists?.domains) ? body.excludeLists.domains.map(cleanText).filter(Boolean) : [],
+        nips: Array.isArray(body.excludeLists?.nips) ? body.excludeLists.nips.map(cleanText).filter(Boolean) : [],
+        phones: Array.isArray(body.excludeLists?.phones) ? body.excludeLists.phones.map(cleanText).filter(Boolean) : []
+      },
+      // Curated extra-criteria fields a later frontend round is expected to
+      // send - accepted and stored on the job even where not all of them are
+      // used yet in filtering logic (see passesAiSearchExtraCriteria above).
+      clientType: cleanText(body.clientType || ''),
+      companySizeRange: cleanText(body.companySizeRange || ''),
+      minYearsInBusiness: Number(body.minYearsInBusiness) || 0,
+      websitePresence: cleanText(body.websitePresence || ''),
+      websiteQualityFlags: Array.isArray(body.websiteQualityFlags) ? body.websiteQualityFlags.map(cleanText).filter(Boolean) : [],
+      extraKeywords: Array.isArray(body.extraKeywords) ? body.extraKeywords.map(cleanText).filter(Boolean) : [],
+      excludeKeywords: Array.isArray(body.excludeKeywords) ? body.excludeKeywords.map(cleanText).filter(Boolean) : [],
+      minReviews: Number(body.minReviews) || 0,
+      minRating: Number(body.minRating) || 0
+    };
+
+    const settings = store.getSettings();
+    const job = store.createAiSearchJob({
+      creatorWorkerId: workerId,
+      mode,
+      params,
+      modelSearch: settings.aiCompanySearchModel,
+      modelEnrich: settings.aiCompanyEnrichModel
+    });
+
+    void runAiSearchJob(job.id);
+
+    res.json({ jobId: job.id, stage: job.stage });
+  } catch (error) {
+    console.error('[ai-search] failed to create AI search job:', error);
+    res.status(500).json({ error: error.message || 'Ошибка запуска AI-поиска.' });
+  }
+});
+
+app.get('/api/ai-search/jobs/:jobId', (req, res) => {
+  const job = store.getAiSearchJob(req.params.jobId);
+  if (!requireAiSearchJobAccess(req, res, job)) return;
+  res.json(job);
+});
+
+app.post('/api/ai-search/jobs/:jobId/cancel', (req, res) => {
+  const job = store.getAiSearchJob(req.params.jobId);
+  if (!requireAiSearchJobAccess(req, res, job)) return;
+  if (AI_SEARCH_TERMINAL_STAGES.has(job.stage)) {
+    return res.json({ ok: true, alreadyFinished: true, stage: job.stage });
+  }
+  const updated = store.updateAiSearchJob(job.id, {
+    cancel_requested: true,
+    cancel_reason: cleanText(req.body?.reason || '') || 'user_cancelled'
+  });
+  res.json({ ok: true, stage: updated.stage });
+});
+
+app.post('/api/ai-search/jobs/:jobId/pause', (req, res) => {
+  const job = store.getAiSearchJob(req.params.jobId);
+  if (!requireAiSearchJobAccess(req, res, job)) return;
+  if (AI_SEARCH_TERMINAL_STAGES.has(job.stage)) {
+    return res.json({ ok: true, alreadyFinished: true, stage: job.stage });
+  }
+  const updated = store.updateAiSearchJob(job.id, { pause_requested: true });
+  res.json({ ok: true, stage: updated.stage });
+});
+
+// Resume strategy: re-invokes runAiSearchJob/runAiEnrichOnlyJob from scratch
+// (re-plan + re-search) rather than resuming mid-pipeline - see the
+// "Resume strategy" note above runAiSearchJob's definition for why.
+app.post('/api/ai-search/jobs/:jobId/resume', (req, res) => {
+  const job = store.getAiSearchJob(req.params.jobId);
+  if (!requireAiSearchJobAccess(req, res, job)) return;
+  if (job.stage !== 'PAUSED') {
+    return res.status(400).json({ error: 'Only a paused job can be resumed.' });
+  }
+  store.updateAiSearchJob(job.id, {
+    pause_requested: false,
+    cancel_requested: false,
+    stage: 'QUEUED',
+    stage_detail: 'Resuming...'
+  });
+  if (job.mode === 'ai_enrich') {
+    void runAiEnrichOnlyJob(job.id);
+  } else {
+    void runAiSearchJob(job.id);
+  }
+  res.json({ ok: true, jobId: job.id });
+});
+
+app.post('/api/ai-search/enrich', async (req, res) => {
+  try {
+    const session = currentSession(req);
+    if (!isAdminAuthorized(req) && !(session && session.role === 'worker')) {
+      res.setHeader('WWW-Authenticate', 'Basic realm="Aura Admin"');
+      return res.status(401).json({ error: 'Login required to run AI enrichment.' });
+    }
+    const workerId = requestWorkerId(req) || 'worker-default';
+    const companyIds = Array.isArray(req.body?.companyIds)
+      ? unique(req.body.companyIds.map((id) => String(id || '')).filter(Boolean))
+      : [];
+    if (!companyIds.length) {
+      return res.status(400).json({ error: 'Укажите companyIds для обогащения.' });
+    }
+    const settings = store.getSettings();
+    const job = store.createAiSearchJob({
+      creatorWorkerId: workerId,
+      mode: 'ai_enrich',
+      params: { companyIds, language: cleanText(req.body?.language || req.body?.uiLanguage || 'ru') },
+      modelSearch: settings.aiCompanySearchModel,
+      modelEnrich: settings.aiCompanyEnrichModel
+    });
+    void runAiEnrichOnlyJob(job.id);
+    res.json({ jobId: job.id, stage: job.stage });
+  } catch (error) {
+    console.error('[ai-search] failed to create AI enrich job:', error);
+    res.status(500).json({ error: error.message || 'Ошибка запуска AI-обогащения.' });
+  }
+});
+
 app.get('/api/history/runs', (req, res) => {
   const admin = isAdminAuthorized(req);
   if (!admin) {
@@ -4956,6 +5253,22 @@ app.get('/api/admin/ai-usage/company/:companyId', (req, res) => {
 
 app.get('/api/admin/audit', (req, res) => {
   res.json({ actions: store.listAuditLog({ limit: Number.parseInt(req.query.limit, 10) || 200 }) });
+});
+
+app.get('/api/admin/settings', (req, res) => {
+  res.json({ settings: store.getSettings() });
+});
+
+app.patch('/api/admin/settings', (req, res) => {
+  const settings = store.updateSettings(req.body || {});
+  store.logAdminAction({ adminId: cleanText(req.body?.adminId || 'admin'), action: 'update_settings', targetType: 'settings', targetId: 'global', details: settings });
+  res.json({ ok: true, settings });
+});
+
+// Round 5: admin-only visibility over every AI Search Job (any worker's),
+// for the admin panel's AI-search monitoring view.
+app.get('/api/admin/ai-search/jobs', (req, res) => {
+  res.json({ jobs: store.listAiSearchJobs({ limit: Number.parseInt(req.query.limit, 10) || 100 }) });
 });
 
 // Powers "suggest as you type" for the city/country/category/worker filter
@@ -7646,6 +7959,628 @@ async function discoverCompaniesFromOpenAIInternet({ niche, city, district, limi
   };
 }
 
+// ---------------------------------------------------------------------------
+// AI company search: round 3 - Search Planner + batched AI web-search.
+//
+// planAiSearchQueries() is pure query PLANNING (no web_search tool): it asks
+// the model to draft a diverse list of search-engine phrases for a niche/
+// city/district, seeded by the matching CATEGORY_CATALOG entry's
+// searchTemplates/aliases (if any) as inspiration only - the model is told to
+// build genuinely new variations, not reorder the seed phrases.
+//
+// runAiSearchBatch() is the actual per-query candidate search (mirrors
+// discoverCompaniesFromOpenAIInternet above almost field-for-field), but it
+// takes ONE already-planned query string instead of building its own, and
+// caps the per-call company limit much lower (10-20 vs up to 100) since the
+// round-5 orchestrator is expected to fan this out across many queries via
+// runWithConcurrencyLimit() further below.
+//
+// Together: planAiSearchQueries({ niche, city, ... }) -> queries[] ->
+// runWithConcurrencyLimit(queries, settings.aiMaxParallelRequests, (query) =>
+// runAiSearchBatch({ query, ... })) -> merged candidate companies. The
+// orchestrator that actually wires this fan-out together is round 5's job.
+
+// Scales the planner's requested query-count window to the number of
+// companies the caller ultimately wants, so a 5-company job doesn't burn
+// tokens planning 12 queries and a 100-company job isn't starved with 5.
+function planQueryCountBounds(count) {
+  const minItems = Math.min(10, Math.max(5, Math.ceil((Number(count) || 0) / 8) || 5));
+  const maxItems = Math.min(12, Math.max(minItems, minItems + 3));
+  return { minItems, maxItems };
+}
+
+async function planAiSearchQueries({
+  niche,
+  city,
+  district,
+  country,
+  language,
+  count,
+  workerId = '',
+  jobId = ''
+}) {
+  if (!openai) {
+    throw new Error('OPENAI_API_KEY не настроен.');
+  }
+
+  const settings = store.getSettings();
+  const model = settings.aiCompanySearchModel;
+  // Per-call timeout override (read fresh so an admin change takes effect on
+  // the next call without a restart) - the global `openai` client keeps its
+  // OPENAI_TIMEOUT_MS default for every other call site in this file; only
+  // the three AI-search functions (this one, runAiSearchBatch,
+  // enrichCompanyProfile) use this admin-configurable, much longer timeout
+  // since real web_search calls routinely blow past the 30s client default.
+  const requestTimeoutMs = clampAiRequestTimeoutMs(settings.aiRequestTimeoutSeconds);
+  const { minItems, maxItems } = planQueryCountBounds(count);
+
+  // Seed with the matching category's proven templates/aliases (if any) -
+  // inspiration only. The prompt below explicitly forbids returning these
+  // verbatim/reordered; they exist so the model has a concrete starting
+  // vocabulary for this niche instead of guessing blind.
+  const category = findCategoryDefinition(niche);
+  const seedLanguage = language === 'ru' ? 'ru' : language === 'en' ? 'en' : 'pl';
+  const categorySeed = category
+    ? {
+        matchedCategoryLabel: categoryLabel(category, seedLanguage),
+        exampleTemplates: (category.searchTemplates || []).slice(0, 8),
+        aliases: (category.aliases || []).slice(0, 8)
+      }
+    : null;
+
+  const input = [
+    {
+      role: 'system',
+      content:
+        'You are a search-query strategist for a local-business lead-generation tool. Generate a diverse list of search-engine query phrases a real person would type to find companies in the given niche/city. Return only valid JSON matching the schema. Every query must differ meaningfully in wording and angle from every other query in the list - never submit the same query with words merely reordered or a trivial synonym swap. If example templates are provided, treat them only as inspiration for vocabulary and build new, genuinely different phrasings on top of them - do not return them verbatim.'
+    },
+    {
+      role: 'user',
+      content: JSON.stringify(
+        {
+          task: 'Plan a diverse set of web-search queries to discover real local companies for this niche.',
+          niche,
+          city: city || null,
+          district: district || null,
+          country: country || null,
+          language: language || seedLanguage,
+          target_company_count: count || null,
+          desired_query_count: { min: minItems, max: maxItems },
+          category_seed: categorySeed,
+          coverage_guidance: [
+            'Include the direct niche name on its own.',
+            'Include niche + city combos, and niche + district combos if a district is given.',
+            'Include local business-language variants (e.g. Polish "firma", "usługi", "serwis" style phrasing, or the equivalent local term for the target country/language).',
+            'Include related sub-niches, close synonyms and adjacent services.',
+            'Include neighboring districts/cities if the given city/district implies nearby ones worth covering.',
+            'Include at least one query with an industry-directory/registry angle (catalog, business registry, rating/review directory).',
+            'Write mainly in the local language(s) of the target country (Polish for Poland); include a couple of variants in English and/or Russian if that mirrors how this app already phrases multi-language search content.'
+          ]
+        },
+        null,
+        2
+      )
+    }
+  ];
+
+  const schema = {
+    type: 'object',
+    additionalProperties: false,
+    required: ['queries'],
+    properties: {
+      queries: {
+        type: 'array',
+        minItems,
+        maxItems,
+        items: { type: 'string' }
+      }
+    }
+  };
+
+  const response = await openai.responses.create(
+    {
+      model,
+      input,
+      max_output_tokens: 1000,
+      text: {
+        format: {
+          type: 'json_schema',
+          name: 'ai_search_query_plan',
+          strict: true,
+          schema
+        }
+      }
+    },
+    { timeout: requestTimeoutMs }
+  );
+
+  const usage = response.usage || {};
+  let promptTokens = usage.input_tokens || 0;
+  let completionTokens = usage.output_tokens || 0;
+  let totalTokens = usage.total_tokens || 0;
+  let estimatedCost = estimateAiCost(model, promptTokens, completionTokens);
+  store.logAiUsage({
+    workerId,
+    feature: 'ai_search_planning',
+    model,
+    promptTokens,
+    completionTokens,
+    totalTokens,
+    estimatedCost,
+    // logAiUsage() has no dedicated jobId field yet (round 1/2 didn't add
+    // one) - reusing the existing runId slot to carry it, same convention
+    // used by runAiSearchBatch() below. See the round-3 report for a flag
+    // recommending a real jobId param in a later round.
+    runId: jobId
+  });
+
+  let parsed;
+  try {
+    parsed = parseLooseJson(response.output_text);
+  } catch {
+    const repaired = await openai.responses.create(
+      {
+        model: DEFAULT_MODEL,
+        input: [
+          {
+            role: 'system',
+            content: 'Repair the user content into valid JSON matching the provided schema. Do not invent new content.'
+          },
+          {
+            role: 'user',
+            content: response.output_text || ''
+          }
+        ],
+        max_output_tokens: 1000,
+        text: {
+          format: {
+            type: 'json_schema',
+            name: 'ai_search_query_plan_repaired',
+            strict: true,
+            schema
+          }
+        }
+      },
+      { timeout: requestTimeoutMs }
+    );
+    const repairedUsage = repaired.usage || {};
+    const repairPromptTokens = repairedUsage.input_tokens || 0;
+    const repairCompletionTokens = repairedUsage.output_tokens || 0;
+    const repairCost = estimateAiCost(DEFAULT_MODEL, repairPromptTokens, repairCompletionTokens);
+    store.logAiUsage({
+      workerId,
+      feature: 'ai_search_planning_repair',
+      model: DEFAULT_MODEL,
+      promptTokens: repairPromptTokens,
+      completionTokens: repairCompletionTokens,
+      totalTokens: repairedUsage.total_tokens || 0,
+      estimatedCost: repairCost,
+      runId: jobId
+    });
+    promptTokens += repairPromptTokens;
+    completionTokens += repairCompletionTokens;
+    totalTokens += repairedUsage.total_tokens || 0;
+    estimatedCost += repairCost;
+    parsed = parseLooseJson(repaired.output_text);
+  }
+
+  const queries = unique((Array.isArray(parsed.queries) ? parsed.queries : []).map(cleanText).filter(Boolean)).slice(0, maxItems);
+
+  return {
+    queries,
+    model,
+    tokenUsage: { promptTokens, completionTokens, totalTokens },
+    estimatedCost: Number(estimatedCost.toFixed(6))
+  };
+}
+
+// Round 4: computeVerificationStatus() cross-checks a raw AI-search
+// candidate's self-reported `independent_signals_found` against the actual
+// raw fields on the candidate - the model can claim it verified a signal
+// without that field ever showing up in the structured output, so this never
+// trusts the self-report alone. Pure logic, no AI call. Attached to every
+// candidate inside runAiSearchBatch() below, before dedup/save, so round 5's
+// orchestrator can filter/store `verification_status`/`signals_detected`.
+const VERIFICATION_SIGNAL_ALIASES = {
+  official_website: ['official_website', 'website'],
+  registry_record: ['registry_record', 'business_registry_entry', 'registry'],
+  google_maps_profile: ['google_maps_profile', 'google_maps', 'maps_profile', 'gmb', 'google_business_profile'],
+  social_profile: ['social_profile', 'social_media_profile', 'instagram', 'facebook', 'social'],
+  industry_directory: ['industry_directory', 'public_directory_listing', 'directory', 'catalog'],
+  verified_phone: ['verified_phone', 'phone_number', 'phone'],
+  verified_address: ['verified_address', 'address']
+};
+
+// "Strong" signals per the round-4 spec: at least one of these among 2+
+// genuinely-present signals upgrades PARTIALLY_VERIFIED to VERIFIED.
+const STRONG_VERIFICATION_SIGNALS = new Set(['official_website', 'registry_record', 'google_maps_profile']);
+
+function normalizeSignalToken(value) {
+  return String(value || '')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+// A claimed signal token counts toward a signal type if either string
+// contains the other, so "business_registry_entry" matches alias "registry"
+// and "phone_number" matches alias "phone" without needing an exhaustive list.
+function candidateClaimsSignal(claimedSignals, signalType) {
+  const aliases = VERIFICATION_SIGNAL_ALIASES[signalType] || [signalType];
+  return claimedSignals.some((claim) => aliases.some((alias) => claim.includes(alias) || alias.includes(claim)));
+}
+
+function isRegistryLikeSource(text) {
+  return /registr|rejestr|ceidg|\bkrs\b|regon|biznes\.gov|opendatabot|youcontrol/i.test(String(text || ''));
+}
+
+function isGoogleMapsSource(text) {
+  return /google\.com\/maps|maps\.google|g\.page|google_places|google\s*business\s*profile/i.test(String(text || ''));
+}
+
+function isSocialSourceUrl(text) {
+  const host = safeHostname(text);
+  return Boolean(host) && socialDomains.some((domain) => host.includes(domain));
+}
+
+// directoryDomains (defined earlier in this file) mixes plain business
+// directories with registry-flavored ones (rejestr.io, regon24.pl,
+// biznes.gov.pl) - registry-like hosts are excluded here so they land in the
+// registry_record bucket instead of being double-counted as a directory too.
+function isDirectorySourceUrl(text) {
+  if (isRegistryLikeSource(text) || isGoogleMapsSource(text)) return false;
+  const host = safeHostname(text);
+  if (host && directoryDomains.some((domain) => host.includes(domain))) return true;
+  return /\bdirectory\b|\bcatalog(ue)?\b/i.test(String(text || ''));
+}
+
+function computeVerificationStatus(candidate = {}) {
+  const claimedSignals = (Array.isArray(candidate.independent_signals_found) ? candidate.independent_signals_found : [])
+    .map(normalizeSignalToken)
+    .filter(Boolean);
+  const sourceText = [candidate.source, candidate.source_profile].filter(Boolean).join(' ');
+  const websiteUrl = String(candidate.website_url || '').trim();
+
+  // contact_page is deliberately NOT gated on a separate model claim: the
+  // spec describes it as "part of website", i.e. the same evidence as
+  // official_website rather than an independently-claimable signal (the
+  // independent_signals_found exemplar list given to the model never
+  // includes a "contact_page" option), so it simply follows website_url
+  // being genuinely present.
+  const signalChecks = {
+    official_website: Boolean(websiteUrl) && candidateClaimsSignal(claimedSignals, 'official_website'),
+    contact_page: Boolean(websiteUrl),
+    registry_record: isRegistryLikeSource(sourceText) && candidateClaimsSignal(claimedSignals, 'registry_record'),
+    google_maps_profile: isGoogleMapsSource(sourceText) && candidateClaimsSignal(claimedSignals, 'google_maps_profile'),
+    social_profile:
+      (Boolean(String(candidate.instagram || '').trim()) ||
+        Boolean(String(candidate.facebook || '').trim()) ||
+        isSocialSourceUrl(candidate.source_profile)) &&
+      candidateClaimsSignal(claimedSignals, 'social_profile'),
+    industry_directory: isDirectorySourceUrl(candidate.source_profile) && candidateClaimsSignal(claimedSignals, 'industry_directory'),
+    verified_phone: Boolean(String(candidate.phone || '').trim()) && candidateClaimsSignal(claimedSignals, 'verified_phone'),
+    verified_address: Boolean(String(candidate.address || '').trim()) && candidateClaimsSignal(claimedSignals, 'verified_address')
+  };
+
+  const signalsDetected = Object.keys(signalChecks).filter((signalType) => signalChecks[signalType]);
+  const count = signalsDetected.length;
+  const hasStrongSignal = signalsDetected.some((signalType) => STRONG_VERIFICATION_SIGNALS.has(signalType));
+
+  let verificationStatus;
+  if (count >= 2) {
+    verificationStatus = hasStrongSignal ? 'VERIFIED' : 'PARTIALLY_VERIFIED';
+  } else {
+    // 0 or exactly 1 signal (weak or strong): not enough independent
+    // cross-verification yet per the round-4 spec.
+    verificationStatus = 'UNVERIFIED';
+  }
+
+  return { verification_status: verificationStatus, signals_detected: signalsDetected };
+}
+
+async function runAiSearchBatch({
+  query,
+  niche,
+  city,
+  district,
+  country,
+  limit,
+  model,
+  webSearchEnabled = true,
+  jobId = '',
+  workerId = ''
+}) {
+  if (!openai) {
+    throw new Error('OPENAI_API_KEY не настроен.');
+  }
+
+  const settings = store.getSettings();
+  const resolvedModel = model || settings.aiCompanySearchModel;
+  // See clampAiRequestTimeoutMs() near OPENAI_TIMEOUT_MS above - per-call
+  // override for this feature's OpenAI calls, read fresh each invocation.
+  const requestTimeoutMs = clampAiRequestTimeoutMs(settings.aiRequestTimeoutSeconds);
+  const maxCompanies = Math.min(Math.max(Number(limit) || 15, 1), 20);
+  const warnings = [];
+  if (!webSearchEnabled) {
+    warnings.push(
+      "Web search is disabled in settings for this request - results rely on the model's own background knowledge only and may be stale or incomplete."
+    );
+  }
+
+  const independentSignalExamples = [
+    'official_website',
+    'google_maps_profile',
+    'phone_number',
+    'email_address',
+    'public_directory_listing',
+    'social_media_profile',
+    'customer_reviews',
+    'business_registry_entry'
+  ];
+
+  const input = [
+    {
+      role: 'system',
+      content:
+        'Find real, active local companies matching the given search query in the requested city/district/country. Return only valid JSON matching the schema. Do not invent companies - only return companies you have genuine evidence for (an official website, a public directory/profile listing, a phone number, an email, or a verifiable address). If fewer than the requested max can be found with real evidence, return fewer rather than padding the list. Mark any field you could not verify as an empty string rather than guessing. For each company, enumerate in independent_signals_found exactly which signal types you actually verified - do not just copy the example list.'
+    },
+    {
+      role: 'user',
+      content: JSON.stringify(
+        {
+          task: 'Run this single search query and return structured candidate company data, but only for companies you can verify are real.',
+          search_query: query,
+          niche,
+          city,
+          district,
+          country,
+          max_companies: maxCompanies,
+          independent_signal_examples: independentSignalExamples,
+          required_output_shape: {
+            companies: [
+              {
+                company: 'name',
+                niche: niche || 'category',
+                city: city || 'city',
+                district: 'district if known',
+                address: 'address if known',
+                phone: 'phone if public',
+                email: 'email if public',
+                website_url: 'official website if found',
+                source_profile: 'public source URL used',
+                instagram: 'instagram URL if found',
+                facebook: 'facebook URL if found',
+                review_count: 'number if known',
+                rating: 'number if known',
+                last_activity: 'date or signal if known',
+                services: ['service 1', 'service 2'],
+                notes: 'short evidence and why this is a real active company',
+                independent_signals_found: ['e.g. official_website, phone_number - only the ones actually verified']
+              }
+            ]
+          }
+        },
+        null,
+        2
+      )
+    }
+  ];
+
+  const schema = {
+    type: 'object',
+    additionalProperties: false,
+    required: ['companies'],
+    properties: {
+      companies: {
+        type: 'array',
+        maxItems: maxCompanies,
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: [
+            'company',
+            'niche',
+            'city',
+            'district',
+            'address',
+            'phone',
+            'email',
+            'website_url',
+            'source_profile',
+            'instagram',
+            'facebook',
+            'review_count',
+            'rating',
+            'last_activity',
+            'services',
+            'notes',
+            'independent_signals_found'
+          ],
+          properties: {
+            company: { type: 'string' },
+            niche: { type: 'string' },
+            city: { type: 'string' },
+            district: { type: 'string' },
+            address: { type: 'string' },
+            phone: { type: 'string' },
+            email: { type: 'string' },
+            website_url: { type: 'string' },
+            source_profile: { type: 'string' },
+            instagram: { type: 'string' },
+            facebook: { type: 'string' },
+            review_count: { type: 'string' },
+            rating: { type: 'string' },
+            last_activity: { type: 'string' },
+            services: {
+              type: 'array',
+              items: { type: 'string' }
+            },
+            notes: { type: 'string' },
+            independent_signals_found: {
+              type: 'array',
+              items: { type: 'string' }
+            }
+          }
+        }
+      }
+    }
+  };
+
+  const response = await openai.responses.create(
+    {
+      model: resolvedModel,
+      tools: webSearchEnabled ? [{ type: 'web_search' }] : [],
+      input,
+      max_output_tokens: 6000,
+      text: {
+        format: {
+          type: 'json_schema',
+          name: 'ai_search_batch_discovery',
+          strict: true,
+          schema
+        }
+      }
+    },
+    { timeout: requestTimeoutMs }
+  );
+
+  const usage = response.usage || {};
+  let promptTokens = usage.input_tokens || 0;
+  let completionTokens = usage.output_tokens || 0;
+  let totalTokens = usage.total_tokens || 0;
+  let estimatedCost = estimateAiCost(resolvedModel, promptTokens, completionTokens);
+  store.logAiUsage({
+    workerId,
+    feature: 'ai_search_discovery',
+    model: resolvedModel,
+    promptTokens,
+    completionTokens,
+    totalTokens,
+    estimatedCost,
+    // Reusing the existing runId slot to carry the AI Search Job id, per the
+    // round-3 spec - avoids touching logAiUsage()'s signature this round.
+    runId: jobId
+  });
+
+  let parsed;
+  try {
+    parsed = parseLooseJson(response.output_text);
+  } catch {
+    const repaired = await openai.responses.create(
+      {
+        model: DEFAULT_MODEL,
+        input: [
+          {
+            role: 'system',
+            content: 'Repair the user content into valid JSON matching the provided schema. Do not add new companies.'
+          },
+          {
+            role: 'user',
+            content: response.output_text || ''
+          }
+        ],
+        max_output_tokens: 6000,
+        text: {
+          format: {
+            type: 'json_schema',
+            name: 'ai_search_batch_discovery_repaired',
+            strict: true,
+            schema
+          }
+        }
+      },
+      { timeout: requestTimeoutMs }
+    );
+    const repairedUsage = repaired.usage || {};
+    const repairPromptTokens = repairedUsage.input_tokens || 0;
+    const repairCompletionTokens = repairedUsage.output_tokens || 0;
+    const repairCost = estimateAiCost(DEFAULT_MODEL, repairPromptTokens, repairCompletionTokens);
+    store.logAiUsage({
+      workerId,
+      feature: 'ai_search_discovery_repair',
+      model: DEFAULT_MODEL,
+      promptTokens: repairPromptTokens,
+      completionTokens: repairCompletionTokens,
+      totalTokens: repairedUsage.total_tokens || 0,
+      estimatedCost: repairCost,
+      runId: jobId
+    });
+    promptTokens += repairPromptTokens;
+    completionTokens += repairCompletionTokens;
+    totalTokens += repairedUsage.total_tokens || 0;
+    estimatedCost += repairCost;
+    parsed = parseLooseJson(repaired.output_text);
+  }
+
+  const rows = Array.isArray(parsed.companies) ? parsed.companies : [];
+  const companies = rows
+    .map((row) => {
+      const candidate = {
+        company: cleanText(row.company || row.company_name || row.name || row.title || ''),
+        niche: cleanText(row.niche || row.category || niche),
+        city: cleanText(row.city || city || ''),
+        district: cleanText(row.district || district || ''),
+        address: cleanText(row.address || ''),
+        phone: normalizePhoneField(row.phone || '', { city: cleanText(row.city || city || ''), country: country || getDiscoveryContext().country }),
+        email: cleanText(row.email || '').toLowerCase(),
+        website_url: cleanText(row.website_url || row.website || ''),
+        source: 'ai_search_batch',
+        source_profile: cleanText(row.source_profile || row.source_url || row.url || ''),
+        instagram: cleanText(row.instagram || ''),
+        facebook: cleanText(row.facebook || ''),
+        review_count: parseNumber(row.review_count || row.reviews),
+        rating: parseNumber(row.rating),
+        last_activity: cleanText(row.last_activity || ''),
+        services: parseList(row.services || niche),
+        independent_signals_found: parseList(row.independent_signals_found),
+        notes: cleanText(row.notes || `AI search batch query: ${query}`)
+      };
+      // Attach the pre-computed, cross-checked verification status BEFORE
+      // dedup/save (round 4) so round 5's orchestrator can filter/store it
+      // without recomputing it later from a possibly-already-deduped shape.
+      const { verification_status, signals_detected } = computeVerificationStatus(candidate);
+      candidate.verification_status = verification_status;
+      candidate.signals_detected = signals_detected;
+      return candidate;
+    })
+    .filter((company) => company.company && (company.source_profile || company.website_url || company.phone || company.email));
+
+  if (rows.length && !companies.length) {
+    warnings.push('AI search batch returned rows, but none had enough source data to keep.');
+  }
+
+  return {
+    query,
+    companies: uniqueCompanies(companies).slice(0, maxCompanies),
+    warnings,
+    tokenUsage: { promptTokens, completionTokens, totalTokens },
+    estimatedCost: Number(estimatedCost.toFixed(6)),
+    webSearchUsed: Boolean(webSearchEnabled)
+  };
+}
+
+// Generic bounded-concurrency runner: processes `items` through `workerFn`
+// with at most `limit` in flight at once. NOTE: an equivalent worker-pool
+// helper (mapLimit(), defined further below in this file and already used by
+// the enrichment/analysis pipelines) already existed before this round - this
+// is a thin named alias over it so call sites reasoning about "AI search
+// batch concurrency" can spell it in domain terms, without duplicating the
+// pooling logic. Round 5's orchestrator is expected to call this like:
+//
+//   const settings = store.getSettings();
+//   const batches = await runWithConcurrencyLimit(
+//     plannedQueries,
+//     settings.aiMaxParallelRequests,
+//     (query) => runAiSearchBatch({ query, niche, city, district, country, limit, model, webSearchEnabled, jobId, workerId })
+//   );
+//   const allCompanies = batches.flatMap((batch) => batch.companies);
+//
+// Not wired into any live dispatch path yet - that is round 5's job.
+async function runWithConcurrencyLimit(items, limit, workerFn) {
+  return mapLimit(items, limit, workerFn);
+}
+
 async function discoverCompaniesFromCeidg({ niche, city, district, limit }) {
   const params = new URLSearchParams();
   if (city) params.set('miasto', city);
@@ -8775,6 +9710,1282 @@ If there is category/company/site mismatch risk, put it in risks_or_skip_reasons
     ai_analyzed_at: new Date().toISOString(),
     company_data_version: 1
   };
+}
+
+// --- Round 4: enrichCompanyProfile() -----------------------------------
+//
+// Deep, multi-source AI company enrichment - one openai.responses.create()
+// call per company against a much larger structured-output schema than
+// analyzeSiteCardWithOpenAI's, covering identification/location/contacts/
+// web presence/industry/services/products/projects/clients/reputation/
+// business scale/decision makers/website+marketing analysis/sales
+// opportunities/demo concept/cold outreach/scores/sources/verification/
+// conflicts. Every leaf is nullable (`type: [X, "null"]`) because the system
+// prompt forbids inventing facts - "I don't know" must always be
+// representable. The schema is built once at module load with small helper
+// functions purely to avoid ~500 lines of copy-pasted boilerplate; the
+// resulting AI_COMPANY_PROFILE_SCHEMA object itself is a complete, concrete
+// JSON schema (verified structurally - see the round-4 report).
+function nullableString() {
+  return { type: ['string', 'null'] };
+}
+function nullableNumber() {
+  return { type: ['number', 'null'] };
+}
+function nullableBoolean() {
+  return { type: ['boolean', 'null'] };
+}
+function nullableEnum(values) {
+  return { type: ['string', 'null'], enum: [...values, null] };
+}
+function stringArraySchema(maxItems) {
+  return { type: 'array', maxItems, items: { type: 'string' } };
+}
+// additionalProperties:false is set on every nested object below (required
+// by OpenAI strict mode at every nesting level, not just the top level) -
+// this helper always includes it and always requires every property it
+// defines, since strict mode requires every listed property be present
+// (nullable, not omittable).
+function nullableObjectArraySchema(maxItems, properties) {
+  return {
+    type: 'array',
+    maxItems,
+    items: {
+      type: 'object',
+      additionalProperties: false,
+      required: Object.keys(properties),
+      properties
+    }
+  };
+}
+
+const AI_COMPANY_PROFILE_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: [
+    'identification',
+    'location',
+    'contacts',
+    'web_presence',
+    'industry',
+    'services',
+    'products',
+    'projects',
+    'clients_partners',
+    'reputation',
+    'business_scale',
+    'decision_makers',
+    'website_analysis',
+    'marketing_analysis',
+    'sales_opportunities',
+    'demo_site_concept',
+    'cold_outreach',
+    'scores',
+    'sources',
+    'verification_status',
+    'conflicts'
+  ],
+  properties: {
+    identification: {
+      type: 'object',
+      additionalProperties: false,
+      required: [
+        'display_name',
+        'legal_name',
+        'former_names',
+        'brand_names',
+        'short_description',
+        'company_type',
+        'legal_form',
+        'current_status',
+        'founding_year',
+        'activity_start_year',
+        'years_in_business',
+        'nip',
+        'krs',
+        'regon',
+        'pkd_codes',
+        'owners',
+        'founders',
+        'board_members'
+      ],
+      properties: {
+        display_name: nullableString(),
+        legal_name: nullableString(),
+        former_names: stringArraySchema(10),
+        brand_names: stringArraySchema(10),
+        short_description: nullableString(),
+        company_type: nullableString(),
+        legal_form: nullableString(),
+        current_status: nullableString(),
+        founding_year: nullableNumber(),
+        activity_start_year: nullableNumber(),
+        years_in_business: nullableNumber(),
+        nip: nullableString(),
+        krs: nullableString(),
+        regon: nullableString(),
+        pkd_codes: stringArraySchema(10),
+        owners: stringArraySchema(10),
+        founders: stringArraySchema(10),
+        board_members: stringArraySchema(10)
+      }
+    },
+    location: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['country', 'region', 'city', 'district', 'address', 'postal_code', 'service_areas', 'google_maps_url'],
+      properties: {
+        country: nullableString(),
+        region: nullableString(),
+        city: nullableString(),
+        district: nullableString(),
+        address: nullableString(),
+        postal_code: nullableString(),
+        service_areas: stringArraySchema(10),
+        google_maps_url: nullableString()
+      }
+    },
+    contacts: {
+      type: 'object',
+      additionalProperties: false,
+      required: [
+        'main_phone',
+        'alternate_phones',
+        'main_email',
+        'sales_email',
+        'contact_form_url',
+        'opening_hours',
+        'preferred_contact_method'
+      ],
+      properties: {
+        main_phone: nullableString(),
+        alternate_phones: stringArraySchema(10),
+        main_email: nullableString(),
+        sales_email: nullableString(),
+        contact_form_url: nullableString(),
+        opening_hours: nullableString(),
+        preferred_contact_method: nullableString()
+      }
+    },
+    web_presence: {
+      type: 'object',
+      additionalProperties: false,
+      required: [
+        'primary_website',
+        'additional_websites',
+        'facebook',
+        'instagram',
+        'linkedin',
+        'youtube',
+        'google_business_profile',
+        'industry_profiles',
+        'review_profiles'
+      ],
+      properties: {
+        primary_website: nullableString(),
+        additional_websites: stringArraySchema(10),
+        facebook: nullableString(),
+        instagram: nullableString(),
+        linkedin: nullableString(),
+        youtube: nullableString(),
+        google_business_profile: nullableString(),
+        industry_profiles: stringArraySchema(10),
+        review_profiles: stringArraySchema(10)
+      }
+    },
+    industry: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['main_industry', 'primary_niche', 'subniches', 'business_model', 'target_audiences', 'geographic_markets'],
+      properties: {
+        main_industry: nullableString(),
+        primary_niche: nullableString(),
+        subniches: stringArraySchema(10),
+        business_model: nullableEnum(['B2B', 'B2C', 'B2B_B2C', 'UNKNOWN']),
+        target_audiences: stringArraySchema(10),
+        geographic_markets: stringArraySchema(10)
+      }
+    },
+    services: nullableObjectArraySchema(20, {
+      service_name: nullableString(),
+      normalized_category: nullableString(),
+      description: nullableString(),
+      target_client: nullableString(),
+      source_url: nullableString(),
+      confidence: nullableEnum(['HIGH', 'MEDIUM', 'LOW', 'UNKNOWN'])
+    }),
+    products: nullableObjectArraySchema(15, {
+      name: nullableString(),
+      category: nullableString(),
+      description: nullableString(),
+      source_url: nullableString(),
+      confidence: nullableEnum(['HIGH', 'MEDIUM', 'LOW', 'UNKNOWN'])
+    }),
+    projects: nullableObjectArraySchema(15, {
+      project_name: nullableString(),
+      city: nullableString(),
+      project_type: nullableString(),
+      client: nullableString(),
+      scope_of_work: nullableString(),
+      year: nullableNumber(),
+      source_url: nullableString(),
+      verified: nullableBoolean()
+    }),
+    clients_partners: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['named_clients', 'general_contractors', 'technology_partners', 'suppliers'],
+      properties: {
+        named_clients: stringArraySchema(15),
+        general_contractors: stringArraySchema(15),
+        technology_partners: stringArraySchema(15),
+        suppliers: stringArraySchema(15)
+      }
+    },
+    reputation: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['google_rating', 'google_review_count', 'positive_themes', 'negative_themes', 'awards'],
+      properties: {
+        google_rating: nullableNumber(),
+        google_review_count: nullableNumber(),
+        positive_themes: stringArraySchema(10),
+        negative_themes: stringArraySchema(10),
+        awards: stringArraySchema(10)
+      }
+    },
+    business_scale: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['estimated_employee_range', 'revenue_estimate', 'revenue_year', 'growth_signals'],
+      properties: {
+        estimated_employee_range: nullableEnum(['1-5', '6-10', '11-20', '21-50', '51-100', '101-250', '250+', 'UNKNOWN']),
+        revenue_estimate: nullableString(),
+        revenue_year: nullableNumber(),
+        growth_signals: stringArraySchema(10)
+      }
+    },
+    decision_makers: nullableObjectArraySchema(10, {
+      role: nullableString(),
+      name: nullableString(),
+      public_linkedin: nullableString(),
+      public_email: nullableString(),
+      public_phone: nullableString()
+    }),
+    website_analysis: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['status', 'mobile_friendly', 'languages', 'overall_weaknesses', 'strengths'],
+      properties: {
+        status: nullableString(),
+        mobile_friendly: nullableBoolean(),
+        languages: stringArraySchema(10),
+        overall_weaknesses: stringArraySchema(10),
+        strengths: stringArraySchema(10)
+      }
+    },
+    marketing_analysis: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['current_positioning', 'unique_selling_points', 'trust_barriers', 'content_gaps'],
+      properties: {
+        current_positioning: nullableString(),
+        unique_selling_points: stringArraySchema(10),
+        trust_barriers: stringArraySchema(10),
+        content_gaps: stringArraySchema(10)
+      }
+    },
+    sales_opportunities: nullableObjectArraySchema(10, {
+      opportunity: nullableString(),
+      why_it_matters: nullableString(),
+      priority: nullableEnum(['HIGH', 'MEDIUM', 'LOW']),
+      type: nullableEnum(['fact', 'inference'])
+    }),
+    demo_site_concept: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['recommended_concept', 'hero_idea', 'primary_headline', 'recommended_sections'],
+      properties: {
+        recommended_concept: nullableString(),
+        hero_idea: nullableString(),
+        primary_headline: nullableString(),
+        recommended_sections: stringArraySchema(10)
+      }
+    },
+    cold_outreach: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['best_contact_role', 'suggested_opening', 'identified_website_problem', 'proposed_offer', 'next_step'],
+      properties: {
+        best_contact_role: nullableString(),
+        suggested_opening: nullableString(),
+        identified_website_problem: nullableString(),
+        proposed_offer: nullableString(),
+        next_step: nullableString()
+      }
+    },
+    scores: {
+      type: 'object',
+      additionalProperties: false,
+      required: [
+        'lead_fit_score',
+        'website_need_score',
+        'budget_probability_score',
+        'owner_access_score',
+        'data_confidence_score',
+        'overall_priority_score',
+        'recommended_priority',
+        'rejection_reasons',
+        'analyst_summary'
+      ],
+      properties: {
+        lead_fit_score: nullableNumber(),
+        website_need_score: nullableNumber(),
+        budget_probability_score: nullableNumber(),
+        owner_access_score: nullableNumber(),
+        data_confidence_score: nullableNumber(),
+        overall_priority_score: nullableNumber(),
+        recommended_priority: nullableEnum(['HIGH', 'MEDIUM', 'LOW', 'REJECT']),
+        rejection_reasons: stringArraySchema(10),
+        analyst_summary: nullableString()
+      }
+    },
+    sources: nullableObjectArraySchema(20, {
+      source_url: nullableString(),
+      source_title: nullableString(),
+      source_type: nullableString(),
+      supports_fields: stringArraySchema(15),
+      confidence: nullableEnum(['HIGH', 'MEDIUM', 'LOW', 'UNKNOWN'])
+    }),
+    verification_status: nullableEnum(['VERIFIED', 'PARTIALLY_VERIFIED', 'UNVERIFIED', 'CONFLICTING_DATA']),
+    conflicts: nullableObjectArraySchema(10, {
+      field_name: nullableString(),
+      values: {
+        type: 'array',
+        maxItems: 10,
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['value', 'source_url'],
+          properties: {
+            value: nullableString(),
+            source_url: nullableString()
+          }
+        }
+      }
+    })
+  }
+};
+
+async function enrichCompanyProfile({
+  item,
+  existingProfile,
+  model,
+  language = 'ru',
+  workerId = '',
+  companyId = '',
+  jobId = '',
+  webSearchEnabled = true
+}) {
+  if (!openai) {
+    return { status: 'FAILED', error: 'OPENAI_API_KEY не настроен.' };
+  }
+
+  // See clampAiRequestTimeoutMs() near OPENAI_TIMEOUT_MS above - per-call
+  // override for this feature's OpenAI calls, read fresh each invocation.
+  // This function's schema is the largest of the three (max_output_tokens:
+  // 8000) and its web_search calls were the slowest to time out during live
+  // smoke testing, so getting this override right here matters most.
+  const requestTimeoutMs = clampAiRequestTimeoutMs(store.getSettings().aiRequestTimeoutSeconds);
+
+  // Reuse guard - mirrors analyzeSiteCardWithOpenAI's caller-side reuse guard
+  // in the /api/discover pipeline above ("a company returned to the pool can
+  // resurface... if it already has a completed AI analysis for the same
+  // resolved website, reuse that result instead of paying for another OpenAI
+  // call"). Here the equivalent identity check is the primary website: if
+  // this company already carries a COMPLETED profile built from the same
+  // primary_website, skip the call and hand back the existing envelope
+  // unchanged rather than re-running an 8000-token enrichment pass.
+  const existingCompleted = Boolean(existingProfile?.status === 'COMPLETED' && existingProfile?.data);
+  const existingWebsite = cleanText(existingProfile?.data?.web_presence?.primary_website || '');
+  const currentWebsite = cleanText(item?.website_url || item?.primary_website || '');
+  const canReuseProfile = Boolean(existingCompleted && existingWebsite && currentWebsite && existingWebsite === currentWebsite);
+  if (canReuseProfile) {
+    return existingProfile;
+  }
+
+  const outputLanguage = ['ru', 'pl', 'en'].includes(String(language || '').toLowerCase()) ? String(language).toLowerCase() : 'ru';
+  const outputLanguageName = { ru: 'Russian', pl: 'Polish', en: 'English' }[outputLanguage];
+
+  const payload = {
+    output_language: outputLanguage,
+    company: {
+      name: item?.company || 'UNKNOWN',
+      niche: item?.niche || 'UNKNOWN',
+      city: item?.city || 'UNKNOWN',
+      district: item?.district || 'UNKNOWN',
+      address: item?.address || 'UNKNOWN'
+    },
+    contacts: {
+      phone: item?.phone || 'UNKNOWN',
+      email: item?.email || 'UNKNOWN',
+      instagram: item?.instagram || 'UNKNOWN',
+      facebook: item?.facebook || 'UNKNOWN',
+      source_profile: item?.source_profile || 'UNKNOWN'
+    },
+    business_signals: {
+      review_count: item?.review_count || 0,
+      rating: item?.rating || 0,
+      last_activity: item?.last_activity || 'UNKNOWN',
+      services: item?.services?.length ? item.services : ['UNKNOWN'],
+      notes: item?.notes || '',
+      independent_signals_found: item?.independent_signals_found || [],
+      verification_status: item?.verification_status || 'UNVERIFIED',
+      signals_detected: item?.signals_detected || []
+    },
+    website: {
+      url: item?.website_url || 'UNKNOWN'
+    },
+    existing_profile: existingProfile?.data || null,
+    rules: [
+      'Use web search (when available) to verify and expand facts about this exact company - its own website, official registries, Google Maps/Business profile, social profiles, review platforms, directories and news.',
+      'Never invent facts. If a field cannot be verified from real evidence, return null for it exactly as the schema requires - every field in the schema is nullable for this reason.',
+      'Base every claim on real, findable evidence for THIS company, identified by company.name + company.city (+ district) in this payload - never substitute a different, similarly-named company.',
+      'decision_makers must contain only public, professional contact details (e.g. a LinkedIn profile URL, a company-listed work email or phone) - never private, personal or unverified personal data.',
+      'In sales_opportunities, set type to "fact" only when directly evidenced by a source, and "inference" when it is your own reasoned inference from the evidence - never present an inference as a fact.',
+      'When sources disagree on a fact (e.g. differing production capacity numbers), do not silently pick one - record it in conflicts with every value and its source_url, and set the top-level verification_status to CONFLICTING_DATA.',
+      `Write every user-facing text field in ${outputLanguageName}.`,
+      'Return only JSON matching the schema.'
+    ]
+  };
+
+  const input = [
+    {
+      role: 'system',
+      content:
+        `You perform deep, fact-checked company enrichment research for exactly ONE company, identified by company.name + company.city (+ district) in this payload. This payload is the complete and only source of truth about which company this is - it contains no data from any other company or request. Research this exact company using every signal available (its own website, official registries such as CEIDG/KRS/REGON, Google Maps/Business profile, social profiles, review platforms, industry directories, news) and fill in the schema with what you can genuinely verify. Never invent owners, revenue, employee counts, projects, clients, awards or contacts - if you cannot verify a field, return null. Distinguish confirmed facts from your own inferences explicitly (see sales_opportunities[].type). The public-professional-contact rule applies strictly to decision_makers. Output all analysis fields in ${outputLanguageName}. Return only JSON matching the schema.`
+    },
+    {
+      role: 'user',
+      content: JSON.stringify(payload, null, 2)
+    }
+  ];
+
+  // No repair-retry here, matching analyzeSiteCardWithOpenAI's precedent (it
+  // doesn't have one either). The request itself is allowed to throw up to
+  // the caller - round 5's per-company try/catch is expected to wrap this
+  // call the same way the existing discover-job pipeline already wraps
+  // analyzeSiteCardWithOpenAI. Only the JSON.parse below gets its own
+  // try/catch, so a single malformed response can't crash the whole
+  // enrichment job.
+  const response = await openai.responses.create(
+    {
+      model,
+      tools: webSearchEnabled ? [{ type: 'web_search' }] : [],
+      input,
+      max_output_tokens: 8000,
+      text: {
+        format: {
+          type: 'json_schema',
+          name: 'ai_company_profile_enrichment',
+          strict: true,
+          schema: AI_COMPANY_PROFILE_SCHEMA
+        }
+      }
+    },
+    { timeout: requestTimeoutMs }
+  );
+
+  const usage = response.usage || {};
+  store.logAiUsage({
+    workerId,
+    feature: 'ai_search_enrichment',
+    model,
+    promptTokens: usage.input_tokens || 0,
+    completionTokens: usage.output_tokens || 0,
+    totalTokens: usage.total_tokens || 0,
+    estimatedCost: estimateAiCost(model, usage.input_tokens || 0, usage.output_tokens || 0),
+    companyId,
+    runId: jobId
+  });
+
+  let data;
+  try {
+    data = JSON.parse(response.output_text);
+  } catch (error) {
+    return { status: 'FAILED', error: `Failed to parse AI company profile response as JSON: ${error.message || error}` };
+  }
+
+  return {
+    status: 'COMPLETED',
+    version: 1,
+    analyzed_at: new Date().toISOString(),
+    company_data_version: 1,
+    data
+  };
+}
+
+// --- Round 5: runAiSearchJob() orchestrator -----------------------------
+//
+// Ties every round 1-4 building block (AI Search Job store, planAiSearchQueries,
+// runAiSearchBatch + its attached verification-status, enrichCompanyProfile,
+// runWithConcurrencyLimit) together with the EXISTING normal-discovery
+// machinery (discoverCompaniesBatchWithoutAI, store.upsertCompany/
+// claimCompanyForRun/createRun/updateRun, store.findExistingCompanyId) into a
+// single stage machine:
+//
+//   QUEUED -> PLANNING -> SEARCHING -> VALIDATING -> ENRICHING -> SCORING ->
+//   SAVING -> COMPLETED / PARTIAL / CANCELLED / PAUSED / FAILED
+//
+// Resume strategy (per the round-5 spec, "use your judgment, document which
+// you chose"): resume re-invokes runAiSearchJob(jobId) from scratch
+// (re-plan + re-search) rather than trying to persist "already found
+// candidates" mid-job. Candidates only exist in this function's local
+// variables, not on the durable job record, so there is nothing cheap to
+// resume from - re-running is simpler and safe (planAiSearchQueries/
+// runAiSearchBatch are idempotent reads, not mutations) at the cost of some
+// duplicate token spend if a job is paused and resumed later.
+const AI_SEARCH_DUPLICATE_STREAK = MAX_DUPLICATE_STREAK;
+
+// Statuses/pool-states that mean "this existing company must never be
+// resurfaced as a fresh AI-search result": either it is actively owned by
+// someone else right now (pool_state 'reserved' - not yet returned to the
+// pool) or it carries a do-not-call-equivalent outcome from a previous call
+// (rejected/wrong number/closed/duplicate), or was administratively removed.
+const AI_SEARCH_DO_NOT_RESURFACE_STATUSES = new Set(['rejected', 'wrong_number', 'closed_business', 'duplicate', 'deleted']);
+const AI_SEARCH_DO_NOT_RESURFACE_CRM_STATUSES = new Set(['odrzucony']);
+
+function isExistingCompanyExcludedForAiSearch(existing) {
+  if (!existing) return false;
+  if (existing.pool_state === 'deleted') return true;
+  if (existing.pool_state === 'reserved') return true;
+  if (AI_SEARCH_DO_NOT_RESURFACE_STATUSES.has(existing.status)) return true;
+  if (AI_SEARCH_DO_NOT_RESURFACE_CRM_STATUSES.has(existing.crm_status)) return true;
+  return false;
+}
+
+// job.params.excludeLists = { domains: [], nips: [], phones: [] } - a caller
+// (e.g. "never show me this competitor again") can blacklist a candidate by
+// any of these identity signals regardless of whether it already exists in
+// the store.
+function matchesAiSearchExcludeLists(candidate, excludeLists = {}) {
+  const domains = (Array.isArray(excludeLists.domains) ? excludeLists.domains : [])
+    .map((value) => String(value || '').toLowerCase().trim())
+    .filter(Boolean);
+  if (domains.length) {
+    const host = safeHostname(candidate.website_url || candidate.source_profile || '');
+    if (host && domains.some((domain) => host === domain || host.endsWith(`.${domain}`))) return true;
+  }
+  const nips = (Array.isArray(excludeLists.nips) ? excludeLists.nips : []).map(cleanIdentifier).filter(Boolean);
+  if (nips.length) {
+    const candidateNip = cleanIdentifier(candidate.nip || '');
+    if (candidateNip && nips.includes(candidateNip)) return true;
+  }
+  const phones = (Array.isArray(excludeLists.phones ? excludeLists.phones : []) ? excludeLists.phones : [])
+    .map((value) => normalizePhone(value))
+    .filter(Boolean);
+  if (phones.length) {
+    const candidatePhone = normalizePhone(candidate.phone || '');
+    if (candidatePhone && phones.includes(candidatePhone)) return true;
+  }
+  return false;
+}
+
+// Applies the "curated extra criteria" fields a later frontend round is
+// expected to send (minReviews, minRating, websitePresence, excludeKeywords).
+// Fields we cannot yet meaningfully filter on pre-enrichment (clientType,
+// companySizeRange, minYearsInBusiness, websiteQualityFlags) are simply left
+// stored on job.params untouched - see the round-5 report.
+function passesAiSearchExtraCriteria(candidate, params = {}) {
+  const minReviews = Number(params.minReviews) || 0;
+  if (minReviews > 0 && Number(candidate.review_count || 0) < minReviews) return false;
+  const minRating = Number(params.minRating) || 0;
+  if (minRating > 0 && Number(candidate.rating || 0) > 0 && Number(candidate.rating) < minRating) return false;
+  const websitePresence = String(params.websitePresence || '').trim().toLowerCase();
+  if (websitePresence === 'has_website' && !cleanText(candidate.website_url || '')) return false;
+  if (websitePresence === 'no_website' && cleanText(candidate.website_url || '')) return false;
+  const excludeKeywords = (Array.isArray(params.excludeKeywords) ? params.excludeKeywords : [])
+    .map((value) => String(value || '').toLowerCase().trim())
+    .filter(Boolean);
+  if (excludeKeywords.length) {
+    const haystack = [candidate.company, candidate.notes, (candidate.services || []).join(' ')]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+    if (excludeKeywords.some((keyword) => haystack.includes(keyword))) return false;
+  }
+  return true;
+}
+
+// Maps a raw AI-search (or combined-mode) candidate into the same flat shape
+// discoverCompaniesBatchWithoutAI's own candidates go through before
+// store.upsertCompany/claimCompanyForRun (normalizeItems), while preserving
+// the AI-search-specific verification fields normalizeItems doesn't know
+// about (it builds a fresh object literal and would otherwise drop them).
+function mapAiCandidateToCompanyRow(candidate) {
+  const [normalized] = normalizeItems([candidate]);
+  if (!normalized) return null;
+  return {
+    ...normalized,
+    verification_status: candidate.verification_status || 'VERIFIED',
+    signals_detected: candidate.signals_detected || [],
+    independent_signals_found: candidate.independent_signals_found || []
+  };
+}
+
+// Rough per-unit cost estimate used only for the "would the NEXT call blow
+// the budget" pre-check - based on this job's own running average cost per
+// completed unit so far (falls back to a conservative flat guess before any
+// real data exists for this job yet).
+function estimateNextAiSearchUnitCost(estimatedCostSoFar, unitsDoneSoFar, fallback) {
+  if (unitsDoneSoFar > 0) return estimatedCostSoFar / unitsDoneSoFar;
+  return fallback;
+}
+
+function aiSearchBudgetWouldExceed(estimatedCostSoFar, unitsDoneSoFar, settings, fallback) {
+  const limit = Number(settings.aiDailyBudgetLimit) || 0;
+  if (limit <= 0) return false;
+  const nextUnitEstimate = estimateNextAiSearchUnitCost(estimatedCostSoFar, unitsDoneSoFar, fallback);
+  return estimatedCostSoFar + nextUnitEstimate > limit;
+}
+
+async function runAiSearchJob(jobId) {
+  try {
+    const initialJob = store.getAiSearchJob(jobId);
+    if (!initialJob) return;
+
+    const params = initialJob.params || {};
+    const requestedNiches = unique((Array.isArray(params.niches) ? params.niches : []).map(cleanText).filter(Boolean));
+    const niche = cleanText(params.niche || requestedNiches[0] || '');
+    const niches = requestedNiches.length ? requestedNiches : niche ? [niche] : [];
+    const city = cleanText(params.city || '');
+    const country = cleanText(params.country || '');
+    const district = cleanText(params.district || '');
+    const radiusKm = Number(params.radiusKm) || 0;
+    const language = cleanText(params.language || 'ru');
+    const requestedCount = clamp(Number(params.requestedCount) || 10, 1, 100);
+    const excludeLists = params.excludeLists || {};
+    const mode = initialJob.mode === 'combined' ? 'combined' : 'ai_search';
+    const modelSearch = initialJob.model_search;
+    const modelEnrich = initialJob.model_enrich;
+    const workerId = initialJob.creator_worker_id;
+
+    // Settings are read ONCE here (concurrency cap / web-search toggle) so a
+    // mid-job admin settings change never destabilizes a running job - model
+    // choices themselves were already snapshotted onto the job at creation
+    // time (job.model_search/job.model_enrich) and are used as-is above.
+    const settings = store.getSettings();
+    const concurrency = Math.max(1, Number(settings.aiMaxParallelRequests) || 3);
+    const webSearchEnabled = Boolean(settings.aiWebSearchEnabled);
+
+    if (!niches.length || (!city && !country)) {
+      store.updateAiSearchJob(jobId, {
+        stage: 'FAILED',
+        stage_detail: 'Missing niche or city/country.',
+        finished_at: new Date().toISOString(),
+        errors: [{ stage: 'QUEUED', message: 'Missing niche or city/country.', at: new Date().toISOString() }]
+      });
+      return;
+    }
+
+    let localWebSearchCalls = 0;
+    // Ground truth for cost/tokens is store.getAiUsageForRun(jobId): every AI
+    // call this job makes (planning, search batches, enrichment, and their
+    // repair-retries) already logs through store.logAiUsage with runId set
+    // to this jobId (round 3/4 convention - see planAiSearchQueries/
+    // runAiSearchBatch/enrichCompanyProfile above), so re-reading it here
+    // after each unit of work is more reliable than manually re-summing
+    // partial return values (enrichCompanyProfile in particular doesn't
+    // return a token/cost figure to its caller at all).
+    function syncJobUsageFromLedger(extraProgress) {
+      const usage = store.getAiUsageForRun(jobId);
+      store.updateAiSearchJob(jobId, {
+        estimated_cost: Number((usage.totalCost || 0).toFixed(6)),
+        token_usage: { total: usage.totalTokens || 0 },
+        web_search_calls: localWebSearchCalls,
+        ...(extraProgress ? { progress: extraProgress } : {})
+      });
+      return usage;
+    }
+
+    await discoveryContextStorage.run({ country, radiusKm, city }, async () => {
+      // ---- PLANNING --------------------------------------------------
+      store.updateAiSearchJob(jobId, {
+        stage: 'PLANNING',
+        stage_detail: 'Planning search queries...',
+        started_at: new Date().toISOString()
+      });
+
+      const extraKeywords = (Array.isArray(params.extraKeywords) ? params.extraKeywords : []).map(cleanText).filter(Boolean);
+      const nicheForPlanner = extraKeywords.length ? `${niche} ${extraKeywords.join(' ')}` : niche;
+
+      let planResult;
+      try {
+        planResult = await planAiSearchQueries({
+          niche: nicheForPlanner,
+          city,
+          district,
+          country,
+          language,
+          count: requestedCount,
+          workerId,
+          jobId
+        });
+      } catch (error) {
+        store.updateAiSearchJob(jobId, {
+          stage: 'FAILED',
+          stage_detail: `Planning failed: ${error.message || error}`,
+          finished_at: new Date().toISOString(),
+          errors: [{ stage: 'PLANNING', message: error.message || String(error), at: new Date().toISOString() }]
+        });
+        return;
+      }
+
+      const queries = planResult.queries || [];
+      syncJobUsageFromLedger({ planned_queries: queries.length });
+
+      if (!queries.length) {
+        store.updateAiSearchJob(jobId, {
+          stage: 'FAILED',
+          stage_detail: 'Planner produced zero queries.',
+          finished_at: new Date().toISOString(),
+          errors: [{ stage: 'PLANNING', message: 'Planner returned no usable queries.', at: new Date().toISOString() }]
+        });
+        return;
+      }
+
+      // ---- SEARCHING ---------------------------------------------------
+      store.updateAiSearchJob(jobId, { stage: 'SEARCHING', stage_detail: 'Running planned search queries...' });
+
+      let allCandidates = [];
+      let zeroNewStreak = 0;
+      const searchState = { stopped: false, reason: '' };
+
+      // combined mode: fan out the EXISTING non-AI discovery pipeline
+      // alongside the AI query batches, merged into the same candidate pool
+      // before VALIDATING (below) dedups everything uniformly.
+      let combinedDiscoveryPromise = null;
+      if (mode === 'combined') {
+        combinedDiscoveryPromise = discoverCompaniesBatchWithoutAI({
+          niches,
+          city,
+          district,
+          limit: Math.max(requestedCount * 3, 30),
+          sourceFocus: cleanText(params.sourceFocus) || 'internet',
+          workerId
+        }).catch((error) => {
+          store.updateAiSearchJob(jobId, {
+            errors: [
+              {
+                stage: 'SEARCHING',
+                message: `Combined-mode normal discovery failed: ${error.message || error}`,
+                at: new Date().toISOString()
+              }
+            ]
+          });
+          return { companies: [] };
+        });
+      }
+
+      async function searchWorker(query) {
+        if (searchState.stopped) return null;
+        const freshJob = store.getAiSearchJob(jobId);
+        if (freshJob?.cancel_requested) {
+          searchState.stopped = true;
+          searchState.reason = 'cancelled';
+          return null;
+        }
+        if (freshJob?.pause_requested) {
+          searchState.stopped = true;
+          searchState.reason = 'paused';
+          return null;
+        }
+        const queriesRunSoFar = freshJob?.progress?.queries_run || 0;
+        if (aiSearchBudgetWouldExceed(freshJob?.estimated_cost || 0, queriesRunSoFar, settings, 0.05)) {
+          searchState.stopped = true;
+          searchState.reason = 'budget';
+          return null;
+        }
+
+        let batch;
+        try {
+          batch = await runAiSearchBatch({
+            query,
+            niche,
+            city,
+            district,
+            country,
+            limit: 15,
+            model: modelSearch,
+            webSearchEnabled,
+            jobId,
+            workerId
+          });
+        } catch (error) {
+          store.updateAiSearchJob(jobId, {
+            errors: [{ stage: 'SEARCHING', message: `Query "${query}" failed: ${error.message || error}`, at: new Date().toISOString() }]
+          });
+          return null;
+        }
+
+        if (webSearchEnabled && batch.webSearchUsed) localWebSearchCalls += 1;
+        for (const company of batch.companies) company.source = 'ai_search';
+
+        const beforeCount = uniqueCompanies(allCandidates).length;
+        allCandidates = uniqueCompanies([...allCandidates, ...batch.companies]);
+        const afterCount = allCandidates.length;
+        const newFromThisBatch = afterCount - beforeCount;
+        zeroNewStreak = newFromThisBatch === 0 ? zeroNewStreak + 1 : 0;
+
+        const latestJob = store.getAiSearchJob(jobId);
+        syncJobUsageFromLedger({
+          queries_run: (latestJob?.progress?.queries_run || 0) + 1,
+          candidates_found: afterCount
+        });
+
+        if (afterCount >= requestedCount) {
+          searchState.stopped = true;
+          searchState.reason = 'target_reached';
+        } else if (zeroNewStreak >= AI_SEARCH_DUPLICATE_STREAK) {
+          searchState.stopped = true;
+          searchState.reason = 'duplicate_streak';
+        }
+        return batch;
+      }
+
+      await runWithConcurrencyLimit(queries, concurrency, searchWorker);
+
+      if (searchState.reason === 'cancelled') {
+        store.updateAiSearchJob(jobId, {
+          stage: 'CANCELLED',
+          stage_detail: 'Cancelled during search.',
+          finished_at: new Date().toISOString(),
+          cancel_reason: store.getAiSearchJob(jobId)?.cancel_reason || 'user_cancelled'
+        });
+        return;
+      }
+      if (searchState.reason === 'paused') {
+        store.updateAiSearchJob(jobId, { stage: 'PAUSED', stage_detail: 'Paused during search.' });
+        return;
+      }
+
+      if (combinedDiscoveryPromise) {
+        const normalDiscovery = await combinedDiscoveryPromise;
+        allCandidates = uniqueCompanies([...allCandidates, ...(normalDiscovery.companies || [])]);
+        syncJobUsageFromLedger({ candidates_found: allCandidates.length });
+      }
+
+      // ---- VALIDATING ----------------------------------------------------
+      store.updateAiSearchJob(jobId, { stage: 'VALIDATING', stage_detail: 'Deduplicating and validating candidates...' });
+
+      const jobAfterSearch = store.getAiSearchJob(jobId);
+      if (jobAfterSearch?.cancel_requested) {
+        store.updateAiSearchJob(jobId, {
+          stage: 'CANCELLED',
+          stage_detail: 'Cancelled before validation.',
+          finished_at: new Date().toISOString(),
+          cancel_reason: jobAfterSearch.cancel_reason || 'user_cancelled'
+        });
+        return;
+      }
+      if (jobAfterSearch?.pause_requested) {
+        store.updateAiSearchJob(jobId, { stage: 'PAUSED', stage_detail: 'Paused before validation.' });
+        return;
+      }
+
+      let rejected = 0;
+      let duplicatesSkipped = 0;
+      const confirmed = [];
+      for (const candidate of allCandidates) {
+        if (matchesAiSearchExcludeLists(candidate, excludeLists)) {
+          rejected += 1;
+          continue;
+        }
+        const existingId = store.findExistingCompanyId(candidate);
+        const existing = existingId ? store.getCompany(existingId) : null;
+        if (existing && isExistingCompanyExcludedForAiSearch(existing)) {
+          rejected += 1;
+          continue;
+        }
+        if (!passesAiSearchExtraCriteria(candidate, params)) {
+          rejected += 1;
+          continue;
+        }
+        if (existing) duplicatesSkipped += 1;
+        confirmed.push({ candidate, existingId });
+      }
+
+      // Prefer verified candidates, but never starve the result to zero: fill
+      // any remaining slots from UNVERIFIED candidates only if there aren't
+      // enough verified/partially-verified ones to meet requestedCount.
+      const verifiedFirst = confirmed.filter((entry) => entry.candidate.verification_status !== 'UNVERIFIED');
+      const unverifiedOnly = confirmed.filter((entry) => entry.candidate.verification_status === 'UNVERIFIED');
+      let finalCandidates = verifiedFirst.slice(0, requestedCount);
+      if (finalCandidates.length < requestedCount) {
+        finalCandidates = finalCandidates.concat(unverifiedOnly.slice(0, requestedCount - finalCandidates.length));
+      }
+      rejected += confirmed.length - finalCandidates.length;
+
+      store.updateAiSearchJob(jobId, {
+        progress: {
+          candidates_confirmed: finalCandidates.length,
+          duplicates_skipped: duplicatesSkipped,
+          rejected
+        }
+      });
+
+      // ---- ENRICHING -----------------------------------------------------
+      store.updateAiSearchJob(jobId, { stage: 'ENRICHING', stage_detail: 'Enriching confirmed candidates...' });
+
+      const enrichState = { stopped: false, reason: '' };
+
+      async function enrichWorker(entry) {
+        if (enrichState.stopped) return { ...entry, outcome: 'skipped' };
+        const freshJob = store.getAiSearchJob(jobId);
+        if (freshJob?.cancel_requested) {
+          enrichState.stopped = true;
+          enrichState.reason = 'cancelled';
+          return { ...entry, outcome: 'skipped' };
+        }
+        if (freshJob?.pause_requested) {
+          enrichState.stopped = true;
+          enrichState.reason = 'paused';
+          return { ...entry, outcome: 'skipped' };
+        }
+        const enrichedSoFar = freshJob?.progress?.enriched || 0;
+        if (aiSearchBudgetWouldExceed(freshJob?.estimated_cost || 0, enrichedSoFar, settings, 0.15)) {
+          enrichState.stopped = true;
+          enrichState.reason = 'budget';
+          return { ...entry, outcome: 'skipped' };
+        }
+
+        const existingCompanyRecord = entry.existingId ? store.getCompany(entry.existingId) : null;
+        const existingProfile = existingCompanyRecord?.aiCompanyProfile || null;
+        let result;
+        try {
+          result = await enrichCompanyProfile({
+            item: entry.candidate,
+            existingProfile,
+            model: modelEnrich,
+            language,
+            workerId,
+            companyId: entry.existingId || '',
+            jobId,
+            webSearchEnabled
+          });
+        } catch (error) {
+          result = { status: 'FAILED', error: error.message || String(error) };
+        }
+        if (webSearchEnabled) localWebSearchCalls += 1;
+
+        if (result.status === 'COMPLETED') {
+          const latestJob = store.getAiSearchJob(jobId);
+          syncJobUsageFromLedger({ enriched: (latestJob?.progress?.enriched || 0) + 1 });
+          return { ...entry, outcome: 'enriched', profile: result };
+        }
+
+        syncJobUsageFromLedger();
+        store.updateAiSearchJob(jobId, {
+          errors: [
+            {
+              stage: 'ENRICHING',
+              message: `Enrichment failed for "${entry.candidate.company || entry.existingId}": ${result.error || 'unknown error'}`,
+              at: new Date().toISOString()
+            }
+          ]
+        });
+        return { ...entry, outcome: 'enrich_failed', profile: result };
+      }
+
+      const enrichOutcomes = await runWithConcurrencyLimit(finalCandidates, concurrency, enrichWorker);
+
+      if (enrichState.reason === 'cancelled') {
+        store.updateAiSearchJob(jobId, {
+          stage: 'CANCELLED',
+          stage_detail: 'Cancelled during enrichment.',
+          finished_at: new Date().toISOString(),
+          cancel_reason: store.getAiSearchJob(jobId)?.cancel_reason || 'user_cancelled'
+        });
+        return;
+      }
+      if (enrichState.reason === 'paused') {
+        store.updateAiSearchJob(jobId, { stage: 'PAUSED', stage_detail: 'Paused during enrichment.' });
+        return;
+      }
+
+      // ---- SCORING ---------------------------------------------------
+      // Trivial by design: the `scores` group already lives inside each
+      // enrichCompanyProfile() result. A REJECT recommendation never causes a
+      // confirmed real company to be discarded - it's just tallied here for
+      // visibility.
+      store.updateAiSearchJob(jobId, { stage: 'SCORING', stage_detail: 'Reviewing recommendation scores...' });
+      let rejectedByScore = 0;
+      for (const outcome of enrichOutcomes) {
+        if (outcome?.outcome === 'enriched' && outcome.profile?.data?.scores?.recommended_priority === 'REJECT') {
+          rejectedByScore += 1;
+        }
+      }
+      if (rejectedByScore) {
+        store.updateAiSearchJob(jobId, { progress: { rejected_by_score: rejectedByScore } });
+      }
+
+      // ---- SAVING ----------------------------------------------------
+      store.updateAiSearchJob(jobId, { stage: 'SAVING', stage_detail: 'Saving companies to the shared pool...' });
+
+      const run = store.createRun({
+        niches,
+        city,
+        country,
+        district,
+        radiusKm,
+        language,
+        workerId,
+        sourceFocus: mode === 'combined' ? 'ai_search_combined' : 'ai_search',
+        requestedLimit: requestedCount
+      });
+      store.updateAiSearchJob(jobId, { run_id: run.id });
+
+      const savedCompanyIds = [];
+      let savedCount = 0;
+      let newCount = 0;
+      let duplicateCount = 0;
+      let rejectedAtSave = 0;
+      let attemptedCount = 0;
+      for (const outcome of enrichOutcomes) {
+        // 'skipped' means cancel/pause/budget stopped the pipeline before
+        // this candidate was even attempted - it was never processed, so it
+        // is left out of this run entirely (a future job can rediscover it).
+        if (!outcome || outcome.outcome === 'skipped') continue;
+        attemptedCount += 1;
+        const row = mapAiCandidateToCompanyRow(outcome.candidate);
+        if (!row) {
+          rejectedAtSave += 1;
+          continue;
+        }
+        const claim = store.claimCompanyForRun(row, { runId: run.id, workerId, stage: 'analyzed' });
+        // Defensive re-check: claimCompanyForRun itself is the final source of
+        // truth on whether this candidate is actually claimable right now (it
+        // re-derives pool_state fresh, catching anything the VALIDATING
+        // stage's own exclusion check above might have missed) - a rejected
+        // claim (still actively owned/processed elsewhere) must not be
+        // counted as saved.
+        if (!claim.isClaimed) {
+          rejectedAtSave += 1;
+          continue;
+        }
+        if (claim.isNew || claim.isNewForRun) newCount += 1;
+        else duplicateCount += 1;
+        savedCompanyIds.push(claim.id);
+        savedCount += 1;
+        if (outcome.profile) store.updateAiCompanyProfile(claim.id, outcome.profile);
+      }
+      store.addCompanyIdsToRun(run.id, savedCompanyIds);
+
+      // ---- COMPLETED / PARTIAL --------------------------------------
+      const naturallyExhausted = searchState.reason === 'duplicate_streak' && enrichState.reason !== 'budget';
+      const finalStage = savedCount >= requestedCount || naturallyExhausted ? 'COMPLETED' : 'PARTIAL';
+
+      // Finalize the durable run record the same way the existing discovery
+      // pipeline's runDiscoveryJob does (status/finished_at/found_count/
+      // new_count/duplicate_count) - company_ids is intentionally omitted
+      // here since store.addCompanyIdsToRun above already populated it,
+      // matching the existing pipeline's own precedent.
+      store.updateRun(run.id, {
+        status: finalStage === 'COMPLETED' ? 'completed' : 'completed_partial',
+        finished_at: new Date().toISOString(),
+        found_count: attemptedCount,
+        new_count: newCount,
+        duplicate_count: duplicateCount,
+        analyzed_count: savedCount
+      });
+
+      const currentRejected = store.getAiSearchJob(jobId)?.progress?.rejected || 0;
+      store.updateAiSearchJob(jobId, {
+        progress: { saved: savedCount, rejected: currentRejected + rejectedAtSave },
+        stage: finalStage,
+        stage_detail:
+          finalStage === 'COMPLETED'
+            ? `Saved ${savedCount} companies.`
+            : `Saved ${savedCount} of ${requestedCount} requested (stopped: ${searchState.reason || enrichState.reason || 'exhausted candidates'}).`,
+        finished_at: new Date().toISOString()
+      });
+    });
+  } catch (error) {
+    console.error(`[ai-search-job] id=${jobId} failed:`, error);
+    store.updateAiSearchJob(jobId, {
+      stage: 'FAILED',
+      stage_detail: error.message || 'Unexpected error.',
+      finished_at: new Date().toISOString(),
+      errors: [{ stage: store.getAiSearchJob(jobId)?.stage || 'UNKNOWN', message: error.message || String(error), at: new Date().toISOString() }]
+    });
+  }
+}
+
+// --- Round 5: runAiEnrichOnlyJob() -------------------------------------
+//
+// Separate, much simpler orchestrator for mode==='ai_enrich': job.params
+// carries companyIds (already-existing companies) instead of search
+// criteria. Stage goes straight QUEUED -> ENRICHING -> SCORING ->
+// COMPLETED/PARTIAL, with no planning/searching/validating/saving-as-new -
+// every target company already exists, so only enrichCompanyProfile() +
+// store.updateAiCompanyProfile() run per id.
+async function runAiEnrichOnlyJob(jobId) {
+  try {
+    const job = store.getAiSearchJob(jobId);
+    if (!job) return;
+
+    const params = job.params || {};
+    const companyIds = unique((Array.isArray(params.companyIds) ? params.companyIds : []).map((id) => String(id || '')).filter(Boolean));
+    const language = cleanText(params.language || 'ru');
+    const workerId = job.creator_worker_id;
+    const modelEnrich = job.model_enrich;
+    const settings = store.getSettings();
+    const concurrency = Math.max(1, Number(settings.aiMaxParallelRequests) || 3);
+    const webSearchEnabled = Boolean(settings.aiWebSearchEnabled);
+
+    if (!companyIds.length) {
+      store.updateAiSearchJob(jobId, {
+        stage: 'FAILED',
+        stage_detail: 'No companyIds provided.',
+        finished_at: new Date().toISOString(),
+        errors: [{ stage: 'QUEUED', message: 'No companyIds provided.', at: new Date().toISOString() }]
+      });
+      return;
+    }
+
+    store.updateAiSearchJob(jobId, {
+      stage: 'ENRICHING',
+      stage_detail: 'Enriching selected companies...',
+      started_at: new Date().toISOString()
+    });
+
+    const enrichState = { stopped: false, reason: '' };
+    let enrichedCount = 0;
+
+    async function worker(companyId) {
+      if (enrichState.stopped) return;
+      const freshJob = store.getAiSearchJob(jobId);
+      if (freshJob?.cancel_requested) {
+        enrichState.stopped = true;
+        enrichState.reason = 'cancelled';
+        return;
+      }
+      if (freshJob?.pause_requested) {
+        enrichState.stopped = true;
+        enrichState.reason = 'paused';
+        return;
+      }
+      const enrichedSoFar = freshJob?.progress?.enriched || 0;
+      if (aiSearchBudgetWouldExceed(freshJob?.estimated_cost || 0, enrichedSoFar, settings, 0.15)) {
+        enrichState.stopped = true;
+        enrichState.reason = 'budget';
+        return;
+      }
+
+      const existing = store.getCompany(companyId);
+      if (!existing) {
+        store.updateAiSearchJob(jobId, {
+          errors: [{ stage: 'ENRICHING', message: `Company ${companyId} not found.`, at: new Date().toISOString() }]
+        });
+        return;
+      }
+      const data = existing.data || {};
+      const item = {
+        company: data.company || '',
+        niche: data.niche || '',
+        city: data.city || '',
+        district: data.district || '',
+        address: data.address || '',
+        phone: data.phone || '',
+        email: data.email || '',
+        website_url: data.website_url || '',
+        instagram: data.social_profiles?.instagram || data.instagram || '',
+        facebook: data.social_profiles?.facebook || data.facebook || '',
+        source_profile: data.source_profile || '',
+        review_count: data.review_count || 0,
+        rating: data.rating || 0,
+        last_activity: data.last_activity || '',
+        services: data.services || [],
+        notes: data.notes || '',
+        independent_signals_found: data.independent_signals_found || [],
+        verification_status: data.verification_status || 'UNVERIFIED',
+        signals_detected: data.signals_detected || []
+      };
+
+      let result;
+      try {
+        result = await enrichCompanyProfile({
+          item,
+          existingProfile: existing.aiCompanyProfile,
+          model: modelEnrich,
+          language,
+          workerId,
+          companyId,
+          jobId,
+          webSearchEnabled
+        });
+      } catch (error) {
+        result = { status: 'FAILED', error: error.message || String(error) };
+      }
+
+      const usage = store.getAiUsageForRun(jobId);
+      store.updateAiSearchJob(jobId, {
+        estimated_cost: Number((usage.totalCost || 0).toFixed(6)),
+        token_usage: { total: usage.totalTokens || 0 }
+      });
+
+      if (result.status === 'COMPLETED') {
+        store.updateAiCompanyProfile(companyId, result);
+        enrichedCount += 1;
+        store.updateAiSearchJob(jobId, { progress: { enriched: enrichedCount, saved: enrichedCount } });
+      } else {
+        // Still record the FAILED envelope on the company (visible proof an
+        // enrichment attempt happened and what went wrong), then move on -
+        // one bad company must never kill the rest of the batch.
+        store.updateAiCompanyProfile(companyId, result);
+        store.updateAiSearchJob(jobId, {
+          errors: [
+            {
+              stage: 'ENRICHING',
+              message: `Enrichment failed for company ${companyId}: ${result.error || 'unknown error'}`,
+              at: new Date().toISOString()
+            }
+          ]
+        });
+      }
+    }
+
+    await runWithConcurrencyLimit(companyIds, concurrency, worker);
+
+    if (enrichState.reason === 'cancelled') {
+      store.updateAiSearchJob(jobId, {
+        stage: 'CANCELLED',
+        stage_detail: 'Cancelled by user.',
+        finished_at: new Date().toISOString(),
+        cancel_reason: store.getAiSearchJob(jobId)?.cancel_reason || 'user_cancelled'
+      });
+      return;
+    }
+    if (enrichState.reason === 'paused') {
+      store.updateAiSearchJob(jobId, { stage: 'PAUSED', stage_detail: 'Paused by user.' });
+      return;
+    }
+
+    store.updateAiSearchJob(jobId, { stage: 'SCORING', stage_detail: 'Reviewing recommendation scores...' });
+    store.updateAiSearchJob(jobId, {
+      stage: enrichedCount >= companyIds.length ? 'COMPLETED' : 'PARTIAL',
+      stage_detail: `Enriched ${enrichedCount} of ${companyIds.length} companies.`,
+      finished_at: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error(`[ai-enrich-job] id=${jobId} failed:`, error);
+    store.updateAiSearchJob(jobId, {
+      stage: 'FAILED',
+      stage_detail: error.message || 'Unexpected error.',
+      finished_at: new Date().toISOString(),
+      errors: [{ stage: 'ENRICHING', message: error.message || String(error), at: new Date().toISOString() }]
+    });
+  }
 }
 
 function buildUrlCandidates(inputUrl) {

@@ -34,6 +34,7 @@
         <button class="admin-section-tab" type="button" data-admin-tab="history"><i data-lucide="history"></i> <span data-i18n="admin_tab_history">Historia zapytań</span></button>
         <button class="admin-section-tab" type="button" data-admin-tab="audit"><i data-lucide="scroll-text"></i> <span data-i18n="nav_audit_log">Dziennik zdarzeń</span></button>
         <button class="admin-section-tab" type="button" data-admin-tab="academy"><i data-lucide="graduation-cap"></i> <span data-i18n="nav_academy">Akademia</span></button>
+        <button class="admin-section-tab" type="button" data-admin-tab="ai-search"><i data-lucide="search-code"></i> <span data-i18n="admin_tab_ai_search">AI Search</span></button>
       </nav>
 
       <div id="adminTabWorkers" class="admin-tab">
@@ -362,6 +363,87 @@
                 </table>
               </div>
             </div>
+          </div>
+        </section>
+      </div>
+
+      <div id="adminTabAiSearch" class="admin-tab hidden-panel">
+        <section class="panel">
+          <div class="panel-top">
+            <div>
+              <p class="eyebrow" data-i18n="admin_ai_search_eyebrow">AI Search</p>
+              <h2 data-i18n="admin_ai_search_settings_title">Ustawienia wyszukiwania AI</h2>
+              <p data-i18n="admin_ai_search_settings_subtitle">Modele, tryb wnioskowania, limity równoległości, budżetu i czasu dla pipeline'u wyszukiwania firm przez AI.</p>
+            </div>
+          </div>
+          <form id="aiSearchSettingsForm" class="settings-form">
+            <label>
+              <span data-i18n="admin_ai_search_model_search_label">Model wyszukiwania</span>
+              <input type="text" name="aiCompanySearchModel" autocomplete="off" />
+            </label>
+            <label>
+              <span data-i18n="admin_ai_search_model_enrich_label">Model wzbogacania</span>
+              <input type="text" name="aiCompanyEnrichModel" autocomplete="off" />
+            </label>
+            <label class="checkbox-row">
+              <input type="checkbox" name="aiWebSearchEnabled" />
+              <span data-i18n="admin_ai_search_web_search_label">Wyszukiwanie w internecie włączone</span>
+            </label>
+            <label>
+              <span data-i18n="admin_ai_search_reasoning_effort_label">Poziom wnioskowania</span>
+              <select name="aiReasoningEffort">
+                <option value="low" data-i18n="admin_ai_search_reasoning_low">Niski</option>
+                <option value="medium" data-i18n="admin_ai_search_reasoning_medium">Średni</option>
+                <option value="high" data-i18n="admin_ai_search_reasoning_high">Wysoki</option>
+              </select>
+            </label>
+            <label>
+              <span data-i18n="admin_ai_search_max_parallel_label">Maks. równoległych zapytań (1-10)</span>
+              <input type="number" name="aiMaxParallelRequests" min="1" max="10" step="1" />
+            </label>
+            <label>
+              <span data-i18n="admin_ai_search_max_companies_label">Maks. firm na zapytanie (1-100)</span>
+              <input type="number" name="aiMaxCompaniesPerRequest" min="1" max="100" step="1" />
+            </label>
+            <label>
+              <span data-i18n="admin_ai_search_daily_budget_label">Dzienny limit budżetu (USD)</span>
+              <input type="number" name="aiDailyBudgetLimit" min="0" step="0.01" />
+              <span class="muted small-hint" data-i18n="admin_ai_search_daily_budget_hint">0 = bez limitu</span>
+            </label>
+            <label>
+              <span data-i18n="admin_ai_search_timeout_label">Limit czasu żądania, s (10-300)</span>
+              <input type="number" name="aiRequestTimeoutSeconds" min="10" max="300" step="1" />
+            </label>
+            <button class="button primary full-width" type="submit" data-i18n="admin_btn_save_ai_search_settings">Zapisz ustawienia</button>
+          </form>
+        </section>
+
+        <section class="panel">
+          <div class="panel-top">
+            <div>
+              <p class="eyebrow" data-i18n="admin_ai_search_jobs_eyebrow">Monitoring</p>
+              <h2 data-i18n="admin_ai_search_jobs_title">Zadania wyszukiwania AI</h2>
+              <p data-i18n="admin_ai_search_jobs_subtitle">Ostatnie zadania wyszukiwania/wzbogacania firm przez AI, uruchamiane przez pracowników.</p>
+            </div>
+            <div class="filters">
+              <button id="aiSearchJobsRefresh" class="button secondary" type="button"><i data-lucide="refresh-cw"></i> <span data-i18n="admin_btn_refresh_jobs">Odśwież</span></button>
+            </div>
+          </div>
+          <div class="table-wrap compact-table">
+            <table>
+              <thead>
+                <tr>
+                  <th data-i18n="admin_th_created_at">Utworzono</th>
+                  <th data-i18n="admin_th_creator_worker">Worker</th>
+                  <th data-i18n="admin_th_mode">Tryb</th>
+                  <th data-i18n="admin_th_job_stage">Etap</th>
+                  <th data-i18n="admin_th_progress">Postęp</th>
+                  <th data-i18n="admin_th_cost_est">Koszt (szac.)</th>
+                  <th data-i18n="admin_th_actions">Akcje</th>
+                </tr>
+              </thead>
+              <tbody id="aiSearchJobsBody"></tbody>
+            </table>
           </div>
         </section>
       </div>
