@@ -1135,7 +1135,23 @@
     ai_profile_top_services: { pl: 'Usługi (top 5)', ru: 'Услуги (топ 5)', en: 'Top services' },
     ai_profile_opening: { pl: 'Sugerowane otwarcie rozmowy', ru: 'Предлагаемое начало разговора', en: 'Suggested opening' },
     ai_profile_offer: { pl: 'Proponowana oferta', ru: 'Предлагаемое предложение', en: 'Proposed offer' },
-    ai_profile_verification: { pl: 'Status weryfikacji', ru: 'Статус верификации', en: 'Verification status' }
+    ai_profile_verification: { pl: 'Status weryfikacji', ru: 'Статус верификации', en: 'Verification status' },
+
+    // Parser discover panel - thematic "top ~10" category preset optgroups
+    // (public/app.js categoryGroups/populateCategoryPreset(), top-categories
+    // feature). Mirrors app.js's own copy.ru/copy.pl groupXxx keys (read via
+    // tr()) so the same group names exist in the shared {pl,ru,en} dictionary
+    // for cross-app consistency; not currently wired into the Parser UI itself.
+    discover_group_construction: { pl: 'Budownictwo i deweloperka', ru: 'Строительство и девелопмент', en: 'Construction & development' },
+    discover_group_facades: { pl: 'Fasady i architektura', ru: 'Фасады и архитектура', en: 'Facades & architecture' },
+    discover_group_engineering: { pl: 'Inżynieria i instalacje', ru: 'Инженерия и инженерные системы', en: 'Engineering & building systems' },
+    discover_group_manufacturing: { pl: 'Produkcja dla budownictwa', ru: 'Производство для строительства', en: 'Manufacturing for construction' },
+    discover_group_heavy_equipment: { pl: 'Ciężki sprzęt', ru: 'Спецтехника', en: 'Heavy equipment' },
+    discover_group_commercial_realestate: { pl: 'Nieruchomości komercyjne', ru: 'Коммерческая недвижимость', en: 'Commercial real estate' },
+    discover_group_medicine: { pl: 'Medycyna', ru: 'Медицина', en: 'Medicine' },
+    discover_group_legal_finance: { pl: 'Prawo i finanse', ru: 'Право и финансы', en: 'Legal & finance' },
+    discover_group_logistics: { pl: 'Logistyka i transport', ru: 'Логистика и транспорт', en: 'Logistics & transport' },
+    discover_group_premium_automotive: { pl: 'Motoryzacja premium', ru: 'Премиальный автобизнес', en: 'Premium automotive' }
   };
 
   function normalizeLang(lang) {
