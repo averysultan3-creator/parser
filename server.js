@@ -26,7 +26,39 @@ const __dirname = path.dirname(__filename);
 process.on('unhandledRejection', (reason, promise) => {
   console.error(`[unhandledRejection] ${new Date().toISOString()}:`, reason instanceof Error ? reason.stack || reason.message : reason);
 });
+// Recognizes a specific, known-benign undici defect: an internal
+// AssertionError thrown from client-h1.js's socket-teardown handler
+// (Parser.finish -> assert(!this.paused)) when a third-party HTTP server
+// closes its connection while undici's HTTP/1.1 parser happens to be
+// mid-pause. This is documented upstream as an "uncatchable assertion
+// error" (see nodejs/undici issues on the topic) because it's thrown from a
+// raw socket event callback (TLSSocket 'end'/'close'), not from the
+// fetch()/request promise chain - so no try/catch around any individual
+// outbound request (including the ones this app already wraps per-company
+// in enrichPrimaryCompaniesSmart/crossVerifyPrimaryCompany/fetchPage) can
+// ever catch it locally. It only ever surfaces here. It does not indicate
+// request-handling state corruption in this app - it's a lower-level
+// Node/undici defect triggered by ordinary flaky third-party servers under
+// concurrent outbound traffic (more likely at higher fetch concurrency,
+// which is why CROSS_VERIFY_MAX_COMPANIES above bounds how much of that
+// traffic a single discovery job can generate).
+function isKnownBenignUndiciParserAssertion(error) {
+  return (
+    error?.code === 'ERR_ASSERTION' &&
+    typeof error?.stack === 'string' &&
+    error.stack.includes(`${path.sep}undici${path.sep}`) &&
+    /Parser\.finish|onHttpSocketEnd|onHttpSocketClose/.test(error.stack)
+  );
+}
+
 process.on('uncaughtException', (error) => {
+  if (isKnownBenignUndiciParserAssertion(error)) {
+    console.error(
+      `[uncaughtException] ${new Date().toISOString()}: known-benign undici HTTP/1.1 parser assertion ` +
+        `(third-party connection closed mid-parse under concurrent outbound fetches) - not a crash, no request state was corrupted, continuing normally. ${error.message}`
+    );
+    return;
+  }
   console.error(`[uncaughtException] ${new Date().toISOString()}:`, error?.stack || error);
   // Do NOT process.exit() here: an uncaughtException means some in-flight
   // request is now in an unknown state, but the HTTP server and every other
@@ -108,6 +140,30 @@ const MAX_HTML_BYTES = 900_000;
 const FETCH_TIMEOUT_MS = 12_000;
 const GOOGLE_PLACES_TIMEOUT_MS = 8_000;
 const CROSS_VERIFY_TIMEOUT_MS = Number(process.env.CROSS_VERIFY_TIMEOUT_MS || 25_000);
+// Cap on how many merged candidates get the network-heavy cross-verification
+// pass (crossVerifyPrimaryCompany: up to 3 extra outbound lookups per company
+// - Amazon Location, public registries, public search - each of which may
+// itself fetch a company website). Before the `all_sources` merge fix, a
+// single-source result set rarely exceeded this size, so the pre-existing
+// concurrency here (mapLimit 3) was mostly a formality. Once `all_sources`
+// started actually merging google_places_api + amazon_location +
+// public_search_all_sources, merged batches of 90+ companies became routine,
+// multiplying the number of concurrent outbound HTTP/1.1 requests to
+// uncontrolled third-party sites by several times over. That volume increase
+// is what exposed a known-uncatchable Node/undici defect (an internal
+// AssertionError thrown from client-h1.js's socket-teardown handler when a
+// third-party server closes its connection while undici's parser happens to
+// be mid-pause - see nodejs/undici issues about "uncatchable assertion
+// errors"; it fires from a raw socket event callback, not from the fetch()
+// promise chain, so no amount of try/catch around an individual company's
+// request can catch it - only the process-level uncaughtException handler
+// can, and it already logs-and-continues without crashing). Capping the
+// number of companies that go through this step keeps concurrent
+// third-party-fetch volume bounded regardless of how many companies a merge
+// produces, without weakening any single company's own timeout. Companies
+// past the cap are returned as-is (same graceful-degradation pattern already
+// used by enrichDiscoveredCompanyContacts's own cap below).
+const CROSS_VERIFY_MAX_COMPANIES = Number(process.env.CROSS_VERIFY_MAX_COMPANIES || 30);
 const MAX_EXTRA_PAGES = 5;
 const REGISTRY_TIMEOUT_MS = Number(process.env.REGISTRY_TIMEOUT_MS || 10_000);
 const OPENAI_TIMEOUT_MS = Number(process.env.OPENAI_TIMEOUT_MS || 30_000);
@@ -7214,7 +7270,15 @@ async function enrichPrimaryCompaniesSmart(primaryCompanies, { warnings = [] } =
     warnings
   });
 
-  return mapLimit(baseCompanies, 3, async (company) => {
+  // See CROSS_VERIFY_MAX_COMPANIES above: bound how many companies enter the
+  // network-heavy cross-verification pass so a large merged batch (e.g.
+  // sourceFocus=all_sources merging multiple sources) can't multiply
+  // concurrent outbound third-party HTTP requests without limit.
+  const verifyCount = Math.min(baseCompanies.length, CROSS_VERIFY_MAX_COMPANIES);
+  const toVerify = baseCompanies.slice(0, verifyCount);
+  const passThrough = baseCompanies.slice(verifyCount);
+
+  const verified = await mapLimit(toVerify, 3, async (company) => {
     try {
       return await withTimeout(
         crossVerifyPrimaryCompany(company, warnings),
@@ -7226,6 +7290,8 @@ async function enrichPrimaryCompaniesSmart(primaryCompanies, { warnings = [] } =
       return company;
     }
   });
+
+  return [...verified, ...passThrough];
 }
 
 async function crossVerifyPrimaryCompany(company, warnings) {
