@@ -1152,7 +1152,7 @@ export function createSiteLead(lead = {}, { source = 'aura-global-site' } = {}) 
   return record;
 }
 
-export function resetCompanies(ids) {
+export function resetCompanies(ids, { source = 'admin_reset' } = {}) {
   const resetIds = [];
   const now = new Date().toISOString();
   for (const id of ids || []) {
@@ -1165,7 +1165,7 @@ export function resetCompanies(ids) {
     record.reserved_at = '';
     record.available_for_discovery = true;
     record.reset_at = now;
-    addStatusHistory(record, { status: 'new', source: 'admin_reset', createdAt: now });
+    addStatusHistory(record, { status: 'new', source, createdAt: now });
     resetIds.push(String(id));
   }
   if (resetIds.length) persistCompanies();

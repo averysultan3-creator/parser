@@ -6015,6 +6015,26 @@ async function runDiscoveryJob(jobId, params) {
 
     const companies = matchedCompanies;
     const foundCount = companies.length;
+
+    // claimedFinal above reserved the WHOLE over-fetched candidate pool
+    // (candidateLimit, up to 5x params.limit for all_sources) to this worker
+    // so a concurrent search couldn't re-discover and re-claim the same raw
+    // candidates while this run was still analyzing them - but only
+    // `foundCount` of them ever actually get analyzed, shown, or saved as
+    // this run's result. Left unreleased, every search silently locked up
+    // several times more real companies than it ever displayed: permanently
+    // assigned to a worker who never saw them, and removed from the pool for
+    // everyone else. Confirmed live via a small verification sweep (limit 10
+    // requests ending up with 39-49 companies actually claimed). Release
+    // whatever didn't make the final cut back to the pool now that analysis
+    // is done and it's clear which ones are actually being kept.
+    const keptCompanyIdSet = new Set(companies.map((c) => c._companyId).filter(Boolean));
+    const keptCompanyIds = companyIds.filter((id) => keptCompanyIdSet.has(id));
+    const excessClaimedIds = companyIds.filter((id) => !keptCompanyIdSet.has(id));
+    if (excessClaimedIds.length) {
+      store.resetCompanies(excessClaimedIds, { source: 'discovery_overclaim_release' });
+    }
+
     const finalStatus =
       guard.reason === 'cancelled'
         ? 'cancelled'
@@ -6036,9 +6056,13 @@ async function runDiscoveryJob(jobId, params) {
       status: finalStatus,
       finished_at: new Date().toISOString(),
       found_count: rawFoundCount,
-      new_count: newCount,
+      // new_count/company_ids now reflect what this run actually kept and
+      // showed the worker (foundCount/keptCompanyIds), not the whole
+      // over-fetched claim - see the release step above.
+      new_count: foundCount,
       duplicate_count: duplicateCount,
       raw_found_count: rawFoundCount,
+      company_ids: keptCompanyIds,
       search_status: finalStatus,
       skipped_wrong_category: relevance.skippedWrongCategory,
       generated_search_queries: buildGeneratedSearchQueries(params.niches, params.city),
