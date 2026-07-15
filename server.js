@@ -134,8 +134,8 @@ function ensureAdminPassword() {
   return generated;
 }
 const RESPECT_ROBOTS = String(process.env.RESPECT_ROBOTS_TXT || 'true') !== 'false';
-const MAX_ITEMS = Number(process.env.MAX_ITEMS_PER_RUN || 100);
-const MAX_DISCOVERY_ITEMS = Number(process.env.MAX_DISCOVERY_ITEMS || 150);
+const MAX_ITEMS = Number(process.env.MAX_ITEMS_PER_RUN || 300);
+const MAX_DISCOVERY_ITEMS = Number(process.env.MAX_DISCOVERY_ITEMS || 300);
 const MAX_HTML_BYTES = 900_000;
 const FETCH_TIMEOUT_MS = 12_000;
 const GOOGLE_PLACES_TIMEOUT_MS = 8_000;
@@ -4243,6 +4243,19 @@ app.get('/api/history/runs/:id', (req, res) => {
   res.json({ run, companies: page.items, total: page.total, page: page.page, pageSize: page.pageSize, paginated: page.paginated });
 });
 
+// Companies this run encountered again but didn't claim (already known -
+// owned/processed elsewhere at the time). Separate from the main endpoint
+// above so the default history view stays exactly as before; the worker UI
+// only calls this when a run actually has duplicate_company_ids to show.
+app.get('/api/history/runs/:id/duplicates', (req, res) => {
+  const run = store.getRun(String(req.params.id));
+  if (!run) return res.status(404).json({ error: 'Run not found.' });
+  if (!requireWorkerRunAccess(req, res, run)) return;
+  const { workerId } = resolveActor(req);
+  const page = paginateCompanyList(store.getCompaniesByIds(run.duplicate_company_ids || []), req.query, { savedByWorkerId: workerId });
+  res.json({ run, companies: page.items, total: page.total, page: page.page, pageSize: page.pageSize, paginated: page.paginated });
+});
+
 app.get('/api/companies', requireAdmin, (_req, res) => {
   res.json({ companies: store.getAllCompanies(), stats: store.getStoreStats() });
 });
@@ -5751,9 +5764,20 @@ async function runDiscoveryJob(jobId, params) {
           const claimedPreview = store.claimCompaniesForRun(progressRelevance.companies, {
             runId: run.id,
             workerId: params.workerId,
-            limit: params.limit
+            limit: params.limit,
+            includeDuplicates: true
           });
-          progressCompanyIds.push(...(claimedPreview.companyIds || []));
+          const newCompaniesThisBatch = claimedPreview.companies.filter((c) => !c._duplicate);
+          const duplicateIdsThisBatch = claimedPreview.companies.filter((c) => c._duplicate).map((c) => c._companyId);
+          // Duplicates never enter the live preview table (that pipeline
+          // expects flat pre-analysis records and would misrender/drop the
+          // richer already-known company shape) - instead their ids are
+          // collected on the run itself so the History tab can offer a
+          // "show duplicates" button per search, see run.duplicate_company_ids.
+          if (duplicateIdsThisBatch.length) {
+            store.addDuplicateCompanyIdsToRun(run.id, duplicateIdsThisBatch);
+          }
+          progressCompanyIds.push(...newCompaniesThisBatch.map((c) => c._companyId));
           progressNewCount += claimedPreview.newCount;
           progressDuplicateCount += claimedPreview.duplicateCount;
 
@@ -5776,7 +5800,7 @@ async function runDiscoveryJob(jobId, params) {
           }
 
           updateDiscoveryJob(jobId, {
-            appendCompanies: claimedPreview.companies,
+            appendCompanies: newCompaniesThisBatch,
             appendQueries: event.queries || [],
             appendWarnings: event.warnings || [],
             progress: {
@@ -5857,11 +5881,26 @@ async function runDiscoveryJob(jobId, params) {
       }
     });
 
-    for (const candidate of candidates) {
-      if (guard.stopped || matchedCompanies.length >= params.limit) break;
+    // Bounded concurrency instead of one-at-a-time: each candidate's analysis
+    // (site fetch + parse + an OpenAI call) used to run fully sequentially,
+    // which made a 50-100 candidate batch take minutes even though most of
+    // that time was spent waiting on network/API latency, not CPU. Running a
+    // few lanes in parallel (mapLimit, same pattern as the cross-verify/
+    // enrichment pools elsewhere in this file) cuts wall-clock time without
+    // increasing the number of OpenAI calls made. Progressive streaming is
+    // preserved: each lane still calls updateDiscoveryJob() the moment ITS
+    // OWN candidate finishes, exactly as the sequential loop did per-item.
+    const ANALYZE_CONCURRENCY = Number(process.env.DISCOVERY_ANALYZE_CONCURRENCY || 3);
+    let deadlineWarned = false;
+
+    await mapLimit(candidates, ANALYZE_CONCURRENCY, async (candidate) => {
+      if (guard.stopped || matchedCompanies.length >= params.limit) return;
       if (performance.now() > analysisDeadline) {
-        warningsFromAnalysis.push('Проверка сайтов прервана по тайм-ауту, часть кандидатов не была проверена.');
-        break;
+        if (!deadlineWarned) {
+          deadlineWarned = true;
+          warningsFromAnalysis.push('Проверка сайтов прервана по тайм-ауту, часть кандидатов не была проверена.');
+        }
+        return;
       }
 
       analyzedCount += 1;
@@ -5878,10 +5917,10 @@ async function runDiscoveryJob(jobId, params) {
       } catch (error) {
         // One company's failure (a network blip, a hung fetch, a malformed
         // page) must never sink the rest of the batch - log it, tell the
-        // user, and move on to the next candidate in order.
+        // user, and move on to the next candidate.
         console.error(`[discover-job] id=${jobId} analyzeLead failed for "${candidate.company || companyId}":`, error);
         warningsFromAnalysis.push(`Не удалось проверить "${candidate.company || 'компанию'}": ${error.message || 'ошибка проверки сайта'}.`);
-        continue;
+        return;
       }
 
       analyzed._companyId = companyId;
@@ -5972,7 +6011,7 @@ async function runDiscoveryJob(jobId, params) {
           analysisTarget
         }
       });
-    }
+    });
 
     const companies = matchedCompanies;
     const foundCount = companies.length;

@@ -1851,6 +1851,11 @@ export function createRun(meta) {
     analyzed_count: 0,
     warnings: [],
     company_ids: [],
+    // Companies this run encountered again but did NOT claim (already known,
+    // owned/processed elsewhere) - tracked separately from company_ids so the
+    // History tab can offer a "show duplicates" view per search without
+    // conflating them with leads this run actually found/owns.
+    duplicate_company_ids: [],
     // Archive/pool lifecycle for this history entry. 'active' means it still
     // reflects a live worker assignment; 'returned_to_pool' means the whole
     // query and its leads were sent back to the pool (see returnRunToPool);
@@ -1883,6 +1888,17 @@ export function addCompanyIdsToRun(runId, ids) {
   if (!run) return null;
   for (const id of ids || []) {
     if (id && !run.company_ids.includes(id)) run.company_ids.push(id);
+  }
+  persistRuns();
+  return run;
+}
+
+export function addDuplicateCompanyIdsToRun(runId, ids) {
+  const run = state.runs.runs.find((item) => item.id === runId);
+  if (!run) return null;
+  if (!Array.isArray(run.duplicate_company_ids)) run.duplicate_company_ids = [];
+  for (const id of ids || []) {
+    if (id && !run.duplicate_company_ids.includes(id)) run.duplicate_company_ids.push(id);
   }
   persistRuns();
   return run;

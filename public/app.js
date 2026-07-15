@@ -9,6 +9,7 @@ const state = {
   discoveryJobId: null,
   discoveryPollTimer: null,
   discoveryRunning: false,
+  discoveryLogLines: [],
   // AI company search (ai_search/combined/ai_enrich) - deliberately separate
   // from the discovery* fields above so the new /api/ai-search polling loop
   // (waitForAiSearchCompletion) can never interfere with the existing
@@ -808,6 +809,7 @@ const els = {
   allSourcesButton: document.querySelector('#allSourcesButton'),
   discoverButton: document.querySelector('#discoverButton'),
   discoverStatus: document.querySelector('#discoverStatus'),
+  discoverLog: document.querySelector('#discoverLog'),
   // AI company search (ai_search/combined/ai_enrich modes) - curated criteria
   // block, ai_enrich note, and the job-cancel button. See runAiCompanySearch()/
   // waitForAiSearchCompletion() below.
@@ -2072,7 +2074,7 @@ function bindEvents() {
   });
   els.discoverCategoryPreset.addEventListener('change', handleCategoryPresetChange);
   els.discoverMode?.addEventListener('change', handleDiscoverModeChange);
-  els.aiSearchCancelButton?.addEventListener('click', cancelAiSearchJob);
+  els.aiSearchCancelButton?.addEventListener('click', cancelActiveSearch);
   els.discoverCity?.addEventListener('input', () => {
     clearTimeout(els.discoverCity._suggestTimer);
     els.discoverCity._suggestTimer = setTimeout(() => loadCitySuggestions(els.discoverCity.value.trim()).catch(() => {}), 250);
@@ -2194,7 +2196,14 @@ function renderHistory(runs) {
           <td>${escapeHtml(displaySourceLabel(run.sourceFocus || '-'))}</td>
           <td>${escapeHtml(String(run.found_count ?? 0))}</td>
           <td>${escapeHtml(String(run.new_count ?? 0))}</td>
-          <td>${escapeHtml(String(run.duplicate_count ?? 0))}</td>
+          <td>
+            ${escapeHtml(String(run.duplicate_count ?? 0))}
+            ${
+              (run.duplicate_company_ids || []).length
+                ? `<button type="button" class="history-duplicates-btn" data-run-id="${escapeHtml(run.id)}" title="${escapeAttribute(trs('history_show_duplicates'))}"><i data-lucide="copy"></i></button>`
+                : ''
+            }
+          </td>
           <td><span class="history-row-status ${statusClassName}">${escapeHtml(formatRunStatusLabel(run.status))}</span></td>
         </tr>
       `;
@@ -2203,6 +2212,12 @@ function renderHistory(runs) {
 
   els.historyBody.querySelectorAll('tr[data-run-id]').forEach((row) => {
     row.addEventListener('click', () => openHistoryRun(row.dataset.runId));
+  });
+  els.historyBody.querySelectorAll('.history-duplicates-btn').forEach((button) => {
+    button.addEventListener('click', (event) => {
+      event.stopPropagation();
+      openHistoryRunDuplicates(button.dataset.runId);
+    });
   });
 }
 
@@ -2274,6 +2289,66 @@ async function openHistoryRun(runId) {
     state.historyLoadingRunId = null;
     renderHistory(state.historyRuns);
     setStatus(error.message || t2('Błąd podczas otwierania zapytania.', 'Ошибка при открытии запуска.'), 'warn');
+  } finally {
+    renderIcons();
+  }
+}
+
+// Mirrors openHistoryRun() above but loads the run's duplicate_company_ids
+// instead of company_ids - companies this run saw again but didn't claim
+// because they were already known. Reuses the exact same rendering pipeline
+// (historyRecordsToResults, filter reset, results view) since these are
+// full, already-persisted company records, not raw discovery previews.
+async function openHistoryRunDuplicates(runId) {
+  stopDiscoveryPolling();
+  try {
+    state.historyLoadingRunId = runId;
+    renderHistory(state.historyRuns);
+    const response = await fetch(apiUrl(`/api/history/runs/${runId}/duplicates`), {
+      headers: { 'x-worker-id': getWorkerId(), ...authHeaders() }
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || t2('Nie udało się otworzyć duplikatów.', 'Не удалось открыть дубли.'));
+
+    const records = Array.isArray(data.companies) ? data.companies : [];
+    state.historyLoadingRunId = null;
+    if (!records.length) {
+      renderHistory(state.historyRuns);
+      setStatus(t2('Brak zapisanych duplikatów dla tego zapytania.', 'Для этого запуска нет сохранённых дублей.'), 'warn');
+      return;
+    }
+
+    state.activeHistoryRun = data.run || { id: runId };
+    switchView('results');
+    state.results = historyRecordsToResults(records);
+    state.selectedId = state.results[0]?.id || null;
+    state.detailTab = 'overview';
+    els.resultFilterText.value = '';
+    els.sidebarSiteFilter.value = 'all';
+    els.resultFilterSize.value = 'all';
+    els.resultFilterPriority.value = 'all';
+    els.sidebarMinScore.value = '0';
+    els.sidebarHasPhone.checked = false;
+    els.sidebarHasSocial.checked = false;
+    els.sidebarHasEmail.checked = false;
+    state.filters = { text: '', size: 'all', priority: 'all' };
+    renderResultsContext();
+    renderHistory(state.historyRuns);
+    renderResults();
+    renderMetrics();
+    renderDetail();
+    els.exportCsvButton.disabled = false;
+    els.headerExportCsvButton.disabled = false;
+    els.exportJsonButton.disabled = false;
+    renderAiEnrichEligibleHint();
+    setStatus(
+      t2(`Duplikaty z tego zapytania: ${state.results.length} firm (już znane).`, `Дубли этого запуска: ${state.results.length} компаний (уже известны).`),
+      'ok'
+    );
+  } catch (error) {
+    state.historyLoadingRunId = null;
+    renderHistory(state.historyRuns);
+    setStatus(error.message || t2('Błąd podczas otwierania duplikatów.', 'Ошибка при открытии дублей.'), 'warn');
   } finally {
     renderIcons();
   }
@@ -2727,7 +2802,29 @@ function buildDiscoveryStatusText(job) {
   return parts.join(' - ');
 }
 
+// Small scrolling log of recent progress messages (distinct from the single
+// current-status line above it) so the worker can see what the search has
+// actually been doing - which niche/source it's on, when a category gets
+// exhausted, etc - instead of only ever seeing the latest line overwrite the
+// previous one.
+function pushDiscoveryLogLine(message) {
+  const text = String(message || '').trim();
+  if (!text || !els.discoverLog) return;
+  const last = state.discoveryLogLines[state.discoveryLogLines.length - 1];
+  if (last === text) return;
+  state.discoveryLogLines.push(text);
+  if (state.discoveryLogLines.length > 12) state.discoveryLogLines.shift();
+  els.discoverLog.classList.remove('hidden-field');
+  els.discoverLog.innerHTML = state.discoveryLogLines.map((line) => `<li>${escapeHtml(line)}</li>`).join('');
+  els.discoverLog.scrollTop = els.discoverLog.scrollHeight;
+}
+
 async function waitForDiscoveryCompletion(jobId) {
+  state.discoveryLogLines = [];
+  if (els.discoverLog) {
+    els.discoverLog.innerHTML = '';
+    els.discoverLog.classList.add('hidden-field');
+  }
   while (state.discoveryJobId === jobId) {
     const job = await fetchDiscoveryJob(jobId);
     const companies = Array.isArray(job.companies) ? job.companies : [];
@@ -2743,6 +2840,7 @@ async function waitForDiscoveryCompletion(jobId) {
     }
 
     const statusText = buildDiscoveryStatusText(job);
+    pushDiscoveryLogLine(statusText);
     setDiscoverStatus(statusText, job.status === 'failed' ? 'warn' : job.status === 'completed' ? 'ok' : 'work');
     // On completion, prefer the server's specific outcome message (it already
     // distinguishes "found N new" from "everything for these filters is
@@ -2881,6 +2979,7 @@ async function runDiscovery() {
     if (!data.jobId) throw new Error(t2('Backend nie zwrócił identyfikatora zadania wyszukiwania.', 'Backend не вернул идентификатор задачи поиска.'));
 
     state.discoveryJobId = data.jobId;
+    els.aiSearchCancelButton?.classList.remove('hidden-field');
     await loadHistory().catch(() => {});
     const job = await waitForDiscoveryCompletion(data.jobId);
     const companies = Array.isArray(job.companies) ? job.companies : [];
@@ -2913,6 +3012,7 @@ async function runDiscovery() {
     state.discoveryRunning = false;
     els.discoverButton.disabled = false;
     els.analyzeButton.disabled = false;
+    els.aiSearchCancelButton?.classList.add('hidden-field');
     renderIcons();
     // Refresh the "leads today" quota line so a worker sees newly-claimed
     // leads reflected immediately, without needing a page reload.
@@ -3124,6 +3224,36 @@ async function waitForAiSearchCompletion(jobId, { loadRunOnComplete = true } = {
   }
 
   throw new Error(t2('Wyszukiwanie AI zostało zatrzymane.', 'AI-поиск был остановлен.'));
+}
+
+// Single button (#aiSearchCancelButton) serves whichever search is actually
+// running - standard discovery (state.discoveryJobId) or an AI search job
+// (state.aiSearchJobId) - so the worker always has one "Stop" control
+// regardless of mode, instead of only AI-search jobs being cancellable.
+async function cancelActiveSearch() {
+  if (state.discoveryRunning && state.discoveryJobId) {
+    return cancelStandardDiscoveryJob();
+  }
+  return cancelAiSearchJob();
+}
+
+async function cancelStandardDiscoveryJob() {
+  const jobId = state.discoveryJobId;
+  if (!jobId) return;
+  els.aiSearchCancelButton.disabled = true;
+  if (els.aiSearchCancelButtonLabel) els.aiSearchCancelButtonLabel.textContent = trs('ai_search_cancelling');
+  try {
+    await fetch(apiUrl(`/api/discover/jobs/${jobId}/cancel`), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...authHeaders() }
+    });
+  } catch {
+    // Non-fatal: the next poll tick reflects whatever state the backend
+    // actually reaches even if this particular request failed in flight.
+  } finally {
+    els.aiSearchCancelButton.disabled = false;
+    if (els.aiSearchCancelButtonLabel) els.aiSearchCancelButtonLabel.textContent = trs('ai_search_cancel');
+  }
 }
 
 async function cancelAiSearchJob() {

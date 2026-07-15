@@ -332,6 +332,27 @@ h2 {
   opacity: 0.7;
 }
 
+.history-duplicates-btn {
+  margin-left: 6px;
+  border: 1px solid var(--line);
+  background: transparent;
+  border-radius: 6px;
+  padding: 2px 5px;
+  cursor: pointer;
+  color: var(--muted);
+  vertical-align: middle;
+}
+
+.history-duplicates-btn:hover {
+  color: var(--ink, #1f2937);
+  border-color: var(--muted);
+}
+
+.history-duplicates-btn i {
+  width: 13px;
+  height: 13px;
+}
+
 .history-company-link {
   background: transparent;
   border: 0;
@@ -1164,6 +1185,30 @@ tbody tr.selected {
   color: var(--muted);
   font-size: 14px;
   line-height: 1.45;
+}
+
+.discover-log {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 6px 8px;
+  max-height: 120px;
+  overflow-y: auto;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+  background: var(--panel-2, rgba(0, 0, 0, 0.03));
+  border-radius: 8px;
+}
+
+.discover-log li {
+  border-bottom: 1px dashed var(--line);
+  padding: 2px 0;
+}
+
+.discover-log li:last-child {
+  border-bottom: 0;
+  color: inherit;
+  font-weight: 600;
 }
 
 .ai-preview-list {

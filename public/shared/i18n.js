@@ -1131,6 +1131,8 @@
     ai_preview_status_saved: { pl: 'Zapisane w puli', ru: 'Сохранено в пуле', en: 'Saved to pool' },
     ai_preview_status_rejected: { pl: 'Odrzucone', ru: 'Отклонено', en: 'Rejected' },
 
+    history_show_duplicates: { pl: 'Pokaż duplikaty', ru: 'Показать дубли', en: 'Show duplicates' },
+
     ai_search_cancel: { pl: 'Anuluj wyszukiwanie', ru: 'Отменить поиск', en: 'Cancel search' },
     ai_search_cancelling: { pl: 'Anulowanie...', ru: 'Отмена...', en: 'Cancelling...' },
     ai_search_errors_label: { pl: 'Błędy:', ru: 'Ошибки:', en: 'Errors:' },
