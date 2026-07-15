@@ -7733,28 +7733,64 @@ function isSearchEvidenceLocalToCity(text, city) {
   return normalizeSearchText(text).includes(normalizedCity);
 }
 
+// Other Polish/Ukrainian cities we know by name, used to detect a search
+// result that is clearly anchored to a different city than the one being
+// searched for. Excludes the target city itself (and its aliases, e.g.
+// warszawa/warsaw) so it never conflicts with itself.
+function otherKnownCityNames(city) {
+  const cityKey = normalizePresetKey(city) || 'warszawa';
+  const isWarsawTarget = cityKey === 'warszawa' || cityKey === 'warsaw';
+  const names = new Set();
+
+  Object.entries(CITY_PRESETS).forEach(([key, preset]) => {
+    if (key === cityKey) return;
+    if (isWarsawTarget && (key === 'warszawa' || key === 'warsaw')) return;
+    names.add(normalizeSearchText(preset.label));
+  });
+
+  LOCATION_SUGGESTIONS.forEach((loc) => {
+    const key = normalizePresetKey(loc.cityName);
+    if (key === cityKey) return;
+    if (isWarsawTarget && key === 'warszawa') return;
+    names.add(normalizeSearchText(loc.cityName));
+  });
+
+  return [...names].filter(Boolean);
+}
+
+// Country-code TLDs of nearby European countries - a result whose only link
+// resolves to one of these (and not the target country's own ccTLD or a
+// neutral generic TLD) is a strong signal the business is actually based
+// abroad, not just a spelling/formatting quirk worth ignoring.
+const FOREIGN_EUROPEAN_TLDS = new Set([
+  'it', 'de', 'fr', 'es', 'cz', 'sk', 'lt', 'lv', 'ee', 'ru', 'by', 'uk',
+  'at', 'nl', 'be', 'ch', 'se', 'no', 'dk', 'fi', 'pt', 'gr', 'hu', 'ro',
+  'bg', 'hr', 'si', 'rs', 'ie', 'is', 'lu'
+]);
+
+function hasConflictingCountryEvidence(text, city) {
+  const cityPreset = getCityPreset(city);
+  const countryPreset = getCountryPreset(getDiscoveryContext().country) || (cityPreset ? getCountryPreset(cityPreset.country) : null);
+  const ownTld = (cityPreset?.regionCode || countryPreset?.regionCode || 'PL').toLowerCase();
+  const urls = String(text || '').match(/https?:\/\/[^\s"'<>]+/g) || [];
+  return urls.some((url) => {
+    const host = safeHostname(url);
+    const tld = host.split('.').pop() || '';
+    return tld && tld !== ownTld && FOREIGN_EUROPEAN_TLDS.has(tld);
+  });
+}
+
 function hasConflictingCityEvidence(text, city) {
   const value = normalizeSearchText(text);
-  const normalizedCity = normalizeSearchText(city || '');
-  if (!normalizedCity || normalizedCity === 'warszawa') {
-    if (value.includes('warszaw') || value.includes('warsaw')) return false;
-    return [
-      'poznan',
-      'krakow',
-      'wroclaw',
-      'gdansk',
-      'lodz',
-      'lublin',
-      'katowice',
-      'tychy',
-      'bialystok',
-      'szczecin',
-      'rzeszow',
-      'bydgoszcz',
-      'torun'
-    ].some((name) => value.includes(name));
-  }
-  return false;
+  const cityKey = normalizePresetKey(city) || 'warszawa';
+  const targetNames =
+    cityKey === 'warszawa' || cityKey === 'warsaw'
+      ? ['warszawa', 'warsaw']
+      : [normalizeSearchText(getCityPreset(city)?.label || city)];
+  if (targetNames.some((name) => name && value.includes(name))) return false;
+
+  if (otherKnownCityNames(city).some((name) => name && value.includes(name))) return true;
+  return hasConflictingCountryEvidence(text, city);
 }
 
 function inferCompanyNameFromSearchTitle(title, niche, city, href = '') {
