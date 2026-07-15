@@ -9,6 +9,14 @@ const state = {
   discoveryJobId: null,
   discoveryPollTimer: null,
   discoveryRunning: false,
+  // AI company search (ai_search/combined/ai_enrich) - deliberately separate
+  // from the discovery* fields above so the new /api/ai-search polling loop
+  // (waitForAiSearchCompletion) can never interfere with the existing
+  // standard /api/discover flow (waitForDiscoveryCompletion), even if both
+  // somehow ran back to back.
+  aiSearchJobId: null,
+  aiSearchPollTimer: null,
+  aiSearchRunning: false,
   detailTab: 'overview',
   filters: {
     text: '',
@@ -63,6 +71,17 @@ const crmStatusOptions = [
 // comments, CRM status), which don't have entries in the big tr() dictionary.
 function t2(pl, ru) {
   return currentLanguage === 'pl' ? pl : ru;
+}
+
+// Reads a key from the shared public/shared/i18n.js dictionary (loaded via
+// AuraI18n global - see index.html script tags). Used only for the new AI
+// company search UI (mode selector, curated criteria, stage labels, AI
+// profile summary card) added alongside this feature; every other label in
+// this file keeps using the existing tr()/t2() helpers untouched. Falls back
+// to the key itself if the shared script failed to load for any reason, so a
+// missing/blocked script never throws.
+function trs(key) {
+  return window.AuraI18n ? window.AuraI18n.tr(key, currentLanguage) : key;
 }
 
 function crmStatusLabel(value) {
@@ -751,6 +770,11 @@ const els = {
   csvInput: document.querySelector('#csvInput'),
   fileInput: document.querySelector('#fileInput'),
   sampleButton: document.querySelector('#sampleButton'),
+  discoverMode: document.querySelector('#discoverMode'),
+  discoverModeLabel: document.querySelector('#discoverModeLabel'),
+  discoverStepLocation: document.querySelector('#discoverStepLocation'),
+  discoverLimitField: document.querySelector('#discoverLimitField'),
+  discoverSourceField: document.querySelector('#discoverSourceField'),
   discoverCategoryPreset: document.querySelector('#discoverCategoryPreset'),
   customCategoryField: document.querySelector('#customCategoryField'),
   discoverNiche: document.querySelector('#discoverNiche'),
@@ -764,6 +788,43 @@ const els = {
   allSourcesButton: document.querySelector('#allSourcesButton'),
   discoverButton: document.querySelector('#discoverButton'),
   discoverStatus: document.querySelector('#discoverStatus'),
+  // AI company search (ai_search/combined/ai_enrich modes) - curated criteria
+  // block, ai_enrich note, and the job-cancel button. See runAiCompanySearch()/
+  // waitForAiSearchCompletion() below.
+  aiSearchOptions: document.querySelector('#aiSearchOptions'),
+  aiSearchSectionTitle: document.querySelector('#aiSearchSectionTitle'),
+  aiClientType: document.querySelector('#aiClientType'),
+  aiFieldClientTypeLabel: document.querySelector('#aiFieldClientTypeLabel'),
+  aiCompanySize: document.querySelector('#aiCompanySize'),
+  aiFieldCompanySizeLabel: document.querySelector('#aiFieldCompanySizeLabel'),
+  aiMinYears: document.querySelector('#aiMinYears'),
+  aiFieldMinYearsLabel: document.querySelector('#aiFieldMinYearsLabel'),
+  aiWebsitePresence: document.querySelector('#aiWebsitePresence'),
+  aiFieldWebsitePresenceLabel: document.querySelector('#aiFieldWebsitePresenceLabel'),
+  aiMinReviews: document.querySelector('#aiMinReviews'),
+  aiFieldMinReviewsLabel: document.querySelector('#aiFieldMinReviewsLabel'),
+  aiMinRating: document.querySelector('#aiMinRating'),
+  aiFieldMinRatingLabel: document.querySelector('#aiFieldMinRatingLabel'),
+  aiExtraKeywords: document.querySelector('#aiExtraKeywords'),
+  aiFieldExtraKeywordsLabel: document.querySelector('#aiFieldExtraKeywordsLabel'),
+  aiExcludeKeywords: document.querySelector('#aiExcludeKeywords'),
+  aiFieldExcludeKeywordsLabel: document.querySelector('#aiFieldExcludeKeywordsLabel'),
+  aiSearchCount: document.querySelector('#aiSearchCount'),
+  aiFieldCountLabel: document.querySelector('#aiFieldCountLabel'),
+  aiFieldQualityFlagsLabel: document.querySelector('#aiFieldQualityFlagsLabel'),
+  aiFlagWeakOutdated: document.querySelector('#aiFlagWeakOutdated'),
+  aiFlagWeakOutdatedLabel: document.querySelector('#aiFlagWeakOutdatedLabel'),
+  aiFlagNoMobile: document.querySelector('#aiFlagNoMobile'),
+  aiFlagNoMobileLabel: document.querySelector('#aiFlagNoMobileLabel'),
+  aiFlagNoCta: document.querySelector('#aiFlagNoCta'),
+  aiFlagNoCtaLabel: document.querySelector('#aiFlagNoCtaLabel'),
+  aiFlagNoContactInfo: document.querySelector('#aiFlagNoContactInfo'),
+  aiFlagNoContactInfoLabel: document.querySelector('#aiFlagNoContactInfoLabel'),
+  aiEnrichNote: document.querySelector('#aiEnrichNote'),
+  aiEnrichNoteText: document.querySelector('#aiEnrichNoteText'),
+  aiEnrichEligible: document.querySelector('#aiEnrichEligible'),
+  aiSearchCancelButton: document.querySelector('#aiSearchCancelButton'),
+  aiSearchCancelButtonLabel: document.querySelector('#aiSearchCancelButtonLabel'),
   useAi: document.querySelector('#useAi'),
   useWebSearch: document.querySelector('#useWebSearch'),
   modelInput: document.querySelector('#modelInput'),
@@ -1049,7 +1110,18 @@ const categoryOptions = [
   { id: 'wind_energy', value: 'Energetyka wiatrowa', label: 'Ветрогенерация', labelPl: 'Energetyka wiatrowa' },
   { id: 'ev_charging_stations', value: 'Stacje ładowania samochodów elektrycznych', label: 'Зарядные станции для электромобилей', labelPl: 'Stacje ładowania samochodów elektrycznych' },
   { id: 'energy_audit', value: 'Audyt energetyczny', label: 'Энергоаудит', labelPl: 'Audyt energetyczny' },
-  { id: 'energy_service_company', value: 'Przedsiębiorstwa usług energetycznych (ESCO)', label: 'Энергосервисные компании', labelPl: 'Przedsiębiorstwa usług energetycznych (ESCO)' }
+  { id: 'energy_service_company', value: 'Przedsiębiorstwa usług energetycznych (ESCO)', label: 'Энергосервисные компании', labelPl: 'Przedsiębiorstwa usług energetycznych (ESCO)' },
+  { id: 'office_building_construction', value: 'Budowa biurowców', label: 'Строительство офисных зданий', labelPl: 'Budowa biurowców' },
+  { id: 'public_building_construction', value: 'Budowa obiektów użyteczności publicznej', label: 'Строительство общественных зданий', labelPl: 'Budowa obiektów użyteczności publicznej' },
+  { id: 'office_fitout', value: 'Fit-out i wykończenia biur', label: 'Фит-аут и отделка офисов', labelPl: 'Fit-out i wykończenia biur' },
+  { id: 'container_manufacturer', value: 'Producenci kontenerów', label: 'Производители контейнеров', labelPl: 'Producenci kontenerów' },
+  { id: 'forklift_sales', value: 'Sprzedaż wózków widłowych', label: 'Продажа вилочных погрузчиков', labelPl: 'Sprzedaż wózków widłowych' },
+  { id: 'aerial_platform_sales', value: 'Sprzedaż i wynajem podnośników', label: 'Продажа и аренда подъёмников', labelPl: 'Sprzedaż i wynajem podnośników' },
+  { id: 'demolition_equipment_sales', value: 'Sprzęt wyburzeniowy - sprzedaż i wynajem', label: 'Продажа и аренда оборудования для сноса', labelPl: 'Sprzęt wyburzeniowy - sprzedaż i wynajem' },
+  { id: 'oversized_transport', value: 'Transport ponadgabarytowy', label: 'Негабаритные перевозки', labelPl: 'Transport ponadgabarytowy' },
+  { id: 'energy_storage_systems', value: 'Magazyny energii', label: 'Системы накопления энергии', labelPl: 'Magazyny energii' },
+  { id: 'serviced_apartment_operator', value: 'Operatorzy apartamentów', label: 'Операторы апарт-отелей', labelPl: 'Operatorzy apartamentów' },
+  { id: 'winter_garden_pergola', value: 'Ogrody zimowe i pergole', label: 'Зимние сады и перголы', labelPl: 'Ogrody zimowe i pergole' }
 ];
 
 const topCategories = categoryOptions.slice(0, 12);
@@ -1258,9 +1330,13 @@ function applyLanguage(lang = currentLanguage, { persist = true } = {}) {
   }
 
   setText('.sidebar-title h2', tr('sidebarTitle'));
-  const stepTitles = document.querySelectorAll('.discover-panel .step-title');
-  if (stepTitles[0]) stepTitles[0].textContent = tr('categoryLocation');
-  if (stepTitles[1]) stepTitles[1].textContent = tr('filtersStep');
+  // Targeted by id rather than `.discover-panel .step-title` position - the
+  // AI company search mode selector and its curated-criteria block (see
+  // applyAiSearchStaticCopy() below) added their own `.step-title` elements,
+  // so a positional NodeList index would silently start writing the wrong
+  // text into the wrong element after that change.
+  setText('#discoverStepLocationTitle', tr('categoryLocation'));
+  setText('#discoverStepFiltersTitle', tr('filtersStep'));
   setText('.main-header p', tr('titleSubtitle'));
   setButtonHtml('#viewTabResults', 'table', tr('results'));
   setButtonHtml('#viewTabHistory', 'history', tr('history'));
@@ -1348,6 +1424,7 @@ function applyLanguage(lang = currentLanguage, { persist = true } = {}) {
   });
 
   applyStaticCopy();
+  applyAiSearchStaticCopy();
   // Registry/diagnostic cards ("Zrodla gotowe" etc.) are rendered from
   // /api/config readiness flags, not re-fetched here — re-render from the
   // last known flags so the card titles/body text pick up the new language
@@ -1399,6 +1476,53 @@ function applyStaticCopy() {
   });
 }
 
+// Static labels for the AI company search UI (mode selector, curated
+// criteria block, ai_enrich note, cancel button). Kept as its own function
+// (rather than folded into applyStaticCopy() above) so a mistake here can
+// never affect the untouched standard-search labels applyStaticCopy() sets.
+function applyAiSearchStaticCopy() {
+  setText('#discoverModeStepTitle', trs('discover_mode_step_title'));
+  setText('#discoverModeLabel', trs('discover_mode_field_label'));
+  setOptionText(els.discoverMode, 'standard', trs('discover_mode_standard'));
+  setOptionText(els.discoverMode, 'ai_search', trs('discover_mode_ai_search'));
+  setOptionText(els.discoverMode, 'combined', trs('discover_mode_combined'));
+  setOptionText(els.discoverMode, 'ai_enrich', trs('discover_mode_ai_enrich'));
+
+  setText('#aiSearchSectionTitle', trs('ai_search_section_title'));
+  setText('#aiFieldClientTypeLabel', trs('ai_field_client_type'));
+  setOptionText(els.aiClientType, 'any', trs('ai_client_type_any'));
+  setOptionText(els.aiClientType, 'b2b', trs('ai_client_type_b2b'));
+  setOptionText(els.aiClientType, 'b2c', trs('ai_client_type_b2c'));
+  setOptionText(els.aiClientType, 'both', trs('ai_client_type_both'));
+
+  setText('#aiFieldCompanySizeLabel', trs('ai_field_company_size'));
+  setOptionText(els.aiCompanySize, 'any', trs('ai_company_size_any'));
+
+  setText('#aiFieldMinYearsLabel', trs('ai_field_min_years'));
+
+  setText('#aiFieldWebsitePresenceLabel', trs('ai_field_website_presence'));
+  setOptionText(els.aiWebsitePresence, 'any', trs('ai_website_presence_any'));
+  setOptionText(els.aiWebsitePresence, 'has_website', trs('ai_website_presence_has'));
+  setOptionText(els.aiWebsitePresence, 'no_website', trs('ai_website_presence_no'));
+
+  setText('#aiFieldQualityFlagsLabel', trs('ai_field_quality_flags'));
+  setText('#aiFlagWeakOutdatedLabel', trs('ai_flag_weak_outdated'));
+  setText('#aiFlagNoMobileLabel', trs('ai_flag_no_mobile'));
+  setText('#aiFlagNoCtaLabel', trs('ai_flag_no_cta'));
+  setText('#aiFlagNoContactInfoLabel', trs('ai_flag_no_contact_info'));
+
+  setText('#aiFieldExtraKeywordsLabel', trs('ai_field_extra_keywords'));
+  setText('#aiFieldExcludeKeywordsLabel', trs('ai_field_exclude_keywords'));
+  setText('#aiFieldMinReviewsLabel', trs('ai_field_min_reviews'));
+  setText('#aiFieldMinRatingLabel', trs('ai_field_min_rating'));
+  setText('#aiFieldCountLabel', trs('ai_field_count'));
+
+  setText('#aiEnrichNoteText', trs('ai_enrich_note'));
+  if (els.aiSearchCancelButtonLabel) els.aiSearchCancelButtonLabel.textContent = trs('ai_search_cancel');
+
+  renderAiEnrichEligibleHint();
+}
+
 function isDiscoveryReady(config = state.config) {
   return Boolean(
     config?.registry?.amazonLocationConfigured ||
@@ -1409,6 +1533,16 @@ function isDiscoveryReady(config = state.config) {
 }
 
 async function handlePrimaryAction() {
+  // Every non-standard mode branches off to the separate AI company search
+  // path (see handleAiSearchPrimaryAction() below) before any of the
+  // standard-flow checks/state changes below run - #discoverMode === 'standard'
+  // (the default) always falls straight through unchanged.
+  const discoverMode = els.discoverMode?.value || 'standard';
+  if (discoverMode !== 'standard') {
+    await handleAiSearchPrimaryAction(discoverMode);
+    return;
+  }
+
   if (!isDiscoveryReady()) {
     setDiscoverStatus(t2('Ponownie łączę backend i sprawdzam źródła...', 'Переподключаю backend и заново проверяю источники...'), 'work');
     try {
@@ -1725,6 +1859,8 @@ function bindEvents() {
     els.csvInput.value = sampleCsv;
   });
   els.discoverCategoryPreset.addEventListener('change', handleCategoryPresetChange);
+  els.discoverMode?.addEventListener('change', handleDiscoverModeChange);
+  els.aiSearchCancelButton?.addEventListener('click', cancelAiSearchJob);
   els.discoverCity?.addEventListener('input', () => {
     clearTimeout(els.discoverCity._suggestTimer);
     els.discoverCity._suggestTimer = setTimeout(() => loadCitySuggestions(els.discoverCity.value.trim()).catch(() => {}), 250);
@@ -1916,6 +2052,7 @@ async function openHistoryRun(runId) {
     els.exportCsvButton.disabled = false;
     els.headerExportCsvButton.disabled = false;
     els.exportJsonButton.disabled = false;
+    renderAiEnrichEligibleHint();
     setStatus(
       t2(`Otwarto zapytanie z historii: ${state.results.length} firm.`, `Открыт запуск из истории: ${state.results.length} компаний.`),
       'ok'
@@ -2355,6 +2492,7 @@ function setCurrentResults(results, { resetDetailTab = false } = {}) {
   els.exportCsvButton.disabled = !hasResults;
   els.headerExportCsvButton.disabled = !hasResults;
   els.exportJsonButton.disabled = !hasResults;
+  renderAiEnrichEligibleHint();
 }
 
 async function fetchDiscoveryJob(jobId) {
@@ -2582,6 +2720,393 @@ function selectedDiscoveryNiches() {
   return [];
 }
 
+// ---------------------------------------------------------------------------
+// AI company search (ai_search / combined / ai_enrich modes)
+//
+// Deliberately kept as an entirely separate code path from the standard
+// /api/discover flow above (runDiscovery/waitForDiscoveryCompletion/
+// buildDiscoveryStatusText): #discoverMode === 'standard' always falls
+// through to the untouched original functions, so nothing here can regress
+// the existing search. See handlePrimaryAction() for the branch point.
+//
+// "Which companies does ai_enrich operate on?" - design choice: there is no
+// multi-select checkbox column in the results table (confirmed - grepped for
+// any checkbox-based multi-select pattern and found none), so v1 pragmatically
+// enriches every company currently visible in the results table *after* the
+// existing sidebar/table filters are applied (getFilteredResults(), the same
+// helper the table itself renders from) and that already has a real saved
+// companyId (leadCompanyId()). This lets a worker narrow down "just these 12
+// no-website leads" with the filters that already exist, then flip to
+// "Wzbogacenie AI" and run it on exactly that visible set - see
+// selectedAiEnrichCompanyIds()/renderAiEnrichEligibleHint().
+// ---------------------------------------------------------------------------
+
+function stopAiSearchPolling() {
+  if (state.aiSearchPollTimer) {
+    clearTimeout(state.aiSearchPollTimer);
+    state.aiSearchPollTimer = null;
+  }
+  state.aiSearchJobId = null;
+}
+
+function handleDiscoverModeChange() {
+  const mode = els.discoverMode?.value || 'standard';
+  const isAiSearch = mode === 'ai_search' || mode === 'combined';
+  const isAiEnrich = mode === 'ai_enrich';
+
+  // Category/city/radius and the discover-only limit/source fields don't
+  // apply to ai_enrich (it never runs a new search) - hide them there. The
+  // site-status/score/social/phone/email filters just below stay visible in
+  // every mode: for ai_enrich they double as the "which companies" picker
+  // (see selectedAiEnrichCompanyIds()).
+  els.discoverStepLocation?.classList.toggle('hidden-field', isAiEnrich);
+  els.discoverLimitField?.classList.toggle('hidden-field', isAiEnrich);
+  els.discoverSourceField?.classList.toggle('hidden-field', isAiEnrich);
+
+  els.aiSearchOptions?.classList.toggle('hidden-field', !isAiSearch);
+  els.aiEnrichNote?.classList.toggle('hidden-field', !isAiEnrich);
+  els.aiEnrichEligible?.classList.toggle('hidden-field', !isAiEnrich);
+  renderAiEnrichEligibleHint();
+}
+
+function collectAiSearchCriteria() {
+  const parseKeywordList = (value) =>
+    String(value || '')
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
+
+  const websiteQualityFlags = [];
+  if (els.aiFlagWeakOutdated?.checked) websiteQualityFlags.push('weak_outdated');
+  if (els.aiFlagNoMobile?.checked) websiteQualityFlags.push('no_mobile');
+  if (els.aiFlagNoCta?.checked) websiteQualityFlags.push('no_cta');
+  if (els.aiFlagNoContactInfo?.checked) websiteQualityFlags.push('no_contact_info');
+
+  return {
+    clientType: els.aiClientType?.value || 'any',
+    companySizeRange: els.aiCompanySize?.value || 'any',
+    minYearsInBusiness: Number(els.aiMinYears?.value || 0) || undefined,
+    websitePresence: els.aiWebsitePresence?.value || 'any',
+    websiteQualityFlags,
+    extraKeywords: parseKeywordList(els.aiExtraKeywords?.value),
+    excludeKeywords: parseKeywordList(els.aiExcludeKeywords?.value),
+    minReviews: Number(els.aiMinReviews?.value || 0) || undefined,
+    minRating: Number(els.aiMinRating?.value || 0) || undefined
+  };
+}
+
+async function fetchAiSearchJob(jobId) {
+  const response = await fetch(apiUrl(`/api/ai-search/jobs/${jobId}`), {
+    headers: { 'x-worker-id': getWorkerId(), ...authHeaders() }
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || t2('Błąd odczytu statusu wyszukiwania AI.', 'Ошибка чтения статуса AI-поиска.'));
+  return data;
+}
+
+function aiStageLabel(stage) {
+  return trs(`ai_stage_${String(stage || 'queued').toLowerCase()}`);
+}
+
+// Renders the richer multi-line AI job status into the SAME #discoverStatus
+// element the standard flow uses (setDiscoverStatus() above just sets
+// textContent) - reuses the existing .discover-status/.muted-text/.error-text
+// styling instead of inventing new CSS, per the round's scope.
+function renderAiSearchStatus(job) {
+  const stage = job.stage || 'QUEUED';
+  const progress = job.progress || {};
+  const counterKeys = ['planned_queries', 'queries_run', 'candidates_found', 'candidates_confirmed', 'duplicates_skipped', 'rejected', 'enriched', 'saved'];
+  const counters = counterKeys
+    .filter((key) => progress[key] !== undefined && progress[key] !== null)
+    .map((key) => `${escapeHtml(trs(`ai_progress_${key}`))}: ${escapeHtml(String(progress[key]))}`)
+    .join(' · ');
+
+  const detail = job.stage_detail ? escapeHtml(String(job.stage_detail)) : '';
+  const errors = Array.isArray(job.errors) ? job.errors.filter(Boolean) : [];
+  const errorLine = errors.length
+    ? `<div class="error-text">${escapeHtml(trs('ai_search_errors_label'))} ${escapeHtml(errors.slice(0, 2).join(' | '))}</div>`
+    : '';
+
+  els.discoverStatus.innerHTML = `
+    <div><strong>${escapeHtml(aiStageLabel(stage))}</strong>${detail ? ` — ${detail}` : ''}</div>
+    ${counters ? `<div class="muted-text">${counters}</div>` : ''}
+    ${errorLine}
+  `;
+  const warnStages = new Set(['FAILED', 'CANCELLED', 'PARTIAL']);
+  els.discoverStatus.style.color = warnStages.has(stage) ? '#b91c1c' : stage === 'COMPLETED' ? '#15803d' : '#64717a';
+}
+
+function buildAiSearchSummaryText(job) {
+  const saved = job.progress?.saved || 0;
+  const found = job.progress?.candidates_found || 0;
+  if (job.stage === 'FAILED') {
+    return (Array.isArray(job.errors) && job.errors[0]) || t2('Wyszukiwanie AI zakończone błędem.', 'AI-поиск завершился с ошибкой.');
+  }
+  if (job.stage === 'CANCELLED') {
+    return t2(`Wyszukiwanie AI anulowane. Zapisano ${saved} firm.`, `AI-поиск отменён. Сохранено ${saved} компаний.`);
+  }
+  if (job.stage === 'PARTIAL') {
+    return t2(
+      `Wyszukiwanie AI zakończone częściowo: zapisano ${saved} z ${found} znalezionych.`,
+      `AI-поиск завершён частично: сохранено ${saved} из ${found} найденных.`
+    );
+  }
+  return t2(`Gotowe: AI zapisało ${saved} firm.`, `Готово: AI сохранил ${saved} компаний.`);
+}
+
+// Polls GET /api/ai-search/jobs/:jobId every ~1.5s - the analogous function to
+// waitForDiscoveryCompletion() above but for the AI pipeline's richer
+// stage/progress shape (no inline `companies` array on the job itself; saved
+// companies are loaded back in afterwards via the normal history endpoint,
+// see loadRunOnComplete below). Kept fully separate so a bug here cannot
+// touch the standard discovery polling loop.
+async function waitForAiSearchCompletion(jobId, { loadRunOnComplete = true } = {}) {
+  els.aiSearchCancelButton?.classList.remove('hidden-field');
+  const terminalStages = new Set(['COMPLETED', 'PARTIAL', 'FAILED', 'CANCELLED']);
+
+  while (state.aiSearchJobId === jobId) {
+    const job = await fetchAiSearchJob(jobId);
+    renderAiSearchStatus(job);
+
+    if (terminalStages.has(job.stage)) {
+      stopAiSearchPolling();
+      els.aiSearchCancelButton?.classList.add('hidden-field');
+
+      if (job.stage === 'FAILED') {
+        throw new Error((Array.isArray(job.errors) && job.errors[0]) || t2('Błąd wyszukiwania AI.', 'Ошибка AI-поиска.'));
+      }
+
+      // Once the job has a run_id it behaves exactly like a normal discovery
+      // run (same task description as the backend spec for this round) - load
+      // its saved companies back through the EXISTING history endpoint/render
+      // path instead of re-deriving results here.
+      if (loadRunOnComplete && job.run_id) {
+        await openHistoryRun(job.run_id);
+      }
+
+      const summary = buildAiSearchSummaryText(job);
+      setDiscoverStatus(summary, job.stage === 'COMPLETED' ? 'ok' : 'warn');
+      setStatus(summary, job.stage === 'COMPLETED' ? 'ok' : 'warn');
+      return job;
+    }
+
+    await new Promise((resolve) => {
+      state.aiSearchPollTimer = window.setTimeout(resolve, 1500);
+    });
+    state.aiSearchPollTimer = null;
+  }
+
+  throw new Error(t2('Wyszukiwanie AI zostało zatrzymane.', 'AI-поиск был остановлен.'));
+}
+
+async function cancelAiSearchJob() {
+  const jobId = state.aiSearchJobId;
+  if (!jobId) return;
+  els.aiSearchCancelButton.disabled = true;
+  if (els.aiSearchCancelButtonLabel) els.aiSearchCancelButtonLabel.textContent = trs('ai_search_cancelling');
+  try {
+    await fetch(apiUrl(`/api/ai-search/jobs/${jobId}/cancel`), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ reason: 'worker_cancelled' })
+    });
+  } catch {
+    // Non-fatal: the next poll tick reflects whatever state the backend
+    // actually reaches even if this particular request failed in flight.
+  } finally {
+    els.aiSearchCancelButton.disabled = false;
+    if (els.aiSearchCancelButtonLabel) els.aiSearchCancelButtonLabel.textContent = trs('ai_search_cancel');
+  }
+}
+
+async function runAiCompanySearch(mode) {
+  if (state.aiSearchRunning) {
+    setDiscoverStatus(t2('Wyszukiwanie AI już trwa, poczekaj na zakończenie.', 'AI-поиск уже выполняется, дождитесь завершения.'), 'warn');
+    return;
+  }
+
+  const niches = selectedDiscoveryNiches();
+  if (!niches.length) {
+    setDiscoverStatus(t2('Podaj kategorię lub wybierz zestaw kategorii.', 'Укажите категорию или выберите набор категорий.'), 'warn');
+    return;
+  }
+
+  state.aiSearchRunning = true;
+  stopAiSearchPolling();
+  clearHistoryContext();
+  switchView('results');
+  state.historyLoaded = false;
+  resetFiltersForDiscovery();
+
+  els.discoverButton.disabled = true;
+  els.analyzeButton.disabled = true;
+  els.exportCsvButton.disabled = true;
+  els.headerExportCsvButton.disabled = true;
+  els.exportJsonButton.disabled = true;
+  state.results = [];
+  state.selectedId = null;
+  state.detailTab = 'overview';
+  renderResults();
+  renderMetrics();
+  renderDetail();
+  setDiscoverStatus(t2('Uruchamiam AI-wyszukiwanie firm...', 'Запускаю AI-поиск компаний...'), 'work');
+
+  // Curated field count (1-100): the existing #discoverLimit select is a
+  // fixed 20/50/100/150 stepper (its 150 option exceeds the backend's 1-100
+  // cap for this pipeline), so this uses its own dedicated #aiSearchCount
+  // number input rather than reusing #discoverLimit.
+  const requestedCount = Math.min(100, Math.max(1, Number(els.aiSearchCount?.value || 20) || 20));
+
+  try {
+    const response = await fetch(apiUrl('/api/ai-search/jobs'), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({
+        mode,
+        niche: niches[0],
+        niches,
+        city: els.discoverCity.value.trim(),
+        country: els.discoverCountry.value.trim(),
+        district: els.discoverDistrict.value.trim(),
+        radiusKm: Number(els.discoverRadius.value || 0) || undefined,
+        language: currentLanguage,
+        requestedCount,
+        workerId: getWorkerId(),
+        ...collectAiSearchCriteria()
+      })
+    });
+
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || t2('Błąd uruchamiania wyszukiwania AI.', 'Ошибка запуска AI-поиска.'));
+    if (!data.jobId) throw new Error(t2('Backend nie zwrócił identyfikatora zadania wyszukiwania AI.', 'Backend не вернул идентификатор задачи AI-поиска.'));
+
+    state.aiSearchJobId = data.jobId;
+    await waitForAiSearchCompletion(data.jobId);
+    await loadHistory().catch(() => {});
+  } catch (error) {
+    setDiscoverStatus(error.message || t2('Błąd wyszukiwania AI.', 'Ошибка AI-поиска.'), 'warn');
+  } finally {
+    stopAiSearchPolling();
+    state.aiSearchRunning = false;
+    els.discoverButton.disabled = false;
+    els.analyzeButton.disabled = false;
+    els.aiSearchCancelButton?.classList.add('hidden-field');
+    renderIcons();
+    refreshWorkerQuota().catch(() => {});
+  }
+}
+
+function selectedAiEnrichCompanyIds() {
+  return getFilteredResults()
+    .map((result) => leadCompanyId(result))
+    .filter(Boolean);
+}
+
+function renderAiEnrichEligibleHint() {
+  if (!els.aiEnrichEligible) return;
+  if ((els.discoverMode?.value || 'standard') !== 'ai_enrich') {
+    els.aiEnrichEligible.classList.add('hidden-field');
+    return;
+  }
+  const ids = selectedAiEnrichCompanyIds();
+  els.aiEnrichEligible.classList.remove('hidden-field');
+  els.aiEnrichEligible.textContent = ids.length
+    ? `${trs('ai_enrich_count_prefix')} ${ids.length} ${trs('ai_enrich_count_suffix')}`
+    : trs('ai_enrich_none_eligible');
+}
+
+// Re-fetches each just-enriched company (the same /api/leads/:id call
+// ensureResultExtras() already uses for crm_status/saved_links) and merges
+// its fresh aiCompanyProfile into the matching in-memory result, so the AI
+// tab reflects the new profile without a full page/history reload.
+async function refreshEnrichedCompanies(companyIds) {
+  await Promise.all(
+    companyIds.map(async (companyId) => {
+      try {
+        const response = await fetch(apiUrl(`/api/leads/${encodeURIComponent(companyId)}`), { headers: savedAuthHeaders() });
+        if (!response.ok) return;
+        const data = await response.json();
+        const profile = data.company?.aiCompanyProfile;
+        if (!profile) return;
+        state.results = state.results.map((result) => (leadCompanyId(result) === companyId ? { ...result, aiCompanyProfile: profile } : result));
+      } catch {
+        // Non-fatal per company - the worker can reopen that card later to retry.
+      }
+    })
+  );
+  renderResults();
+  renderDetail();
+}
+
+async function runAiEnrich() {
+  if (state.aiSearchRunning) {
+    setDiscoverStatus(t2('Wzbogacanie AI już trwa, poczekaj na zakończenie.', 'AI-обогащение уже выполняется, дождитесь завершения.'), 'warn');
+    return;
+  }
+
+  const companyIds = selectedAiEnrichCompanyIds();
+  if (!companyIds.length) {
+    setDiscoverStatus(trs('ai_enrich_none_eligible'), 'warn');
+    return;
+  }
+
+  state.aiSearchRunning = true;
+  stopAiSearchPolling();
+  els.discoverButton.disabled = true;
+  setDiscoverStatus(
+    t2(`Uruchamiam wzbogacanie AI dla ${companyIds.length} firm...`, `Запускаю AI-обогащение для ${companyIds.length} компаний...`),
+    'work'
+  );
+
+  try {
+    const response = await fetch(apiUrl('/api/ai-search/enrich'), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ companyIds })
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || t2('Błąd uruchamiania wzbogacania AI.', 'Ошибка запуска AI-обогащения.'));
+    if (!data.jobId) throw new Error(t2('Backend nie zwrócił identyfikatora zadania wzbogacania.', 'Backend не вернул идентификатор задачи обогащения.'));
+
+    state.aiSearchJobId = data.jobId;
+    const job = await waitForAiSearchCompletion(data.jobId, { loadRunOnComplete: false });
+    await refreshEnrichedCompanies(companyIds);
+    const summary = buildAiSearchSummaryText(job);
+    setStatus(summary, job.stage === 'FAILED' || job.stage === 'CANCELLED' ? 'warn' : 'ok');
+  } catch (error) {
+    setDiscoverStatus(error.message || t2('Błąd wzbogacania AI.', 'Ошибка AI-обогащения.'), 'warn');
+  } finally {
+    stopAiSearchPolling();
+    state.aiSearchRunning = false;
+    els.discoverButton.disabled = false;
+    els.aiSearchCancelButton?.classList.add('hidden-field');
+    renderIcons();
+  }
+}
+
+async function handleAiSearchPrimaryAction(mode) {
+  if (!state.config) {
+    setDiscoverStatus(t2('Ponownie łączę backend...', 'Переподключаю backend...'), 'work');
+    try {
+      await bootstrapApiBase();
+      await loadConfig();
+    } catch {}
+  }
+  if (!state.config) {
+    setDiscoverStatus(
+      t2('Backend jeszcze nie odpowiedział. Kliknij ponownie za 2-3 sekundy.', 'Backend пока не ответил. Нажмите еще раз через 2-3 секунды.'),
+      'warn'
+    );
+    return;
+  }
+
+  if (mode === 'ai_enrich') {
+    await runAiEnrich();
+  } else {
+    await runAiCompanySearch(mode);
+  }
+}
+
 async function runAnalysis() {
   stopDiscoveryPolling();
   clearHistoryContext();
@@ -2772,7 +3297,11 @@ function buildPreviewResult(company, index, idPrefix = 'discovery') {
       first_message_ru: '',
       first_message_pl: ''
     },
-    aiSiteAnalysis: { status: 'NOT_REQUESTED' }
+    aiSiteAnalysis: { status: 'NOT_REQUESTED' },
+    // AI company search profile (aiCompanyProfile) - same NOT_REQUESTED
+    // placeholder convention as aiSiteAnalysis above; renderAiCompanyProfileBlock()
+    // only renders anything once a real record's status becomes 'COMPLETED'.
+    aiCompanyProfile: { status: 'NOT_REQUESTED' }
   };
 }
 
@@ -2816,7 +3345,8 @@ function historyRecordsToResults(records) {
       websiteResolution: resolution,
       heuristic: record.heuristic || fallback.analysis,
       analysis: record.analysis || record.heuristic || fallback.analysis,
-      aiSiteAnalysis: record.aiSiteAnalysis || fallback.aiSiteAnalysis
+      aiSiteAnalysis: record.aiSiteAnalysis || fallback.aiSiteAnalysis,
+      aiCompanyProfile: record.aiCompanyProfile || fallback.aiCompanyProfile
     };
   });
 }
@@ -2846,6 +3376,10 @@ function updateResultFilters() {
   renderMetrics();
   renderDetail();
   renderIcons();
+  // Keeps the "N companies eligible for AI enrichment" hint (ai_enrich mode)
+  // in sync with the same site-status/score/social/phone/email filters that
+  // getFilteredResults() above already applies - see runAiEnrich().
+  renderAiEnrichEligibleHint();
 }
 
 function resetResultFilters() {
@@ -3406,6 +3940,13 @@ async function ensureResultExtras(result) {
       result._savedFolderIds = (data.company?.saved_links || [])
         .filter((link) => link.workerId === getWorkerId())
         .map((link) => link.folderId);
+      // Defensive merge: fills in aiCompanyProfile here too in case a given
+      // listing/history payload didn't already carry it inline (see
+      // historyRecordsToResults()) - never overwrites a profile the result
+      // already has.
+      if (!result.aiCompanyProfile && data.company?.aiCompanyProfile) {
+        result.aiCompanyProfile = data.company.aiCompanyProfile;
+      }
     }
     result._extrasLoaded = true;
   } catch {
@@ -3718,7 +4259,44 @@ function renderAiTab(result) {
       </button>
       ${ai.error ? `<p class="error-text">${escapeHtml(ai.error)}</p>` : ''}
       ${aiData ? renderAiAnalysisBlock(aiData) : ''}
+      ${renderAiCompanyProfileBlock(result)}
     </section>
+  `;
+}
+
+// Compact summary of the AI company search profile (result.aiCompanyProfile,
+// a separate pipeline from the aiSiteAnalysis block above) - renders nothing
+// at all unless the profile actually finished (status === 'COMPLETED'), so a
+// lead that was never run through AI search/enrich shows no extra section.
+// Reuses the existing priority-badge/score-badge/muted-text/ai-result classes
+// (see renderAiAnalysisBlock() above and scoreClass()) rather than new CSS.
+function renderAiCompanyProfileBlock(result) {
+  const profile = result?.aiCompanyProfile;
+  if (!profile || profile.status !== 'COMPLETED') return '';
+  const data = profile.data || {};
+  const scores = data.scores || {};
+  const priority = String(scores.recommended_priority || '').toUpperCase();
+  const overallScore = Number(scores.overall_priority_score ?? 0);
+  const services = Array.isArray(data.services) ? data.services : [];
+  const topServiceNames = services
+    .map((service) => (typeof service === 'string' ? service : service?.name))
+    .filter(Boolean)
+    .slice(0, 5);
+  const outreach = data.cold_outreach || {};
+
+  return `
+    <div class="ai-result ai-company-profile">
+      <h4>${escapeHtml(trs('ai_profile_title'))}</h4>
+      <p>
+        <span class="priority-badge ${escapeAttribute(priority.toLowerCase().replace('+', ''))}">${escapeHtml(priority || '-')}</span>
+        <span class="score-badge ${scoreClass(overallScore)}">${escapeHtml(String(overallScore || '-'))}</span>
+      </p>
+      ${scores.analyst_summary ? `<p>${escapeHtml(scores.analyst_summary)}</p>` : ''}
+      ${topServiceNames.length ? `<h4>${escapeHtml(trs('ai_profile_top_services'))}</h4>${listItems(topServiceNames)}` : ''}
+      ${outreach.suggested_opening ? `<p><strong>${escapeHtml(trs('ai_profile_opening'))}:</strong> ${escapeHtml(outreach.suggested_opening)}</p>` : ''}
+      ${outreach.proposed_offer ? `<p><strong>${escapeHtml(trs('ai_profile_offer'))}:</strong> ${escapeHtml(outreach.proposed_offer)}</p>` : ''}
+      ${data.verification_status ? `<p class="muted-text"><strong>${escapeHtml(trs('ai_profile_verification'))}:</strong> ${escapeHtml(data.verification_status)}</p>` : ''}
+    </div>
   `;
 }
 

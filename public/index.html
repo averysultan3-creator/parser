@@ -9,6 +9,7 @@
     <title>Aura Parser</title>
     <link rel="stylesheet" href="./styles.css?v=20260711-2" />
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js" defer></script>
+    <script src="./shared/i18n.js?v=20260714-1" defer></script>
     <script src="./patch.js?v=20260707-4" defer></script>
     <script src="./app.js?v=20260711-2" defer></script>
   </head>
@@ -23,7 +24,22 @@
           </div>
 
           <div class="discover-panel" aria-label="Company discovery">
-            <div class="step-title">1. Категория и локация</div>
+            <div id="discoverModeStepTitle" class="step-title">0. Режим поиска</div>
+
+            <div class="discover-grid">
+              <label class="model-field wide">
+                <span id="discoverModeLabel">Режим поиска</span>
+                <select id="discoverMode">
+                  <option value="standard" selected>Standard</option>
+                  <option value="ai_search">ChatGPT</option>
+                  <option value="combined">Kombinowany</option>
+                  <option value="ai_enrich">Wzbogacenie AI</option>
+                </select>
+              </label>
+            </div>
+
+            <div id="discoverStepLocation">
+            <div id="discoverStepLocationTitle" class="step-title">1. Категория и локация</div>
 
             <div class="discover-grid">
               <label class="model-field wide">
@@ -68,11 +84,12 @@
                 <input id="discoverRadius" type="number" min="1" max="100" placeholder="15 (по умолч.)" />
               </label>
             </div>
+            </div>
 
-            <div class="step-title">2. Фильтры</div>
+            <div id="discoverStepFiltersTitle" class="step-title">2. Фильтры</div>
 
             <div class="discover-grid">
-              <label class="model-field wide">
+              <label id="discoverLimitField" class="model-field wide">
                 <span>Лимит результатов</span>
                 <select id="discoverLimit">
                   <option value="20" selected>20</option>
@@ -82,7 +99,7 @@
                 </select>
               </label>
 
-              <label class="model-field wide">
+              <label id="discoverSourceField" class="model-field wide">
                 <span>Источник данных</span>
                 <select id="discoverSource">
                   <option value="all_sources" selected>Все источники поиска данных</option>
@@ -135,12 +152,112 @@
               </div>
             </div>
 
+            <div id="aiSearchOptions" class="hidden-field">
+              <div class="step-title" id="aiSearchSectionTitle">Kryteria wyszukiwania AI</div>
+
+              <div class="discover-grid">
+                <label class="model-field">
+                  <span id="aiFieldClientTypeLabel">Typ klienta</span>
+                  <select id="aiClientType">
+                    <option value="any" selected>Dowolny</option>
+                    <option value="b2b">B2B</option>
+                    <option value="b2c">B2C</option>
+                    <option value="both">B2B + B2C</option>
+                  </select>
+                </label>
+
+                <label class="model-field">
+                  <span id="aiFieldCompanySizeLabel">Wielkość firmy</span>
+                  <select id="aiCompanySize">
+                    <option value="any" selected>Dowolna / nieznana</option>
+                    <option value="1-5">1-5</option>
+                    <option value="6-10">6-10</option>
+                    <option value="11-20">11-20</option>
+                    <option value="21-50">21-50</option>
+                    <option value="51-100">51-100</option>
+                    <option value="101-250">101-250</option>
+                    <option value="250+">250+</option>
+                  </select>
+                </label>
+
+                <label class="model-field">
+                  <span id="aiFieldMinYearsLabel">Min. lat na rynku</span>
+                  <input id="aiMinYears" type="number" min="0" max="100" placeholder="0" />
+                </label>
+
+                <label class="model-field">
+                  <span id="aiFieldWebsitePresenceLabel">Obecność strony</span>
+                  <select id="aiWebsitePresence">
+                    <option value="any" selected>Dowolna</option>
+                    <option value="has_website">Ma stronę</option>
+                    <option value="no_website">Brak strony</option>
+                  </select>
+                </label>
+
+                <label class="model-field">
+                  <span id="aiFieldMinReviewsLabel">Min. opinii Google</span>
+                  <input id="aiMinReviews" type="number" min="0" placeholder="0" />
+                </label>
+
+                <label class="model-field">
+                  <span id="aiFieldMinRatingLabel">Min. ocena (0-5)</span>
+                  <input id="aiMinRating" type="number" min="0" max="5" step="0.1" placeholder="0" />
+                </label>
+
+                <label class="model-field wide">
+                  <span id="aiFieldExtraKeywordsLabel">Dodatkowe słowa kluczowe</span>
+                  <input id="aiExtraKeywords" type="text" autocomplete="off" placeholder="np. montaż, serwis" />
+                </label>
+
+                <label class="model-field wide">
+                  <span id="aiFieldExcludeKeywordsLabel">Wykluczające słowa kluczowe</span>
+                  <input id="aiExcludeKeywords" type="text" autocomplete="off" placeholder="np. franczyza, sieciówka" />
+                </label>
+
+                <label class="model-field">
+                  <span id="aiFieldCountLabel">Liczba firm (1-100)</span>
+                  <input id="aiSearchCount" type="number" min="1" max="100" value="20" />
+                </label>
+
+                <div class="filter-toggles">
+                  <span id="aiFieldQualityFlagsLabel" class="muted-text">Problemy ze stroną</span>
+                  <label class="toggle-row compact-toggle">
+                    <input id="aiFlagWeakOutdated" type="checkbox" />
+                    <span id="aiFlagWeakOutdatedLabel">Słaba / przestarzała</span>
+                  </label>
+                  <label class="toggle-row compact-toggle">
+                    <input id="aiFlagNoMobile" type="checkbox" />
+                    <span id="aiFlagNoMobileLabel">Brak wersji mobilnej</span>
+                  </label>
+                  <label class="toggle-row compact-toggle">
+                    <input id="aiFlagNoCta" type="checkbox" />
+                    <span id="aiFlagNoCtaLabel">Brak wyraźnego CTA</span>
+                  </label>
+                  <label class="toggle-row compact-toggle">
+                    <input id="aiFlagNoContactInfo" type="checkbox" />
+                    <span id="aiFlagNoContactInfoLabel">Trudno znaleźć kontakt</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div id="aiEnrichNote" class="ai-note hidden-field">
+              <i data-lucide="info"></i>
+              <span id="aiEnrichNoteText">Ten tryb wzbogaca AI-profilem firmy widoczne teraz w tabeli wyników.</span>
+            </div>
+
+            <div id="aiEnrichEligible" class="muted-text hidden-field"></div>
+
             <button id="discoverButton" class="primary-button discover-button" type="button">
               <i data-lucide="radar"></i>
               Найти компании и сверить
             </button>
 
             <div id="discoverStatus" class="discover-status">Поиск работает без ChatGPT через Amazon Location, Google Places, CEIDG или интернет-источники.</div>
+            <button id="aiSearchCancelButton" class="secondary-button compact-button hidden-field" type="button">
+              <i data-lucide="x-circle"></i>
+              <span id="aiSearchCancelButtonLabel">Anuluj wyszukiwanie</span>
+            </button>
           </div>
 
           <div class="sidebar-actions">

@@ -21,9 +21,37 @@ const AI_USAGE_FILE = path.join(DATA_DIR, 'ai-usage.json');
 const FOLDERS_FILE = path.join(DATA_DIR, 'saved-folders.json');
 const SAVED_FILE = path.join(DATA_DIR, 'saved-companies.json');
 const COMMENTS_FILE = path.join(DATA_DIR, 'company-comments.json');
+const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
+const AI_SEARCH_JOBS_FILE = path.join(DATA_DIR, 'ai-search-jobs.json');
 
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days, sliding
 const ACADEMY_SECTIONS = ['home', 'training', 'services', 'scripts', 'parserGuide', 'aiTraining'];
+
+// Admin-configurable knobs for the AI company search feature (round 1 of
+// several - this round only wires up storage/validation, no call site reads
+// these yet). 0 on aiDailyBudgetLimit means "no limit", matching the existing
+// 0-means-unlimited convention used for worker dailyLeadLimit.
+const DEFAULT_SETTINGS = {
+  aiCompanySearchModel: process.env.OPENAI_COMPANY_SEARCH_MODEL || 'gpt-5.5',
+  aiCompanyEnrichModel: process.env.OPENAI_COMPANY_ENRICH_MODEL || 'gpt-5.5',
+  aiWebSearchEnabled: process.env.OPENAI_WEB_SEARCH_ENABLED !== 'false',
+  aiReasoningEffort: process.env.OPENAI_REASONING_EFFORT || 'medium',
+  aiMaxParallelRequests: Number(process.env.OPENAI_MAX_PARALLEL_REQUESTS) || 3,
+  aiMaxCompaniesPerRequest: Number(process.env.OPENAI_MAX_COMPANIES_PER_REQUEST) || 100,
+  aiDailyBudgetLimit: Number(process.env.OPENAI_DAILY_BUDGET_LIMIT) || 0,
+  // Round 1 defaulted this to 60s to match a since-corrected assumption about
+  // how long web_search-enabled structured-output calls take. Live smoke
+  // testing of planAiSearchQueries/runAiSearchBatch/enrichCompanyProfile
+  // showed real web_search + large schema (enrichCompanyProfile's
+  // max_output_tokens: 8000) calls routinely exceed 60s, let alone the old
+  // global 30s client default - bumped to 120s so the out-of-the-box
+  // experience doesn't time out before an admin ever touches this setting.
+  // Clamp stays 10-300 (see the 'aiRequestTimeoutSeconds' case below) so an
+  // admin can still raise it further if needed.
+  aiRequestTimeoutSeconds: Number(process.env.OPENAI_REQUEST_TIMEOUT_SECONDS) || 120
+};
+
+const SETTINGS_REASONING_EFFORTS = ['low', 'medium', 'high'];
 
 function ensureDataDir() {
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -145,7 +173,9 @@ const state = {
   aiUsage: loadJson(AI_USAGE_FILE, { nextId: 1, entries: [] }),
   folders: loadJson(FOLDERS_FILE, { nextId: 1, folders: {} }),
   saved: loadJson(SAVED_FILE, { nextId: 1, links: {} }),
-  comments: loadJson(COMMENTS_FILE, { nextId: 1, comments: {} })
+  comments: loadJson(COMMENTS_FILE, { nextId: 1, comments: {} }),
+  settings: loadJson(SETTINGS_FILE, { ...DEFAULT_SETTINGS }),
+  aiSearchJobs: loadJson(AI_SEARCH_JOBS_FILE, { nextId: 1, jobs: {} })
 };
 
 function persistCompanies() {
@@ -190,6 +220,14 @@ function persistSaved() {
 
 function persistComments() {
   saveJson(COMMENTS_FILE, state.comments);
+}
+
+function persistSettings() {
+  saveJson(SETTINGS_FILE, state.settings);
+}
+
+function persistAiSearchJobs() {
+  saveJson(AI_SEARCH_JOBS_FILE, state.aiSearchJobs);
 }
 
 function markAbandonedRuns() {
@@ -363,6 +401,33 @@ function safeHostname(rawUrl) {
   }
 }
 
+// Small, pragmatic set of common two-label public suffixes (ccSLDs) seen for
+// businesses in this tool's target markets (Poland/Ukraine) plus a few very
+// common international ones. Not a full public-suffix-list - deliberately not
+// pulling in that dependency for this. Anything not listed here is assumed to
+// be a normal single-label TLD (.com, .pl, .ua, .net, ...).
+const TWO_PART_TLDS = new Set([
+  'co.uk', 'org.uk', 'net.uk', 'ac.uk', 'gov.uk',
+  'com.pl', 'net.pl', 'org.pl', 'gov.pl', 'edu.pl', 'com.ua',
+  'co.il', 'com.au', 'co.nz', 'co.za', 'co.jp', 'co.kr', 'co.in',
+  'com.br', 'com.tr', 'com.mx'
+]);
+
+// Best-effort resolution of a hostname down to its registrable ("root")
+// domain, e.g. `sub.example.com` -> `example.com`, `sub.example.co.uk` ->
+// `example.co.uk`. Used for dedup matching so subdomains of the same company
+// site (www vs shop vs blog vs a regional subdomain) resolve to one identity
+// key. Deliberately simple - not a full public-suffix-list implementation.
+function rootDomain(hostname) {
+  const host = String(hostname || '').trim().toLowerCase().replace(/^www\./, '');
+  if (!host) return '';
+  const labels = host.split('.').filter(Boolean);
+  if (labels.length <= 2) return host;
+  const lastTwo = labels.slice(-2).join('.');
+  const takeLast = TWO_PART_TLDS.has(lastTwo) ? 3 : 2;
+  return labels.slice(-Math.min(takeLast, labels.length)).join('.');
+}
+
 function normalizeUrlKey(rawUrl) {
   const value = String(rawUrl || '').trim();
   if (!value) return '';
@@ -450,7 +515,16 @@ export function buildCompanyKeys(company) {
   }
 
   const host = safeHostname(company?.website_url || '') || safeHostname(company?.source_profile || '');
-  if (host && !isKnownNonCompanyHost(host)) keys.push(`host:${host}`);
+  if (host && !isKnownNonCompanyHost(host)) {
+    keys.push(`host:${host}`);
+    // Also add the root-domain key (e.g. `sub.example.com` -> `example.com`)
+    // in ADDITION to the exact-host key above, not replacing it, so two
+    // subdomains of the same company site (www vs shop vs a regional
+    // subdomain) dedup together without weakening/changing existing
+    // exact-host matches already relied on elsewhere.
+    const root = rootDomain(host);
+    if (root && root !== host) keys.push(`host:${root}`);
+  }
 
   const mapsUrl =
     company?.google_maps_url ||
@@ -1742,6 +1816,18 @@ export function updateCompanyAiAnalysis(id, aiSiteAnalysis) {
   return record;
 }
 
+// Round 4: analogous to updateCompanyAiAnalysis() above, but targets a new,
+// separate top-level field (record.aiCompanyProfile) for the much richer AI
+// Company Search enrichment envelope produced by enrichCompanyProfile() in
+// server.js - does not touch the existing record.aiSiteAnalysis field.
+export function updateAiCompanyProfile(id, aiCompanyProfile) {
+  const record = state.companies.companies[id];
+  if (!record) return null;
+  record.aiCompanyProfile = aiCompanyProfile;
+  persistCompanies();
+  return record;
+}
+
 export function createRun(meta) {
   const id = String(state.runs.nextId++);
   const run = {
@@ -2041,6 +2127,143 @@ export function logAdminAction({ adminId = 'admin', action = '', targetType = ''
 
 export function listAuditLog({ limit = 200 } = {}) {
   return state.audit.actions.slice(0, Math.max(1, Math.min(1000, Number(limit) || 200)));
+}
+
+// Admin-configurable settings for the AI company search pipeline (models,
+// web-search toggle, concurrency/budget/timeout knobs). Merge over
+// DEFAULT_SETTINGS so any key added to the default set later is always
+// present in the response even if an older settings.json on disk predates it.
+export function getSettings() {
+  return { ...DEFAULT_SETTINGS, ...state.settings };
+}
+
+function clampInt(value, { min, max, fallback }) {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(min, Math.min(max, parsed));
+}
+
+export function updateSettings(patch = {}) {
+  const allowedKeys = Object.keys(DEFAULT_SETTINGS);
+  for (const key of allowedKeys) {
+    if (patch[key] === undefined) continue;
+    const value = patch[key];
+    switch (key) {
+      case 'aiWebSearchEnabled':
+        state.settings[key] = normalizeBool(value, DEFAULT_SETTINGS[key]);
+        break;
+      case 'aiReasoningEffort': {
+        const raw = String(value || '').trim().toLowerCase();
+        state.settings[key] = SETTINGS_REASONING_EFFORTS.includes(raw) ? raw : (state.settings[key] || DEFAULT_SETTINGS[key]);
+        break;
+      }
+      case 'aiMaxParallelRequests':
+        state.settings[key] = clampInt(value, { min: 1, max: 10, fallback: state.settings[key] ?? DEFAULT_SETTINGS[key] });
+        break;
+      case 'aiMaxCompaniesPerRequest':
+        state.settings[key] = clampInt(value, { min: 1, max: 100, fallback: state.settings[key] ?? DEFAULT_SETTINGS[key] });
+        break;
+      case 'aiRequestTimeoutSeconds':
+        state.settings[key] = clampInt(value, { min: 10, max: 300, fallback: state.settings[key] ?? DEFAULT_SETTINGS[key] });
+        break;
+      case 'aiDailyBudgetLimit': {
+        // 0 means "no limit" - same convention as worker dailyLeadLimit.
+        const parsed = Number(value);
+        state.settings[key] = Number.isFinite(parsed) ? Math.max(0, parsed) : (state.settings[key] ?? DEFAULT_SETTINGS[key]);
+        break;
+      }
+      case 'aiCompanySearchModel':
+      case 'aiCompanyEnrichModel': {
+        const trimmed = String(value || '').trim().slice(0, 120);
+        if (trimmed) state.settings[key] = trimmed;
+        break;
+      }
+      default:
+        break;
+    }
+  }
+  state.settings.updatedAt = new Date().toISOString();
+  persistSettings();
+  return getSettings();
+}
+
+// Cap on how many AI Search Job records we keep in memory/on disk - mirrors
+// the aiUsage.entries cap (5000) elsewhere in this file, just applied to this
+// id-keyed map instead of an array. Jobs are small but unbounded growth from
+// a long-running feature would otherwise bloat ai-search-jobs.json forever.
+const MAX_AI_SEARCH_JOBS = 500;
+
+function capAiSearchJobs() {
+  const ids = Object.keys(state.aiSearchJobs.jobs);
+  if (ids.length <= MAX_AI_SEARCH_JOBS) return;
+  const sorted = ids
+    .map((id) => ({ id, createdAt: state.aiSearchJobs.jobs[id]?.created_at || '' }))
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const excess = sorted.slice(0, sorted.length - MAX_AI_SEARCH_JOBS);
+  for (const { id } of excess) delete state.aiSearchJobs.jobs[id];
+}
+
+// Durable "AI Search Job" store - a NEW entity separate from the existing
+// `run` store (state.runs), which stays untouched and keeps serving normal
+// discovery. An AI Search Job tracks the lifecycle of an AI-driven company
+// search/enrichment operation (queued -> running -> done/failed/cancelled)
+// so progress, token usage, and cost survive a server restart and can be
+// polled from the admin panel.
+export function createAiSearchJob({ creatorWorkerId, mode, params, modelSearch, modelEnrich }) {
+  const id = String(state.aiSearchJobs.nextId++);
+  const now = new Date().toISOString();
+  const job = {
+    id,
+    creator_worker_id: normalizeWorkerId(creatorWorkerId || ''),
+    mode: ['ai_search', 'combined', 'ai_enrich'].includes(mode) ? mode : 'ai_search',
+    params: params || {},
+    model_search: String(modelSearch || ''),
+    model_enrich: String(modelEnrich || ''),
+    created_at: now,
+    started_at: '',
+    finished_at: '',
+    stage: 'QUEUED',
+    stage_detail: '',
+    progress: {
+      planned_queries: 0, queries_run: 0, candidates_found: 0, candidates_confirmed: 0,
+      duplicates_skipped: 0, rejected: 0, enriched: 0, saved: 0
+    },
+    token_usage: { prompt: 0, completion: 0, total: 0 },
+    web_search_calls: 0,
+    estimated_cost: 0,
+    errors: [],
+    cancel_reason: '',
+    cancel_requested: false,
+    pause_requested: false,
+    run_id: ''
+  };
+  state.aiSearchJobs.jobs[id] = job;
+  capAiSearchJobs();
+  persistAiSearchJobs();
+  return job;
+}
+
+export function getAiSearchJob(id) {
+  return state.aiSearchJobs.jobs[String(id)] || null;
+}
+
+export function updateAiSearchJob(id, patch = {}) {
+  const job = state.aiSearchJobs.jobs[String(id)];
+  if (!job) return null;
+  // shallow-merge top-level fields; for `progress` and `token_usage`, merge nested keys rather than replacing the whole sub-object
+  if (patch.progress) job.progress = { ...job.progress, ...patch.progress };
+  if (patch.token_usage) job.token_usage = { ...job.token_usage, ...patch.token_usage };
+  if (patch.errors) job.errors = [...job.errors, ...(Array.isArray(patch.errors) ? patch.errors : [patch.errors])].slice(-50);
+  const { progress, token_usage, errors, ...rest } = patch;
+  Object.assign(job, rest);
+  persistAiSearchJobs();
+  return job;
+}
+
+export function listAiSearchJobs({ workerId, limit = 50 } = {}) {
+  let jobs = Object.values(state.aiSearchJobs.jobs);
+  if (workerId) jobs = jobs.filter((j) => j.creator_worker_id === normalizeWorkerId(workerId));
+  return jobs.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || '')).slice(0, limit);
 }
 
 function purgeExpiredSessions() {

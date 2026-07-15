@@ -80,6 +80,8 @@ const state = {
   archivedRuns: [],
   aiUsage: null,
   aiUsagePeriod: localStorage.getItem('auraAdminAiUsagePeriod') || 'all',
+  aiSearchSettings: null,
+  aiSearchJobs: [],
   workerAiTrainingSessions: [],
   serviceCatalogNames: null,
   aiPersonas: null,
@@ -159,6 +161,10 @@ const els = {
   workersBulkDelete: document.querySelector('#workersBulkDelete'),
   adminTabAcademy: document.querySelector('#adminTabAcademy'),
   adminTabAudit: document.querySelector('#adminTabAudit'),
+  adminTabAiSearch: document.querySelector('#adminTabAiSearch'),
+  aiSearchSettingsForm: document.querySelector('#aiSearchSettingsForm'),
+  aiSearchJobsBody: document.querySelector('#aiSearchJobsBody'),
+  aiSearchJobsRefresh: document.querySelector('#aiSearchJobsRefresh'),
   academyOverviewBody: document.querySelector('#academyOverviewBody'),
   aiUsagePeriodSelect: document.querySelector('#aiUsagePeriodSelect'),
   aiUsageTotals: document.querySelector('#aiUsageTotals'),
@@ -1638,6 +1644,157 @@ function renderAiUsage() {
   }
 }
 
+// --- AI Search: admin settings form + jobs monitoring table ---
+// Client-side mirror of store.js's DEFAULT_SETTINGS, used only to pre-fill
+// the form before the first successful GET /api/admin/settings resolves -
+// the server's clamped/validated values always win once loaded.
+const AI_SEARCH_DEFAULT_SETTINGS = {
+  aiCompanySearchModel: '',
+  aiCompanyEnrichModel: '',
+  aiWebSearchEnabled: true,
+  aiReasoningEffort: 'medium',
+  aiMaxParallelRequests: 3,
+  aiMaxCompaniesPerRequest: 20,
+  aiDailyBudgetLimit: 0,
+  aiRequestTimeoutSeconds: 120
+};
+
+async function loadAiSearchSettings() {
+  try {
+    const data = await api('/api/admin/settings');
+    state.aiSearchSettings = data.settings || null;
+  } catch {
+    state.aiSearchSettings = null;
+  }
+  renderAiSearchSettingsForm();
+}
+
+// Fills the settings form from state.aiSearchSettings (or the client-side
+// defaults while nothing has loaded yet). Only called on tab activation and
+// right after a save resolves - NOT from the main render() loop, since that
+// runs after almost every admin action and would otherwise wipe out
+// in-progress edits the admin hasn't submitted yet.
+function renderAiSearchSettingsForm() {
+  const form = els.aiSearchSettingsForm;
+  if (!form) return;
+  const settings = { ...AI_SEARCH_DEFAULT_SETTINGS, ...(state.aiSearchSettings || {}) };
+  if (form.elements.aiCompanySearchModel) form.elements.aiCompanySearchModel.value = settings.aiCompanySearchModel || '';
+  if (form.elements.aiCompanyEnrichModel) form.elements.aiCompanyEnrichModel.value = settings.aiCompanyEnrichModel || '';
+  if (form.elements.aiWebSearchEnabled) form.elements.aiWebSearchEnabled.checked = Boolean(settings.aiWebSearchEnabled);
+  if (form.elements.aiReasoningEffort) form.elements.aiReasoningEffort.value = settings.aiReasoningEffort || 'medium';
+  if (form.elements.aiMaxParallelRequests) form.elements.aiMaxParallelRequests.value = settings.aiMaxParallelRequests ?? 3;
+  if (form.elements.aiMaxCompaniesPerRequest) form.elements.aiMaxCompaniesPerRequest.value = settings.aiMaxCompaniesPerRequest ?? 20;
+  if (form.elements.aiDailyBudgetLimit) form.elements.aiDailyBudgetLimit.value = settings.aiDailyBudgetLimit ?? 0;
+  if (form.elements.aiRequestTimeoutSeconds) form.elements.aiRequestTimeoutSeconds.value = settings.aiRequestTimeoutSeconds ?? 120;
+}
+
+// PATCHes only the 8 admin-configurable fields, then reloads the form from
+// the response so any value the server clamped (e.g. 999 -> 10 for max
+// parallel requests) is reflected back rather than trusting what was typed.
+async function saveAiSearchSettingsFromForm(form) {
+  const formData = new FormData(form);
+  const payload = {
+    aiCompanySearchModel: String(formData.get('aiCompanySearchModel') || '').trim(),
+    aiCompanyEnrichModel: String(formData.get('aiCompanyEnrichModel') || '').trim(),
+    aiWebSearchEnabled: formData.get('aiWebSearchEnabled') === 'on',
+    aiReasoningEffort: String(formData.get('aiReasoningEffort') || 'medium'),
+    aiMaxParallelRequests: Number(formData.get('aiMaxParallelRequests')),
+    aiMaxCompaniesPerRequest: Number(formData.get('aiMaxCompaniesPerRequest')),
+    aiDailyBudgetLimit: Number(formData.get('aiDailyBudgetLimit')),
+    aiRequestTimeoutSeconds: Number(formData.get('aiRequestTimeoutSeconds'))
+  };
+  const data = await api('/api/admin/settings', { method: 'PATCH', body: JSON.stringify(payload) });
+  state.aiSearchSettings = data.settings || null;
+  renderAiSearchSettingsForm();
+  showToast(tr('admin_toast_ai_search_settings_saved'));
+}
+
+// Stages an admin can still cancel from - mirrors the task's definition
+// (intentionally includes PAUSED: an admin should be able to cancel a job
+// someone paused, even though the backend's own AI_SEARCH_TERMINAL_STAGES
+// set treats PAUSED as "already finished" for its own idempotency check -
+// calling cancel on a paused job just returns {ok:true, alreadyFinished:true},
+// which is harmless).
+const AI_SEARCH_NON_TERMINAL_STAGES = new Set([
+  'QUEUED', 'PLANNING', 'SEARCHING', 'VALIDATING', 'ENRICHING', 'SCORING', 'SAVING', 'PAUSED'
+]);
+
+// Same fallback pattern as formatRunStatusLabel/aiFeatureLabel: unknown/future
+// stage codes fall back to the raw value instead of crashing or rendering blank.
+function aiSearchJobStageLabel(stage) {
+  const key = `admin_ai_search_stage_${String(stage || '').toLowerCase()}`;
+  const label = tr(key);
+  return label === key ? String(stage || '-') : label;
+}
+
+function aiSearchJobStageBadgeClass(stage) {
+  if (stage === 'COMPLETED') return 'badge';
+  if (stage === 'FAILED' || stage === 'CANCELLED') return 'badge badge-fail';
+  if (stage === 'PARTIAL') return 'badge badge-archived';
+  return 'badge badge-progress';
+}
+
+function aiSearchJobModeLabel(mode) {
+  const key = `admin_ai_search_mode_${mode}`;
+  const label = tr(key);
+  return label === key ? String(mode || '-') : label;
+}
+
+function aiSearchJobProgressSummary(job) {
+  const progress = job?.progress || {};
+  return tr('admin_ai_search_progress_template', {
+    saved: progress.saved ?? 0,
+    found: progress.candidates_found ?? 0,
+    rejected: progress.rejected ?? 0
+  });
+}
+
+async function loadAiSearchJobs() {
+  try {
+    const data = await api('/api/admin/ai-search/jobs');
+    state.aiSearchJobs = data.jobs || [];
+  } catch {
+    state.aiSearchJobs = [];
+  }
+  renderAiSearchJobs();
+}
+
+function renderAiSearchJobs() {
+  if (!els.aiSearchJobsBody) return;
+  const jobs = state.aiSearchJobs || [];
+  els.aiSearchJobsBody.innerHTML = jobs.length
+    ? jobs
+        .map((job) => {
+          const cancellable = AI_SEARCH_NON_TERMINAL_STAGES.has(job.stage);
+          return `
+            <tr>
+              <td>${escapeHtml(formatDate(job.created_at))}</td>
+              <td class="mono">${escapeHtml(job.creator_worker_id || '-')}</td>
+              <td>${escapeHtml(aiSearchJobModeLabel(job.mode))}</td>
+              <td><span class="${aiSearchJobStageBadgeClass(job.stage)}">${escapeHtml(aiSearchJobStageLabel(job.stage))}</span></td>
+              <td>${escapeHtml(aiSearchJobProgressSummary(job))}</td>
+              <td>$${(Number(job.estimated_cost) || 0).toFixed(2)}</td>
+              <td>${
+                cancellable
+                  ? `<button class="button secondary small-button" type="button" data-cancel-ai-search-job="${escapeAttribute(job.id)}">${escapeHtml(tr('admin_btn_cancel_job'))}</button>`
+                  : ''
+              }</td>
+            </tr>
+          `;
+        })
+        .join('')
+    : `<tr><td colspan="7" class="muted">${escapeHtml(tr('admin_ai_search_jobs_empty'))}</td></tr>`;
+}
+
+async function cancelAiSearchJob(jobId) {
+  await api(`/api/ai-search/jobs/${encodeURIComponent(jobId)}/cancel`, {
+    method: 'POST',
+    body: JSON.stringify({ reason: 'admin_cancelled' })
+  });
+  showToast(tr('admin_toast_ai_search_job_cancelled'));
+  await loadAiSearchJobs();
+}
+
 async function loadWorkerAiTrainingSessions(workerId) {
   if (!workerId) {
     state.workerAiTrainingSessions = [];
@@ -1741,6 +1898,12 @@ function render() {
   // language-aware feature names go stale after a language switch, since
   // render() is what a language switch calls to refresh the whole page.
   renderAiUsage();
+  // Re-renders the AI Search jobs table from the already-loaded
+  // state.aiSearchJobs (no re-fetch) - same reasoning as renderAiUsage()
+  // above: keeps stage/mode labels translated after a language switch.
+  // The settings form is deliberately NOT re-rendered here - see
+  // renderAiSearchSettingsForm()'s comment.
+  renderAiSearchJobs();
   renderAudit();
   renderSelectedCount();
   wireCrossAppLinks();
@@ -2585,10 +2748,29 @@ els.aiTrainingDetailModal?.addEventListener('click', (event) => {
 
 if (els.aiUsagePeriodSelect) els.aiUsagePeriodSelect.value = state.aiUsagePeriod;
 
+els.aiSearchSettingsForm?.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  try {
+    await saveAiSearchSettingsFromForm(event.target);
+  } catch (error) {
+    showToast(error.message, 'warn');
+  }
+});
+
+els.aiSearchJobsRefresh?.addEventListener('click', () => {
+  loadAiSearchJobs().catch((error) => showToast(error.message, 'warn'));
+});
+
+els.aiSearchJobsBody?.addEventListener('click', (event) => {
+  const button = event.target.closest('[data-cancel-ai-search-job]');
+  if (!button) return;
+  cancelAiSearchJob(button.dataset.cancelAiSearchJob).catch((error) => showToast(error.message, 'warn'));
+});
+
 const ADMIN_TAB_STORAGE_KEY = 'auraAdminTab';
 
 function switchAdminTab(tab) {
-  const target = ['workers', 'leads', 'inbox', 'history', 'audit', 'academy'].includes(tab) ? tab : 'workers';
+  const target = ['workers', 'leads', 'inbox', 'history', 'audit', 'academy', 'ai-search'].includes(tab) ? tab : 'workers';
   els.adminSectionTabs?.querySelectorAll('[data-admin-tab]').forEach((button) => {
     button.classList.toggle('active', button.dataset.adminTab === target);
   });
@@ -2598,12 +2780,17 @@ function switchAdminTab(tab) {
   els.adminTabHistory?.classList.toggle('hidden-panel', target !== 'history');
   els.adminTabAudit?.classList.toggle('hidden-panel', target !== 'audit');
   els.adminTabAcademy?.classList.toggle('hidden-panel', target !== 'academy');
+  els.adminTabAiSearch?.classList.toggle('hidden-panel', target !== 'ai-search');
   try {
     localStorage.setItem(ADMIN_TAB_STORAGE_KEY, target);
   } catch {}
   if (target === 'academy') {
     loadServiceCatalogNames().then(renderAcademyOverview);
     loadAiUsage().catch(() => {});
+  }
+  if (target === 'ai-search') {
+    loadAiSearchSettings().catch(() => {});
+    loadAiSearchJobs().catch(() => {});
   }
   window.lucide?.createIcons();
 }
