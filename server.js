@@ -2231,6 +2231,19 @@ function matchTerms(text, terms) {
   });
 }
 
+// Cheap "is there any real signal this is a business in this niche" check,
+// used as a floor for public web-search results that have no phone/email/
+// social to fall back on (see discoverCompaniesFromPublicSearchExpanded).
+// Deliberately separate from evaluateCategoryRelevance's scoring below -
+// this only answers "any positive keyword at all", not a match quality
+// score, and returns true (don't block) when the niche isn't in the strict
+// catalog, matching the "no strict rule" behavior of the scorer itself.
+function hasNicheKeywordEvidence(text, niche) {
+  const category = findCategoryDefinition(niche);
+  if (!category) return true;
+  return matchTerms(text, categoryKeywordList(category, 'positiveKeywords')).length > 0;
+}
+
 function evaluateCategoryRelevance(company, selectedNiche) {
   const category = findCategoryDefinition(selectedNiche || company?.niche || '');
   if (!category) {
@@ -7118,18 +7131,36 @@ async function discoverCompaniesFromPublicSearch({ niche, city, district, limit,
         if (!company) continue;
 
         const host = safeHostname(href);
+        const phone = extractPhones(evidence, { city, country: getDiscoveryContext().country }).join('; ');
+        const email = extractEmails(evidence).join('; ');
+        const isInstagram = host.includes('instagram.com');
+        const isFacebook = host.includes('facebook.com') || host.includes('fb.com');
+        const websiteUrl = ['official_candidate', 'free_subdomain'].includes(type) ? href : '';
+        // classifyUrlType defaults any host it doesn't recognize to
+        // 'official_candidate' - so a random unrelated page (a WhatsApp
+        // tutorial, a product page for headphones) gets a self-referential
+        // websiteUrl for free, with zero actual evidence it's a business.
+        // A bare websiteUrl alone is only trustworthy when the evidence text
+        // actually matches this niche's own keywords - otherwise require
+        // phone/email/social contact info instead. This is independent of
+        // the "maximum reach" niche-relevance scoring downstream (which
+        // stays loose on purpose) - this is a floor of "is there ANY sign
+        // this is a real business at all", not a niche-fit judgment.
+        if (!phone && !email && !isInstagram && !isFacebook && websiteUrl && !hasNicheKeywordEvidence(evidence, niche)) {
+          continue;
+        }
         companies.push({
           company,
           niche: inferNicheFromSearchResult(evidence, niche),
           city: city || 'Warszawa',
           district: district || '',
-          phone: extractPhones(evidence, { city, country: getDiscoveryContext().country }).join('; '),
-          email: extractEmails(evidence).join('; '),
-          website_url: ['official_candidate', 'free_subdomain'].includes(type) ? href : '',
+          phone,
+          email,
+          website_url: websiteUrl,
           source: `public_search_${sourceFocus}`,
           source_profile: href,
-          instagram: host.includes('instagram.com') ? href : '',
-          facebook: host.includes('facebook.com') || host.includes('fb.com') ? href : '',
+          instagram: isInstagram ? href : '',
+          facebook: isFacebook ? href : '',
           services: parseList(String(niche || '').replace(/,\s*/g, ';')),
           physical_location: true,
           notes: snippet || `Public search result from ${host}`
