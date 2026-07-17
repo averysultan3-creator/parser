@@ -2540,6 +2540,18 @@ function renderSaved() {
   els.savedBody.querySelectorAll('[data-open-saved]').forEach((button) => {
     button.addEventListener('click', () => openSavedCompany(button.dataset.openSaved));
   });
+  // The "Otwórz" button is the LAST column of a fairly wide row (name, CRM
+  // status, folders, comment, date, button) - on a narrow phone screen it
+  // sits off to the right, past the horizontal scroll, so it was effectively
+  // invisible without scrolling the table sideways first. Clicking anywhere
+  // on the row now opens the card too, matching how the main results table
+  // already behaves - the button stays for anyone who prefers it.
+  els.savedBody.querySelectorAll('tr[data-saved-id]').forEach((row) => {
+    row.addEventListener('click', (event) => {
+      if (event.target.closest('button')) return;
+      openSavedCompany(row.dataset.savedId);
+    });
+  });
 
   const totalPages = Math.max(1, Math.ceil(state.savedTotal / 25));
   els.savedPagination.innerHTML = `
