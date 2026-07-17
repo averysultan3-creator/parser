@@ -26,6 +26,7 @@ const state = {
   },
   folders: [],
   foldersLoaded: false,
+  foldersLoadPromise: null,
   activeFolderId: '',
   savedItems: [],
   savedTotal: 0,
@@ -4368,6 +4369,16 @@ function leadStatusLabel(value) {
 }
 
 function renderLeadWorkflowCard(result) {
+  // The folder <select> below needs real options, not a lazy load-on-click
+  // like the old prompt() flow had - fire the load once in the background
+  // (deduped) and re-render the detail panel when it lands, same pattern as
+  // the "Zapisane" tab's own lazy load.
+  if (!state.foldersLoaded && !state.foldersLoadPromise) {
+    state.foldersLoadPromise = loadFolders().finally(() => {
+      state.foldersLoadPromise = null;
+      renderTabbedDetail();
+    });
+  }
   const companyId = leadCompanyId(result);
   const status = currentLeadStatus(result);
   const helper =
@@ -4401,10 +4412,11 @@ function renderLeadWorkflowCard(result) {
           <i data-lucide="${saved ? 'bookmark-check' : 'bookmark-plus'}"></i>
           ${saved ? (currentLanguage === 'pl' ? 'Zapisano' : 'Сохранено') : (currentLanguage === 'pl' ? 'Zapisz' : 'Сохранить')}
         </button>
-        <button id="leadAddToFolder" class="secondary-button compact-button" type="button" ${companyId ? '' : 'disabled'}>
-          <i data-lucide="folder-plus"></i>
-          ${currentLanguage === 'pl' ? 'Dodaj do folderu' : 'В папку'}
-        </button>
+        <select id="leadAddToFolder" class="compact-select" ${companyId ? '' : 'disabled'}>
+          <option value="" selected disabled>${currentLanguage === 'pl' ? 'Dodaj do folderu...' : 'Добавить в папку...'}</option>
+          <option value="__none__">${currentLanguage === 'pl' ? 'Bez folderu' : 'Без папки'}</option>
+          ${state.folders.map((folder) => `<option value="${escapeAttribute(folder.id)}">${escapeHtml(folder.name)}</option>`).join('')}
+        </select>
         <button id="leadReturnToPool" class="secondary-button compact-button" type="button" ${companyId ? '' : 'disabled'}>
           <i data-lucide="undo-2"></i>
           ${currentLanguage === 'pl' ? 'Wróć do puli' : 'Вернуть в пул'}
@@ -4764,16 +4776,12 @@ function bindDetailActions(result) {
     updateCrmStatus(result, event.target.value);
   });
   els.detailContent.querySelector('#leadSaveToggle')?.addEventListener('click', () => toggleSaveCompany(result));
-  els.detailContent.querySelector('#leadAddToFolder')?.addEventListener('click', async () => {
-    if (!state.foldersLoaded) await loadFolders();
-    const names = state.folders.map((folder) => `${folder.name} [${folder.id}]`).join('\n');
-    const prompt =
-      currentLanguage === 'pl'
-        ? `Wpisz ID folderu (zostaw puste dla "bez folderu"):\n${names || '(brak folderów - utwórz w zakładce Zapisane)'}`
-        : `Введите ID папки (пусто = без папки):\n${names || '(папок пока нет - создайте их во вкладке Zapisane)'}`;
-    const folderId = window.prompt(prompt, '');
-    if (folderId === null) return;
-    addResultToFolder(result, folderId.trim());
+  els.detailContent.querySelector('#leadAddToFolder')?.addEventListener('change', async (event) => {
+    const select = event.target;
+    const value = select.value;
+    select.value = '';
+    if (!value) return;
+    await addResultToFolder(result, value === '__none__' ? null : value);
   });
   els.detailContent.querySelector('#leadReturnToPool')?.addEventListener('click', () => returnLeadToPoolAction(result));
   els.detailContent.querySelector('#leadCommentSubmit')?.addEventListener('click', () => {

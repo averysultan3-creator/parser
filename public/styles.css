@@ -689,6 +689,16 @@ svg {
   white-space: nowrap;
 }
 
+.compact-select {
+  background: #f8fafc;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  min-height: 38px;
+  padding: 0 10px;
+  font: inherit;
+}
+
 .filter-summary {
   color: var(--muted);
   font-size: 12px;
