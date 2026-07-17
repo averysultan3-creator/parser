@@ -2561,14 +2561,32 @@ export function getAiUsageForCompany(companyId) {
 export function listFolders(workerId) {
   const id = normalizeWorkerId(workerId);
   return Object.values(state.folders.folders)
-    .filter((folder) => folder.workerId === id)
+    .filter((folder) => folder.workerId === id && !folder.deletedAt)
     .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 }
 
 export function getFolder(workerId, folderId) {
   const folder = state.folders.folders[String(folderId)];
-  if (!folder) return null;
+  if (!folder || folder.deletedAt) return null;
   if (workerId && folder.workerId !== normalizeWorkerId(workerId)) return null;
+  return folder;
+}
+
+// Folders reported deleted/missing by a worker that turn out to still exist
+// (soft-deleted) - used to recover a folder without having to guess its id.
+export function listDeletedFolders({ workerId = '' } = {}) {
+  const id = workerId ? normalizeWorkerId(workerId) : '';
+  return Object.values(state.folders.folders)
+    .filter((folder) => Boolean(folder.deletedAt) && (!id || folder.workerId === id))
+    .sort((a, b) => String(b.deletedAt).localeCompare(String(a.deletedAt)));
+}
+
+export function restoreFolder(folderId) {
+  const folder = state.folders.folders[String(folderId)];
+  if (!folder || !folder.deletedAt) return null;
+  delete folder.deletedAt;
+  folder.updatedAt = new Date().toISOString();
+  persistFolders();
   return folder;
 }
 
@@ -2577,7 +2595,7 @@ export function createFolder(workerId, name) {
   const cleanName = String(name || '').trim().slice(0, 120);
   if (!cleanName) throw new Error('Folder name is required.');
   const duplicate = Object.values(state.folders.folders).find(
-    (folder) => folder.workerId === id && folder.name.toLowerCase() === cleanName.toLowerCase()
+    (folder) => folder.workerId === id && !folder.deletedAt && folder.name.toLowerCase() === cleanName.toLowerCase()
   );
   if (duplicate) return duplicate;
   const folderId = String(state.folders.nextId++);
@@ -2602,6 +2620,15 @@ export function renameFolder(workerId, folderId, name) {
 // Deletes only the folder (and its links). moveToFolderId re-homes its saved
 // companies into another folder; omitting it just unassigns them (folderId
 // null = "saved, no folder"). Companies themselves are never touched.
+// Soft delete: the folder is hidden from listFolders()/getFolder() but never
+// physically removed, and (when no moveToFolderId is given) its companies
+// keep their folderId untouched instead of being unassigned - so a later
+// restoreFolder() puts everything back exactly as it was. Two workers
+// reported a "Перезвонить" folder disappearing with no reproducible cause
+// found in the delete path itself; this makes any future disappearance
+// (accidental delete, misclick, or a cause not yet found) recoverable
+// instead of permanent. moveToFolderId is a deliberate merge/reorganize
+// action, not a "trash this" - that one still actually moves the links.
 export function deleteFolder(workerId, folderId, { moveToFolderId = null } = {}) {
   const folder = getFolder(workerId, folderId);
   if (!folder) return null;
@@ -2611,9 +2638,9 @@ export function deleteFolder(workerId, folderId, { moveToFolderId = null } = {})
 
   let moved = 0;
   let unassigned = 0;
-  for (const link of Object.values(state.saved.links)) {
-    if (link.workerId !== id || link.folderId !== String(folderId)) continue;
-    if (targetFolderId) {
+  if (targetFolderId) {
+    for (const link of Object.values(state.saved.links)) {
+      if (link.workerId !== id || link.folderId !== String(folderId)) continue;
       const conflict = Object.values(state.saved.links).some(
         (other) => other.id !== link.id && other.workerId === id && other.companyId === link.companyId && other.folderId === targetFolderId
       );
@@ -2623,14 +2650,15 @@ export function deleteFolder(workerId, folderId, { moveToFolderId = null } = {})
         link.folderId = targetFolderId;
         moved += 1;
       }
-    } else {
-      link.folderId = null;
-      unassigned += 1;
     }
+    persistSaved();
+  } else {
+    unassigned = Object.values(state.saved.links).filter(
+      (link) => link.workerId === id && link.folderId === String(folderId)
+    ).length;
   }
-  delete state.folders.folders[String(folderId)];
+  folder.deletedAt = new Date().toISOString();
   persistFolders();
-  persistSaved();
   return { deletedFolderId: String(folderId), moved, unassigned };
 }
 

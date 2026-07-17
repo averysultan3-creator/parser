@@ -4385,6 +4385,20 @@ app.delete('/api/admin/workers/:workerId', (req, res) => {
   res.json({ ok: true, result, stats: store.getStoreStats() });
 });
 
+// Recovery surface for a worker-reported "my folder disappeared" case -
+// deleteFolder() soft-deletes (see store.js), so anything a worker or an
+// accidental click removed is still here and can be put back exactly as it
+// was, companies and all.
+app.get('/api/admin/folders/deleted', (req, res) => {
+  res.json({ folders: store.listDeletedFolders({ workerId: req.query.workerId || '' }) });
+});
+
+app.post('/api/admin/folders/:folderId/restore', (req, res) => {
+  const folder = store.restoreFolder(req.params.folderId);
+  if (!folder) return res.status(404).json({ error: 'Deleted folder not found.' });
+  res.json({ ok: true, folder });
+});
+
 // Historically this physically removed the worker's run history. Per project
 // policy nothing found by the parser may ever be destroyed through the UI, so
 // this now archives the worker's history and returns their leads to the pool
