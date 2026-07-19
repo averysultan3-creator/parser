@@ -1236,6 +1236,71 @@ export function listLeadPool({ q = '', status = '', workerId = '', poolState = '
     .map(serializeCompany);
 }
 
+// Companies genuinely free to hand to a worker (available/reset pool_state,
+// not deleted/hidden), filtered by the same city/category/phone/email/social
+// signals the old live-search discoveryFilters used - but read straight off
+// already-stored records instead of a freshly-analyzed candidate. Backs the
+// new "draw from the pre-built pool" worker flow (see runPoolDrawJob in
+// server.js) and the admin coverage dashboard (countAvailablePoolByCategory
+// below). category matches categoryId exactly when the record has one
+// (set by the bulk-populate job), else falls back to a substring match on
+// the free-text niche - covers older/live-search-found records too.
+export function listAvailablePool({
+  city = '',
+  categories = [],
+  hasPhone = false,
+  hasEmail = false,
+  hasSocial = false,
+  limit = 500
+} = {}) {
+  const normalizedCity = normalizeSearchText(city);
+  const normalizedCategories = (Array.isArray(categories) ? categories : [categories])
+    .filter(Boolean)
+    .map((value) => normalizeSearchText(value));
+  return getAllCompanies()
+    .filter((record) => {
+      const poolState = derivePoolState(record);
+      if (!['available', 'reset'].includes(poolState)) return false;
+      if (normalizedCity && !normalizeSearchText(record.data?.city || '').includes(normalizedCity)) return false;
+      if (normalizedCategories.length) {
+        const categoryId = normalizeSearchText(record.data?.category_id || '');
+        const niche = normalizeSearchText(record.data?.niche || '');
+        const matches = normalizedCategories.some((value) => (categoryId && categoryId === value) || niche.includes(value));
+        if (!matches) return false;
+      }
+      if (hasPhone && !record.data?.phone) return false;
+      if (hasEmail && !record.data?.email) return false;
+      if (hasSocial) {
+        const social = record.data?.social_profiles || {};
+        if (!social.instagram && !social.facebook && !social.tiktok) return false;
+      }
+      return true;
+    })
+    .slice(0, limit)
+    .map(serializeCompany);
+}
+
+// Admin coverage overview: for each requested city, how many available-pool
+// companies exist per category - lets the admin panel flag "Дн ipro / HVAC:
+// 3 leads left" instead of admin only discovering a category is dry when a
+// worker's draw comes back short.
+export function countAvailablePoolByCategory({ cities = [] } = {}) {
+  const normalizedCities = (Array.isArray(cities) ? cities : [cities]).filter(Boolean).map((value) => normalizeSearchText(value));
+  const counts = {};
+  for (const record of getAllCompanies()) {
+    const poolState = derivePoolState(record);
+    if (!['available', 'reset'].includes(poolState)) continue;
+    const city = normalizeSearchText(record.data?.city || '');
+    if (normalizedCities.length && !normalizedCities.includes(city)) continue;
+    const categoryId = record.data?.category_id || record.data?.niche || 'unknown';
+    const cityLabel = record.data?.city || 'unknown';
+    const key = `${cityLabel}::${categoryId}`;
+    if (!counts[key]) counts[key] = { city: cityLabel, categoryId, count: 0 };
+    counts[key].count += 1;
+  }
+  return Object.values(counts).sort((a, b) => a.count - b.count);
+}
+
 function workerActivityAt(record) {
   return record?.updated_at || record?.last_analyzed_at || record?.reserved_at || record?.last_seen_at || record?.first_seen_at || '';
 }
@@ -2231,7 +2296,11 @@ export function createAiSearchJob({ creatorWorkerId, mode, params, modelSearch, 
   const job = {
     id,
     creator_worker_id: normalizeWorkerId(creatorWorkerId || ''),
-    mode: ['ai_search', 'combined', 'ai_enrich'].includes(mode) ? mode : 'ai_search',
+    // 'bulk_populate' reuses this exact job entity (durable record, stage
+    // machine, progress/cost sub-objects, admin-wide listing) for the
+    // no-AI pool-building job - see runBulkPopulateJob in server.js. It
+    // never sets model_search/model_enrich (no AI involved).
+    mode: ['ai_search', 'combined', 'ai_enrich', 'bulk_populate'].includes(mode) ? mode : 'ai_search',
     params: params || {},
     model_search: String(modelSearch || ''),
     model_enrich: String(modelEnrich || ''),

@@ -82,6 +82,7 @@ const state = {
   aiUsagePeriod: localStorage.getItem('auraAdminAiUsagePeriod') || 'all',
   aiSearchSettings: null,
   aiSearchJobs: [],
+  poolCoverage: [],
   workerAiTrainingSessions: [],
   serviceCatalogNames: null,
   aiPersonas: null,
@@ -165,6 +166,10 @@ const els = {
   aiSearchSettingsForm: document.querySelector('#aiSearchSettingsForm'),
   aiSearchJobsBody: document.querySelector('#aiSearchJobsBody'),
   aiSearchJobsRefresh: document.querySelector('#aiSearchJobsRefresh'),
+  bulkPopulateForm: document.querySelector('#bulkPopulateForm'),
+  poolCoverageBody: document.querySelector('#poolCoverageBody'),
+  poolCoverageCitiesFilter: document.querySelector('#poolCoverageCitiesFilter'),
+  poolCoverageRefresh: document.querySelector('#poolCoverageRefresh'),
   academyOverviewBody: document.querySelector('#academyOverviewBody'),
   aiUsagePeriodSelect: document.querySelector('#aiUsagePeriodSelect'),
   aiUsageTotals: document.querySelector('#aiUsageTotals'),
@@ -1742,6 +1747,12 @@ function aiSearchJobModeLabel(mode) {
 
 function aiSearchJobProgressSummary(job) {
   const progress = job?.progress || {};
+  if (job?.mode === 'bulk_populate') {
+    const processed = progress.combos_processed ?? 0;
+    const total = progress.total_combos ?? 0;
+    const added = progress.companies_added ?? 0;
+    return `${processed}/${total} · +${added}`;
+  }
   return tr('admin_ai_search_progress_template', {
     saved: progress.saved ?? 0,
     found: progress.candidates_found ?? 0,
@@ -1784,6 +1795,40 @@ function renderAiSearchJobs() {
         })
         .join('')
     : `<tr><td colspan="7" class="muted">${escapeHtml(tr('admin_ai_search_jobs_empty'))}</td></tr>`;
+}
+
+const POOL_COVERAGE_LOW_THRESHOLD = 5;
+
+async function loadPoolCoverage() {
+  const cities = String(els.poolCoverageCitiesFilter?.value || '')
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean);
+  try {
+    const query = cities.length ? `?cities=${encodeURIComponent(cities.join(','))}` : '';
+    const data = await api(`/api/admin/pool/coverage${query}`);
+    state.poolCoverage = data.coverage || [];
+  } catch {
+    state.poolCoverage = [];
+  }
+  renderPoolCoverage();
+}
+
+function renderPoolCoverage() {
+  if (!els.poolCoverageBody) return;
+  const rows = state.poolCoverage || [];
+  els.poolCoverageBody.innerHTML = rows.length
+    ? rows
+        .map(
+          (row) => `
+      <tr>
+        <td>${escapeHtml(row.city)}</td>
+        <td>${escapeHtml(row.categoryId)}</td>
+        <td class="${row.count < POOL_COVERAGE_LOW_THRESHOLD ? 'pool-coverage-low' : ''}">${escapeHtml(String(row.count))}</td>
+      </tr>`
+        )
+        .join('')
+    : `<tr><td colspan="3" class="muted">${escapeHtml(tr('admin_pool_coverage_empty'))}</td></tr>`;
 }
 
 async function cancelAiSearchJob(jobId) {
@@ -2761,6 +2806,43 @@ els.aiSearchJobsRefresh?.addEventListener('click', () => {
   loadAiSearchJobs().catch((error) => showToast(error.message, 'warn'));
 });
 
+els.bulkPopulateForm?.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const form = event.target;
+  const cities = String(form.cities.value || '')
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean);
+  if (!cities.length) {
+    showToast(tr('admin_bulk_populate_cities_label'), 'warn');
+    return;
+  }
+  const niches = String(form.niches.value || '')
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean);
+  try {
+    const data = await api('/api/admin/bulk-populate/jobs', {
+      method: 'POST',
+      body: JSON.stringify({
+        cities,
+        niches,
+        hasPhone: form.hasPhone.checked,
+        hasWebsite: form.hasWebsite.value,
+        perComboLimit: Number(form.perComboLimit.value) || 200
+      })
+    });
+    showToast(`${tr('admin_toast_bulk_populate_started')} (${data.comboCount} miasto x kategoria)`);
+    await loadAiSearchJobs();
+  } catch (error) {
+    showToast(error.message, 'warn');
+  }
+});
+
+els.poolCoverageRefresh?.addEventListener('click', () => {
+  loadPoolCoverage().catch((error) => showToast(error.message, 'warn'));
+});
+
 els.aiSearchJobsBody?.addEventListener('click', (event) => {
   const button = event.target.closest('[data-cancel-ai-search-job]');
   if (!button) return;
@@ -2791,6 +2873,7 @@ function switchAdminTab(tab) {
   if (target === 'ai-search') {
     loadAiSearchSettings().catch(() => {});
     loadAiSearchJobs().catch(() => {});
+    loadPoolCoverage().catch(() => {});
   }
   window.lucide?.createIcons();
 }
