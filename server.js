@@ -10748,7 +10748,13 @@ async function runBulkPopulateJob(jobId) {
     });
 
     const allCombos = [];
-    for (const city of cities) for (const niche of niches) allCombos.push({ city, niche });
+    // Interleaved by niche (niche1/city1, niche1/city2, niche2/city1, ...)
+    // rather than one whole city's block followed by the next - with several
+    // hundred combos and a modest concurrency, a strict city-then-city order
+    // meant the second city didn't get real attention until the first was
+    // almost entirely done (hours in), so a run stopped/inspected partway
+    // through only ever showed one city's coverage.
+    for (const niche of niches) for (const city of cities) allCombos.push({ city, niche });
     const combos = allCombos.filter((combo) => !alreadyDone.has(comboKey(combo.city, combo.niche)));
 
     let companiesAdded = 0;
