@@ -1035,6 +1035,49 @@
     admin_ai_search_mode_ai_search: { pl: 'Wyszukiwanie AI', ru: 'AI-поиск', en: 'AI search' },
     admin_ai_search_mode_combined: { pl: 'Połączone', ru: 'Комбинированный', en: 'Combined' },
     admin_ai_search_mode_ai_enrich: { pl: 'Wzbogacanie AI', ru: 'AI-обогащение', en: 'AI enrich' },
+    admin_ai_search_mode_bulk_populate: { pl: 'Uzupełnianie bazy', ru: 'Набор базы', en: 'Bulk populate' },
+
+    admin_bulk_populate_eyebrow: { pl: 'Baza leadów', ru: 'База лидов', en: 'Lead base' },
+    admin_bulk_populate_title: { pl: 'Masowe uzupełnianie bazy', ru: 'Массовый набор базы', en: 'Bulk populate base' },
+    admin_bulk_populate_subtitle: {
+      pl: 'Zbiera firmy dla wybranych miast x kategorii do wspólnej puli w tle, bez AI i bez przypisywania do workera.',
+      ru: 'Собирает компании по выбранным городам x категориям в общую базу в фоне, без ИИ и без назначения воркеру.',
+      en: 'Collects companies for the chosen cities x categories into the shared pool in the background, no AI, no worker assignment.'
+    },
+    admin_bulk_populate_cities_label: { pl: 'Miasta (oddzielone przecinkiem)', ru: 'Города (через запятую)', en: 'Cities (comma-separated)' },
+    admin_bulk_populate_niches_label: {
+      pl: 'Kategorie (puste = wszystkie z katalogu)',
+      ru: 'Категории (пусто = все из каталога)',
+      en: 'Categories (empty = every catalog category)'
+    },
+    admin_bulk_populate_has_phone_label: { pl: 'Tylko firmy z telefonem', ru: 'Только компании с телефоном', en: 'Only companies with a phone' },
+    admin_bulk_populate_has_website_label: { pl: 'Strona internetowa', ru: 'Веб-сайт', en: 'Website' },
+    admin_bulk_populate_website_any: { pl: 'Nieważne', ru: 'Неважно', en: 'Any' },
+    admin_bulk_populate_website_yes: { pl: 'Tylko ze stroną', ru: 'Только с сайтом', en: 'Only with a website' },
+    admin_bulk_populate_website_no: { pl: 'Tylko bez strony', ru: 'Только без сайта', en: 'Only without a website' },
+    admin_bulk_populate_per_combo_label: {
+      pl: 'Limit na miasto x kategoria (10-500)',
+      ru: 'Лимит на город x категорию (10-500)',
+      en: 'Limit per city x category (10-500)'
+    },
+    admin_btn_start_bulk_populate: { pl: 'Uruchom uzupełnianie bazy', ru: 'Запустить набор базы', en: 'Start bulk populate' },
+    admin_toast_bulk_populate_started: {
+      pl: 'Uzupełnianie bazy uruchomione w tle.',
+      ru: 'Набор базы запущен в фоне.',
+      en: 'Bulk populate started in the background.'
+    },
+
+    admin_pool_coverage_eyebrow: { pl: 'Baza leadów', ru: 'База лидов', en: 'Lead base' },
+    admin_pool_coverage_title: { pl: 'Pokrycie bazy', ru: 'Покрытие базы', en: 'Pool coverage' },
+    admin_pool_coverage_subtitle: {
+      pl: 'Ile firm jest dostępnych w puli na miasto x kategorię - posortowane od najmniejszej liczby.',
+      ru: 'Сколько компаний доступно в базе по городу x категории — отсортировано по возрастанию.',
+      en: 'How many companies are available in the pool per city x category, sorted lowest-first.'
+    },
+    admin_th_city: { pl: 'Miasto', ru: 'Город', en: 'City' },
+    admin_th_category: { pl: 'Kategoria', ru: 'Категория', en: 'Category' },
+    admin_th_pool_count: { pl: 'Dostępnych w puli', ru: 'Доступно в базе', en: 'Available in pool' },
+    admin_pool_coverage_empty: { pl: 'Brak danych - uruchom uzupełnianie bazy.', ru: 'Нет данных - запустите набор базы.', en: 'No data - start a bulk populate run.' },
 
     admin_ai_search_stage_queued: { pl: 'W kolejce', ru: 'В очереди', en: 'Queued' },
     admin_ai_search_stage_planning: { pl: 'Planowanie', ru: 'Планирование', en: 'Planning' },

@@ -421,6 +421,69 @@
         <section class="panel">
           <div class="panel-top">
             <div>
+              <p class="eyebrow" data-i18n="admin_bulk_populate_eyebrow">Baza leadów</p>
+              <h2 data-i18n="admin_bulk_populate_title">Masowe uzupełnianie bazy</h2>
+              <p data-i18n="admin_bulk_populate_subtitle">Zbiera firmy dla wybranych miast x kategorii do wspólnej puli w tle, bez AI i bez przypisywania do workera - workerzy potem tylko pobierają gotowe leady z tej puli.</p>
+            </div>
+          </div>
+          <form id="bulkPopulateForm" class="settings-form">
+            <label class="wide-field">
+              <span data-i18n="admin_bulk_populate_cities_label">Miasta (oddzielone przecinkiem)</span>
+              <input type="text" name="cities" autocomplete="off" placeholder="Warszawa, Dnipro" />
+            </label>
+            <label class="wide-field">
+              <span data-i18n="admin_bulk_populate_niches_label">Kategorie (puste = wszystkie z katalogu)</span>
+              <input type="text" name="niches" autocomplete="off" placeholder="np. hvac, restauracja - puste = masowo, wszystkie" />
+            </label>
+            <label class="checkbox-row">
+              <input type="checkbox" name="hasPhone" checked />
+              <span data-i18n="admin_bulk_populate_has_phone_label">Tylko firmy z telefonem</span>
+            </label>
+            <label>
+              <span data-i18n="admin_bulk_populate_has_website_label">Strona internetowa</span>
+              <select name="hasWebsite">
+                <option value="any" data-i18n="admin_bulk_populate_website_any">Nieważne</option>
+                <option value="yes" data-i18n="admin_bulk_populate_website_yes">Tylko ze stroną</option>
+                <option value="no" data-i18n="admin_bulk_populate_website_no">Tylko bez strony</option>
+              </select>
+            </label>
+            <label>
+              <span data-i18n="admin_bulk_populate_per_combo_label">Limit na miasto x kategoria (10-500)</span>
+              <input type="number" name="perComboLimit" min="10" max="500" step="10" value="200" />
+            </label>
+            <button class="button primary full-width" type="submit" data-i18n="admin_btn_start_bulk_populate">Uruchom uzupełnianie bazy</button>
+          </form>
+        </section>
+
+        <section class="panel">
+          <div class="panel-top">
+            <div>
+              <p class="eyebrow" data-i18n="admin_pool_coverage_eyebrow">Baza leadów</p>
+              <h2 data-i18n="admin_pool_coverage_title">Pokrycie bazy</h2>
+              <p data-i18n="admin_pool_coverage_subtitle">Ile firm jest dostępnych w puli na miasto x kategorię - posortowane od najmniejszej liczby, żeby od razu było widać co trzeba douzupełnić.</p>
+            </div>
+            <div class="filters">
+              <input id="poolCoverageCitiesFilter" type="text" placeholder="Warszawa, Dnipro" autocomplete="off" />
+              <button id="poolCoverageRefresh" class="button secondary" type="button"><i data-lucide="refresh-cw"></i> <span data-i18n="admin_btn_refresh_jobs">Odśwież</span></button>
+            </div>
+          </div>
+          <div class="table-wrap compact-table">
+            <table>
+              <thead>
+                <tr>
+                  <th data-i18n="admin_th_city">Miasto</th>
+                  <th data-i18n="admin_th_category">Kategoria</th>
+                  <th data-i18n="admin_th_pool_count">Dostępnych w puli</th>
+                </tr>
+              </thead>
+              <tbody id="poolCoverageBody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-top">
+            <div>
               <p class="eyebrow" data-i18n="admin_ai_search_jobs_eyebrow">Monitoring</p>
               <h2 data-i18n="admin_ai_search_jobs_title">Zadania wyszukiwania AI</h2>
               <p data-i18n="admin_ai_search_jobs_subtitle">Ostatnie zadania wyszukiwania/wzbogacania firm przez AI, uruchamiane przez pracowników.</p>

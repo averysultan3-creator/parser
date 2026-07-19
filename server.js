@@ -3982,7 +3982,11 @@ app.post('/api/discover', async (req, res) => {
       useWebSearch
     });
 
-    void runDiscoveryJob(job.id, {
+    // Draws from the pre-built pool instead of running a live search - see
+    // runPoolDrawJob. runDiscoveryJob (the old live-search path) is kept
+    // defined but no longer called from here; the ChatGPT/Combined AI-search
+    // modes are unaffected, they go through runAiSearchJob separately.
+    void runPoolDrawJob(job.id, {
       niches,
       city: city || country,
       country,
@@ -5411,6 +5415,52 @@ app.patch('/api/admin/settings', (req, res) => {
 // for the admin panel's AI-search monitoring view.
 app.get('/api/admin/ai-search/jobs', (req, res) => {
   res.json({ jobs: store.listAiSearchJobs({ limit: Number.parseInt(req.query.limit, 10) || 100 }) });
+});
+
+// Starts a background job that fills the shared pool with companies across
+// every requested city x niche combo - no AI, no worker assignment (see
+// runBulkPopulateJob above). "niches" omitted/empty means every category in
+// CATEGORY_CATALOG ("mass" mode from the admin's own wording).
+app.post('/api/admin/bulk-populate/jobs', (req, res) => {
+  try {
+    const body = req.body || {};
+    const cities = unique((Array.isArray(body.cities) ? body.cities : []).map(cleanText).filter(Boolean));
+    if (!cities.length) return res.status(400).json({ error: 'Укажите хотя бы один город.' });
+    const requestedNiches = unique((Array.isArray(body.niches) ? body.niches : []).map(cleanText).filter(Boolean));
+    const niches = requestedNiches.length ? requestedNiches : CATEGORY_CATALOG.map((category) => category.categoryId);
+
+    const params = {
+      cities,
+      niches,
+      hasPhone: body.hasPhone !== false,
+      hasWebsite: ['yes', 'no'].includes(body.hasWebsite) ? body.hasWebsite : 'any',
+      perComboLimit: clamp(Number(body.perComboLimit) || 200, 10, 500),
+      sourceFocus: cleanText(body.sourceFocus || 'all_sources')
+    };
+
+    const job = store.createAiSearchJob({ creatorWorkerId: 'admin', mode: 'bulk_populate', params, modelSearch: '', modelEnrich: '' });
+    void runBulkPopulateJob(job.id);
+    store.logAdminAction({
+      adminId: cleanText(req.body?.adminId || 'admin'),
+      action: 'bulk_populate_start',
+      targetType: 'pool',
+      targetId: job.id,
+      details: { cities, nicheCount: niches.length, hasPhone: params.hasPhone, hasWebsite: params.hasWebsite }
+    });
+    res.json({ jobId: job.id, stage: job.stage, comboCount: cities.length * niches.length });
+  } catch (error) {
+    console.error('[bulk-populate] failed to start job:', error);
+    res.status(500).json({ error: error.message || 'Ошибка запуска набора базы.' });
+  }
+});
+
+// Coverage dashboard: how many available-pool companies exist per city x
+// category right now, sorted low-to-high so a dried-up category/city is
+// immediately visible instead of only being discovered when a worker's
+// draw comes back short.
+app.get('/api/admin/pool/coverage', (req, res) => {
+  const cities = req.query.cities ? String(req.query.cities).split(',').map(cleanText).filter(Boolean) : [];
+  res.json({ coverage: store.countAvailablePoolByCategory({ cities }) });
 });
 
 // Powers "suggest as you type" for the city/country/category/worker filter
@@ -10603,6 +10653,382 @@ function aiSearchBudgetWouldExceed(estimatedCostSoFar, unitsDoneSoFar, settings,
   if (limit <= 0) return false;
   const nextUnitEstimate = estimateNextAiSearchUnitCost(estimatedCostSoFar, unitsDoneSoFar, fallback);
   return estimatedCostSoFar + nextUnitEstimate > limit;
+}
+
+// ---------------------------------------------------------------------
+// Bulk pool population (admin-triggered, no AI, no worker assignment)
+// ---------------------------------------------------------------------
+// Reuses the AI Search Job entity (mode: 'bulk_populate') purely for its
+// durable job-record/polling/admin-listing machinery - no AI models are
+// ever set or used here. Walks every requested city x niche combo, runs the
+// existing (worker-agnostic) discoverCompaniesBatchWithoutAI search, and
+// upserts matches straight into the shared pool via store.upsertCompany -
+// deliberately NOT store.claimCompanyForRun, so nothing gets assigned to a
+// worker and the auto AI-pitch step (analyzeSiteCardWithOpenAI) is never
+// called here at all. That analysis now happens lazily, once, the first
+// time a real worker actually draws a given company (see runPoolDrawJob).
+const BULK_POPULATE_COMBO_CONCURRENCY = Number(process.env.BULK_POPULATE_COMBO_CONCURRENCY || 3);
+const BULK_POPULATE_ANALYZE_CONCURRENCY = Number(process.env.BULK_POPULATE_ANALYZE_CONCURRENCY || 3);
+
+async function runBulkPopulateJob(jobId) {
+  try {
+    const job = store.getAiSearchJob(jobId);
+    if (!job) return;
+    const params = job.params || {};
+    const cities = Array.isArray(params.cities) ? params.cities : [];
+    const niches = Array.isArray(params.niches) ? params.niches : [];
+    const perComboLimit = clamp(Number(params.perComboLimit) || 200, 10, 500);
+    const sourceFocus = cleanText(params.sourceFocus || 'all_sources');
+    const hasPhone = params.hasPhone !== false;
+    const hasWebsite = cleanText(params.hasWebsite || 'any');
+
+    if (!cities.length || !niches.length) {
+      store.updateAiSearchJob(jobId, {
+        stage: 'FAILED',
+        stage_detail: 'No cities or niches to process.',
+        finished_at: new Date().toISOString()
+      });
+      return;
+    }
+
+    store.updateAiSearchJob(jobId, { stage: 'SEARCHING', started_at: new Date().toISOString(), stage_detail: 'Starting bulk population...' });
+
+    const combos = [];
+    for (const city of cities) for (const niche of niches) combos.push({ city, niche });
+
+    let companiesAdded = 0;
+    let combosProcessed = 0;
+    const guard = { stopped: false, reason: '', stoppedNiches: new Set() };
+
+    async function processCombo({ city, niche }) {
+      if (guard.stopped) return;
+      const freshJob = store.getAiSearchJob(jobId);
+      if (freshJob?.cancel_requested) {
+        guard.stopped = true;
+        return;
+      }
+      while (freshJob?.pause_requested && !guard.stopped) {
+        // eslint-disable-next-line no-await-in-loop
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+        const check = store.getAiSearchJob(jobId);
+        if (check?.cancel_requested) {
+          guard.stopped = true;
+          return;
+        }
+        if (!check?.pause_requested) break;
+      }
+      if (guard.stopped) return;
+
+      try {
+        await discoveryContextStorage.run({ country: '', radiusKm: 0, city }, async () => {
+          const discovery = await discoverCompaniesBatchWithoutAI({
+            niches: [niche],
+            city,
+            limit: perComboLimit,
+            sourceFocus,
+            guard,
+            onProgress() {}
+          });
+
+          const relevance = applyCategoryRelevance(normalizeItems(discovery.companies || []), [niche]);
+          const category = findCategoryDefinition(niche);
+          const candidates = relevance.companies.filter((company) => {
+            if (hasPhone && !company.phone) return false;
+            if (hasWebsite === 'yes' && !company.website_url) return false;
+            if (hasWebsite === 'no' && company.website_url) return false;
+            return true;
+          });
+
+          // Free site-check (no OpenAI - useAi/useWebSearch both off) so the
+          // pool carries real website_status/lead_score data, the same
+          // signal the worker's site-status/score filters already rely on.
+          // The paid per-card pitch write-up (analyzeSiteCardWithOpenAI) is
+          // deliberately never called here - see runPoolDrawJob, which is
+          // the only place that now runs it, once, the first time a real
+          // worker actually gets this specific company.
+          await mapLimit(candidates, BULK_POPULATE_ANALYZE_CONCURRENCY, async (company) => {
+            const withCategory = { ...company, category_id: company.category_id || category?.categoryId || '' };
+            const { id } = store.upsertCompany(withCategory, { runId: jobId, stage: 'discovered' });
+            try {
+              const analyzed = await analyzeLead(withCategory, { useAi: false, useWebSearch: false, language: 'ru' });
+              store.updateCompanyAnalysis(id, {
+                websiteResolution: analyzed.websiteResolution,
+                parsed: analyzed.parsed,
+                heuristic: analyzed.heuristic,
+                analysis: analyzed.analysis
+              });
+            } catch {
+              // Site-check failure isn't fatal - the record still exists in
+              // the pool with its raw discovery fields (phone/website_url/
+              // niche), just without a resolved website_status yet.
+            }
+            companiesAdded += 1;
+          });
+        });
+      } catch (error) {
+        store.updateAiSearchJob(jobId, {
+          errors: [{ stage: 'SEARCHING', message: `${niche} / ${city} failed: ${error.message || error}`, at: new Date().toISOString() }]
+        });
+      }
+
+      combosProcessed += 1;
+      store.updateAiSearchJob(jobId, {
+        stage_detail: `${niche} / ${city} (${combosProcessed}/${combos.length})`,
+        progress: {
+          combos_processed: combosProcessed,
+          total_combos: combos.length,
+          companies_added: companiesAdded,
+          current_niche: niche,
+          current_city: city
+        }
+      });
+    }
+
+    await mapLimit(combos, BULK_POPULATE_COMBO_CONCURRENCY, processCombo);
+
+    store.updateAiSearchJob(jobId, {
+      stage: guard.reason === 'cancelled' || (store.getAiSearchJob(jobId)?.cancel_requested ?? false) ? 'CANCELLED' : 'COMPLETED',
+      stage_detail: `Done: ${companiesAdded} companies added across ${combosProcessed}/${combos.length} niche/city combos.`,
+      finished_at: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error(`[bulk-populate] id=${jobId} failed:`, error);
+    store.updateAiSearchJob(jobId, {
+      stage: 'FAILED',
+      stage_detail: error.message || String(error),
+      finished_at: new Date().toISOString(),
+      errors: [{ stage: 'SEARCHING', message: error.message || String(error), at: new Date().toISOString() }]
+    });
+  }
+}
+
+// A persisted company record (record.data/website/heuristic/analysis/
+// aiSiteAnalysis) reshaped into the exact envelope analyzeLead() produces -
+// {id, input, parsed, websiteResolution, heuristic, analysis, aiSiteAnalysis}
+// - so a pool draw can reuse matchesDiscoveryFilters() and stream into
+// job.companies exactly like a live-analyzed candidate does. Mirrors what
+// public/app.js's historyRecordsToResults() already does client-side for
+// history runs; this is the same shape built server-side for a fresh job.
+function shapePoolRecordAsAnalyzedResult(record) {
+  const resolution = record.website?.resolution || null;
+  return {
+    id: record.id,
+    _companyId: record.id,
+    input: { ...(record.data || {}), _companyId: record.id },
+    parsed: {
+      ok: Boolean(record.website?.parsedOk),
+      error: record.website?.parsedError || '',
+      normalizedUrl: record.website?.normalizedUrl || resolution?.selectedUrl || '',
+      signals: {}
+    },
+    websiteResolution: resolution || {
+      websiteStatus: 'UNCERTAIN',
+      websiteConfidence: 0,
+      selectedUrl: '',
+      checks_completed: {},
+      domainVerification: {},
+      candidates: []
+    },
+    heuristic: record.heuristic || {},
+    analysis: record.analysis || record.heuristic || {},
+    aiSiteAnalysis: record.aiSiteAnalysis || null
+  };
+}
+
+// ---------------------------------------------------------------------
+// Worker "search" without a live search - draws already-vetted companies
+// straight out of the pool bulk-populate built up (see runBulkPopulateJob
+// above). No Google Places/Amazon/web-search calls, no per-candidate
+// over-fetch-then-release dance - just a filtered read plus the existing
+// claim path. The only OpenAI call this can ever make is the per-card pitch
+// (analyzeSiteCardWithOpenAI), and only once, the first time a given
+// company is actually handed to a real worker - never for a company that
+// sits in the pool unclaimed. If the pool doesn't have enough matches for
+// the requested filters, this returns whatever it found rather than
+// falling back to a live search (explicit product decision).
+async function runPoolDrawJob(jobId, params) {
+  let run = null;
+  await discoveryContextStorage.run({ country: params.country, radiusKm: params.radiusKm, city: params.city }, async () => {
+    try {
+      updateDiscoveryJob(jobId, {
+        status: 'running',
+        progress: { message: 'Ищу подходящих лидов в базе...', currentNiche: params.niches[0] || '', currentSource: 'lead_pool', processedNiches: 0, totalNiches: 1 }
+      });
+
+      run = store.createRun({
+        niches: params.niches,
+        city: params.city,
+        country: params.country,
+        district: params.district,
+        radiusKm: params.radiusKm,
+        workerId: params.workerId,
+        sourceFocus: 'lead_pool',
+        requestedLimit: params.limit
+      });
+      updateDiscoveryJob(jobId, { runId: run.id });
+
+      const discoveryFilters = {
+        siteStatus: params.siteStatus || 'all',
+        minScore: Number(params.minScore || 0),
+        hasSocial: Boolean(params.hasSocial),
+        hasPhone: Boolean(params.hasPhone),
+        hasEmail: Boolean(params.hasEmail)
+      };
+
+      // Pool records store category_id (the stable CATEGORY_CATALOG slug,
+      // set by runBulkPopulateJob) alongside a free-text niche that's often
+      // a specific inferred sub-phrase ("chirurgia weterynaryjna"), not the
+      // niche string a worker actually searched with ("Kliniki
+      // weterynaryjne") - matching only the raw niche string against that
+      // free-text field found nothing even with real stock in the pool.
+      // Resolve each requested niche to its categoryId the same way
+      // runBulkPopulateJob does before storing, so the two sides speak the
+      // same key; listAvailablePool still also substring-matches the raw
+      // niche as a fallback for older/non-catalog records.
+      const requestedCategoryIds = params.niches.map((niche) => findCategoryDefinition(niche)?.categoryId || niche);
+
+      // Over-fetch a bit from the pool since siteStatus/minScore aren't
+      // indexed in listAvailablePool (only city/category/phone/email/social
+      // are) - matchesDiscoveryFilters below does the final narrowing.
+      const poolRecords = store.listAvailablePool({
+        city: params.city,
+        categories: requestedCategoryIds,
+        hasPhone: discoveryFilters.hasPhone,
+        hasEmail: discoveryFilters.hasEmail,
+        hasSocial: discoveryFilters.hasSocial,
+        limit: Math.max(params.limit * 5, 100)
+      });
+
+      const matchedCompanies = [];
+      let attempted = 0;
+      for (const record of poolRecords) {
+        if (matchedCompanies.length >= params.limit) break;
+        const shaped = shapePoolRecordAsAnalyzedResult(record);
+        if (!matchesDiscoveryFilters(shaped, discoveryFilters)) continue;
+        attempted += 1;
+
+        const claim = store.claimCompanyForRun(shaped.input, { runId: run.id, workerId: params.workerId, stage: 'analyzed' });
+        if (!claim.isClaimed) continue; // already taken between the pool read and this claim
+
+        // First time this exact company is handed to a real worker - write
+        // the pitch now if it doesn't already have one and the worker asked
+        // for AI (same useAi checkbox the old live-search flow already had).
+        let aiSiteAnalysis = claim.record.aiSiteAnalysis || shaped.aiSiteAnalysis;
+        if (params.useAi && aiSiteAnalysis?.status !== 'COMPLETED') {
+          try {
+            const aiAnalysis = await analyzeSiteCardWithOpenAI({
+              item: shaped.input,
+              parsed: shaped.parsed,
+              websiteResolution: shaped.websiteResolution,
+              heuristic: shaped.analysis,
+              model: DEFAULT_MODEL,
+              language: params.language || 'ru',
+              workerId: params.workerId,
+              companyId: claim.id,
+              runId: run.id
+            });
+            if (aiAnalysis) {
+              aiSiteAnalysis = {
+                status: 'COMPLETED',
+                version: aiAnalysis.ai_analysis_version || 1,
+                analyzed_at: aiAnalysis.ai_analyzed_at || new Date().toISOString(),
+                company_data_version: aiAnalysis.company_data_version || 1,
+                data: aiAnalysis
+              };
+              store.updateCompanyAiAnalysis(claim.id, aiSiteAnalysis);
+            }
+          } catch (error) {
+            console.error(`[pool-draw] id=${jobId} AI card analysis failed for "${shaped.input.company || claim.id}":`, error);
+            aiSiteAnalysis = {
+              status: 'FAILED',
+              version: 1,
+              analyzed_at: new Date().toISOString(),
+              company_data_version: 1,
+              error: error.message || 'AI analysis failed'
+            };
+          }
+        }
+
+        const finalResult = { ...shaped, id: claim.id, _companyId: claim.id, aiSiteAnalysis };
+        matchedCompanies.push(finalResult);
+        updateDiscoveryJob(jobId, {
+          analyzedCompanies: matchedCompanies,
+          progress: {
+            message: `Найдено в базе: ${matchedCompanies.length} из ${params.limit}`,
+            currentNiche: params.niches[0] || '',
+            currentSource: 'lead_pool',
+            processedNiches: 1,
+            totalNiches: 1,
+            foundCount: matchedCompanies.length,
+            analyzedCount: attempted,
+            analysisTarget: params.limit
+          }
+        });
+      }
+
+      store.addCompanyIdsToRun(run.id, matchedCompanies.map((c) => c._companyId));
+      const finalStatus =
+        matchedCompanies.length >= params.limit
+          ? 'completed'
+          : poolRecords.length === 0
+            ? 'pool_empty'
+            : 'exhausted';
+      const progressMessage =
+        finalStatus === 'completed'
+          ? `Готово: ${matchedCompanies.length} лидов из базы.`
+          : finalStatus === 'pool_empty'
+            ? 'В базе сейчас нет подходящих лидов под эти фильтры - нужно донабрать базу.'
+            : `В базе нашлось только ${matchedCompanies.length} из запрошенных ${params.limit} - больше подходящих лидов по этим фильтрам сейчас нет.`;
+
+      store.updateRun(run.id, {
+        status: finalStatus,
+        finished_at: new Date().toISOString(),
+        found_count: matchedCompanies.length,
+        new_count: matchedCompanies.length,
+        duplicate_count: 0,
+        warnings: finalStatus !== 'completed' ? [progressMessage] : []
+      });
+
+      updateDiscoveryJob(jobId, {
+        status: 'completed',
+        analyzedCompanies: matchedCompanies,
+        result: {
+          runId: run.id,
+          queries: [],
+          warnings: finalStatus !== 'completed' ? [progressMessage] : [],
+          meta: {
+            count: matchedCompanies.length,
+            requestedNewCount: params.limit,
+            rawFoundCount: poolRecords.length,
+            newCount: matchedCompanies.length,
+            duplicateCount: 0,
+            analyzedCount: attempted,
+            skippedWrongCategory: 0,
+            usedAi: Boolean(params.useAi),
+            source: 'lead_pool',
+            sourceFocus: 'lead_pool',
+            searchStatus: finalStatus,
+            workerId: params.workerId,
+            categories: params.niches,
+            city: params.city,
+            country: params.country,
+            radiusKm: params.radiusKm
+          }
+        },
+        progress: { message: progressMessage, foundCount: matchedCompanies.length }
+      });
+    } catch (error) {
+      console.error(`[pool-draw] id=${jobId} failed:`, error);
+      if (run) {
+        store.updateRun(run.id, { status: 'failed', finished_at: new Date().toISOString(), warnings: [error.message || String(error)] });
+      }
+      updateDiscoveryJob(jobId, {
+        status: 'failed',
+        error: error.message || 'Ошибка выдачи лидов из базы.',
+        progress: { message: error.message || 'Ошибка выдачи лидов из базы.' }
+      });
+    }
+  });
 }
 
 async function runAiSearchJob(jobId) {
