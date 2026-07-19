@@ -5636,7 +5636,33 @@ const httpServer = app.listen(PORT, HOST, () => {
   if (HOST === '0.0.0.0') {
     console.log(`LAN access enabled on port ${PORT}`);
   }
+  resumeInterruptedBulkPopulateJobs();
 });
+
+// A bulk-populate run is a long-lived in-memory loop with no execution
+// thread that survives a process restart - only its durable job record
+// (and the completed_combo_keys checkpoint on it) does. Since this is the
+// only process that could ever have been running it, ANY bulk_populate job
+// still sitting in a non-terminal stage the moment this process starts up
+// MUST have been orphaned by whatever ended the previous process (a crash,
+// another app on this server restarting, a deploy) - there is no other way
+// for it to be in that state at startup. Re-launch each one; runBulkPopulateJob
+// itself skips whatever combos completed_combo_keys already covers, so this
+// picks up close to where it left off instead of re-running for hours.
+// PAUSED jobs are left alone - that pause was a deliberate admin action.
+function resumeInterruptedBulkPopulateJobs() {
+  try {
+    const orphaned = store
+      .listAiSearchJobs({ limit: 500 })
+      .filter((job) => job.mode === 'bulk_populate' && ['QUEUED', 'SEARCHING'].includes(job.stage));
+    for (const job of orphaned) {
+      console.log(`[bulk-populate] resuming interrupted job ${job.id} after restart (${job.progress?.combos_processed || 0}/${job.progress?.total_combos || '?'} combos already done)`);
+      void runBulkPopulateJob(job.id);
+    }
+  } catch (error) {
+    console.error('[bulk-populate] failed to scan for interrupted jobs on startup:', error);
+  }
+}
 
 function normalizeItems(items) {
   if (!Array.isArray(items)) return [];
@@ -10670,6 +10696,17 @@ function aiSearchBudgetWouldExceed(estimatedCostSoFar, unitsDoneSoFar, settings,
 const BULK_POPULATE_COMBO_CONCURRENCY = Number(process.env.BULK_POPULATE_COMBO_CONCURRENCY || 3);
 const BULK_POPULATE_ANALYZE_CONCURRENCY = Number(process.env.BULK_POPULATE_ANALYZE_CONCURRENCY || 3);
 
+function comboKey(city, niche) {
+  return `${city}::${niche}`;
+}
+
+// A single stuck fetch (a source that never times out internally, a wedged
+// socket) must not eat a concurrency slot forever and quietly stall the
+// whole run - wrap each combo in its own hard ceiling well above the
+// slowest combo seen in practice (~3 min), so a genuinely hung one gets
+// abandoned and the run moves on instead of idling.
+const BULK_POPULATE_COMBO_TIMEOUT_MS = Number(process.env.BULK_POPULATE_COMBO_TIMEOUT_MS || 8 * 60 * 1000);
+
 async function runBulkPopulateJob(jobId) {
   try {
     const job = store.getAiSearchJob(jobId);
@@ -10691,14 +10728,81 @@ async function runBulkPopulateJob(jobId) {
       return;
     }
 
-    store.updateAiSearchJob(jobId, { stage: 'SEARCHING', started_at: new Date().toISOString(), stage_detail: 'Starting bulk population...' });
+    // Resumability: a bulk-populate run is a long-lived in-memory async loop
+    // with no execution state on disk - if the process restarts mid-run
+    // (another app on this same server restarting, a crash, a deploy), the
+    // loop just dies with nothing left to resume it. What DOES survive is
+    // the durable job record, so completed_combo_keys (persisted after every
+    // combo) is used as a checkpoint: a fresh call to runBulkPopulateJob for
+    // this SAME jobId (see the startup resume scan below) skips everything
+    // already in that list instead of re-running the whole sweep from
+    // combo #1. upsertCompany already dedups per-company regardless, so this
+    // is a pure time-saver, not a correctness requirement, but at 372 combos
+    // re-doing finished ones from scratch on every restart wastes hours.
+    const alreadyDone = new Set(Array.isArray(job.progress?.completed_combo_keys) ? job.progress.completed_combo_keys : []);
 
-    const combos = [];
-    for (const city of cities) for (const niche of niches) combos.push({ city, niche });
+    store.updateAiSearchJob(jobId, {
+      stage: 'SEARCHING',
+      started_at: job.started_at || new Date().toISOString(),
+      stage_detail: alreadyDone.size ? `Resuming after interruption (${alreadyDone.size} combos already done)...` : 'Starting bulk population...'
+    });
+
+    const allCombos = [];
+    for (const city of cities) for (const niche of niches) allCombos.push({ city, niche });
+    const combos = allCombos.filter((combo) => !alreadyDone.has(comboKey(combo.city, combo.niche)));
 
     let companiesAdded = 0;
-    let combosProcessed = 0;
+    let combosProcessed = alreadyDone.size;
+    const completedKeys = [...alreadyDone];
     const guard = { stopped: false, reason: '', stoppedNiches: new Set() };
+
+    async function processOneCombo({ city, niche }) {
+      await discoveryContextStorage.run({ country: '', radiusKm: 0, city }, async () => {
+        const discovery = await discoverCompaniesBatchWithoutAI({
+          niches: [niche],
+          city,
+          limit: perComboLimit,
+          sourceFocus,
+          guard,
+          onProgress() {}
+        });
+
+        const relevance = applyCategoryRelevance(normalizeItems(discovery.companies || []), [niche]);
+        const category = findCategoryDefinition(niche);
+        const candidates = relevance.companies.filter((company) => {
+          if (hasPhone && !company.phone) return false;
+          if (hasWebsite === 'yes' && !company.website_url) return false;
+          if (hasWebsite === 'no' && company.website_url) return false;
+          return true;
+        });
+
+        // Free site-check (no OpenAI - useAi/useWebSearch both off) so the
+        // pool carries real website_status/lead_score data, the same
+        // signal the worker's site-status/score filters already rely on.
+        // The paid per-card pitch write-up (analyzeSiteCardWithOpenAI) is
+        // deliberately never called here - see runPoolDrawJob, which is
+        // the only place that now runs it, once, the first time a real
+        // worker actually gets this specific company.
+        await mapLimit(candidates, BULK_POPULATE_ANALYZE_CONCURRENCY, async (company) => {
+          const withCategory = { ...company, category_id: company.category_id || category?.categoryId || '' };
+          const { id } = store.upsertCompany(withCategory, { runId: jobId, stage: 'discovered' });
+          try {
+            const analyzed = await analyzeLead(withCategory, { useAi: false, useWebSearch: false, language: 'ru' });
+            store.updateCompanyAnalysis(id, {
+              websiteResolution: analyzed.websiteResolution,
+              parsed: analyzed.parsed,
+              heuristic: analyzed.heuristic,
+              analysis: analyzed.analysis
+            });
+          } catch {
+            // Site-check failure isn't fatal - the record still exists in
+            // the pool with its raw discovery fields (phone/website_url/
+            // niche), just without a resolved website_status yet.
+          }
+          companiesAdded += 1;
+        });
+      });
+    }
 
     async function processCombo({ city, niche }) {
       if (guard.stopped) return;
@@ -10720,51 +10824,16 @@ async function runBulkPopulateJob(jobId) {
       if (guard.stopped) return;
 
       try {
-        await discoveryContextStorage.run({ country: '', radiusKm: 0, city }, async () => {
-          const discovery = await discoverCompaniesBatchWithoutAI({
-            niches: [niche],
-            city,
-            limit: perComboLimit,
-            sourceFocus,
-            guard,
-            onProgress() {}
-          });
-
-          const relevance = applyCategoryRelevance(normalizeItems(discovery.companies || []), [niche]);
-          const category = findCategoryDefinition(niche);
-          const candidates = relevance.companies.filter((company) => {
-            if (hasPhone && !company.phone) return false;
-            if (hasWebsite === 'yes' && !company.website_url) return false;
-            if (hasWebsite === 'no' && company.website_url) return false;
-            return true;
-          });
-
-          // Free site-check (no OpenAI - useAi/useWebSearch both off) so the
-          // pool carries real website_status/lead_score data, the same
-          // signal the worker's site-status/score filters already rely on.
-          // The paid per-card pitch write-up (analyzeSiteCardWithOpenAI) is
-          // deliberately never called here - see runPoolDrawJob, which is
-          // the only place that now runs it, once, the first time a real
-          // worker actually gets this specific company.
-          await mapLimit(candidates, BULK_POPULATE_ANALYZE_CONCURRENCY, async (company) => {
-            const withCategory = { ...company, category_id: company.category_id || category?.categoryId || '' };
-            const { id } = store.upsertCompany(withCategory, { runId: jobId, stage: 'discovered' });
-            try {
-              const analyzed = await analyzeLead(withCategory, { useAi: false, useWebSearch: false, language: 'ru' });
-              store.updateCompanyAnalysis(id, {
-                websiteResolution: analyzed.websiteResolution,
-                parsed: analyzed.parsed,
-                heuristic: analyzed.heuristic,
-                analysis: analyzed.analysis
-              });
-            } catch {
-              // Site-check failure isn't fatal - the record still exists in
-              // the pool with its raw discovery fields (phone/website_url/
-              // niche), just without a resolved website_status yet.
-            }
-            companiesAdded += 1;
-          });
-        });
+        let timeoutHandle;
+        await Promise.race([
+          processOneCombo({ city, niche }),
+          new Promise((_, reject) => {
+            timeoutHandle = setTimeout(
+              () => reject(new Error(`Timed out after ${Math.round(BULK_POPULATE_COMBO_TIMEOUT_MS / 1000)}s`)),
+              BULK_POPULATE_COMBO_TIMEOUT_MS
+            );
+          })
+        ]).finally(() => clearTimeout(timeoutHandle));
       } catch (error) {
         store.updateAiSearchJob(jobId, {
           errors: [{ stage: 'SEARCHING', message: `${niche} / ${city} failed: ${error.message || error}`, at: new Date().toISOString() }]
@@ -10772,14 +10841,16 @@ async function runBulkPopulateJob(jobId) {
       }
 
       combosProcessed += 1;
+      completedKeys.push(comboKey(city, niche));
       store.updateAiSearchJob(jobId, {
-        stage_detail: `${niche} / ${city} (${combosProcessed}/${combos.length})`,
+        stage_detail: `${niche} / ${city} (${combosProcessed}/${allCombos.length})`,
         progress: {
           combos_processed: combosProcessed,
-          total_combos: combos.length,
+          total_combos: allCombos.length,
           companies_added: companiesAdded,
           current_niche: niche,
-          current_city: city
+          current_city: city,
+          completed_combo_keys: completedKeys
         }
       });
     }
@@ -10788,7 +10859,7 @@ async function runBulkPopulateJob(jobId) {
 
     store.updateAiSearchJob(jobId, {
       stage: guard.reason === 'cancelled' || (store.getAiSearchJob(jobId)?.cancel_requested ?? false) ? 'CANCELLED' : 'COMPLETED',
-      stage_detail: `Done: ${companiesAdded} companies added across ${combosProcessed}/${combos.length} niche/city combos.`,
+      stage_detail: `Done: ${companiesAdded} companies added this run, ${combosProcessed}/${allCombos.length} niche/city combos total.`,
       finished_at: new Date().toISOString()
     });
   } catch (error) {
