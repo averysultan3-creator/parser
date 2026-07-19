@@ -4081,13 +4081,20 @@ function renderResults() {
     // old plain-gray one-liner) after repeated reports of workers reading a
     // real "found N" search as broken because every row was silently
     // filtered out, most often by the "Есть телефон" checkbox staying
-    // checked from a previous search.
+    // checked from a previous search. Even with the louder wording, a
+    // worker forwarded this exact message to their boss as "parser is
+    // broken, finds nothing" - so this is no longer just a message, it's a
+    // one-click fix right there instead of relying on someone reading it,
+    // understanding it, and finding the separate reset button.
     els.resultsBody.innerHTML = `<tr class="empty-row"><td colspan="8"><div class="filtered-out-warning"><strong>${escapeHtml(
       t2(
         `Znaleziono ${state.results.length}, ale 0 pokazano - filtry (np. "Jest telefon") ukrywają wszystko.`,
         `Найдено ${state.results.length}, но показано 0 - фильтры (например "Есть телефон") скрывают всё.`
       )
-    )}</strong><br/>${escapeHtml(tr('noFilterResults'))}</div></td></tr>`;
+    )}</strong><br/>${escapeHtml(tr('noFilterResults'))}<br/><button type="button" id="filteredOutResetButton" class="primary-button compact-button" style="margin-top:8px">${escapeHtml(
+      t2('Pokaż wszystkie (wyłącz filtry)', 'Показать все (отключить фильтры)')
+    )}</button></div></td></tr>`;
+    els.resultsBody.querySelector('#filteredOutResetButton')?.addEventListener('click', resetResultFilters);
     return;
   }
 
